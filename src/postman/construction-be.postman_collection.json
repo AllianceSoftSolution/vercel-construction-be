@@ -1,0 +1,2007 @@
+{
+    "info": {
+        "_postman_id": "construction-be-collection-001",
+        "name": "Construction BE API",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+        "description": "API collection for Construction Management Backend (Node.js, Express, Prisma)"
+    },
+    "item": [
+        {
+            "name": "Auth & Users",
+            "item": [
+                {
+                    "name": "Register User",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"user@example.com\",\n  \"name\": \"John Doe\",\n  \"role\": \"ADMIN\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/auth/register",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "register"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Login User",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"user@example.com\",\n  \"password\": \"Password123!\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/auth/login",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "login"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Users",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/auth/users?search=john&role=ADMIN&isActive=true&sortBy=createdAt&sortOrder=desc&page=1&limit=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "users"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "john",
+                                    "description": "Search in name, email, employeeId"
+                                },
+                                {
+                                    "key": "role",
+                                    "value": "ADMIN",
+                                    "description": "Filter by role"
+                                },
+                                {
+                                    "key": "isActive",
+                                    "value": "true",
+                                    "description": "Filter by active status"
+                                },
+                                {
+                                    "key": "sortBy",
+                                    "value": "createdAt",
+                                    "description": "Sort field (name, email, createdAt, etc.)"
+                                },
+                                {
+                                    "key": "sortOrder",
+                                    "value": "desc",
+                                    "description": "Sort order (asc/desc)"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10",
+                                    "description": "Items per page"
+                                }
+                            ]
+                        },
+                        "description": "Get users with filtering, searching, and pagination. Supports search in name, email, employeeId fields."
+                    }
+                },
+                {
+                    "name": "Get User By ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/auth/users/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "users",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update User",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Jane Doe\",\n  \"role\": \"PROJECT_MANAGER\",\n  \"isActive\": true\n}"
+                        },
+                        "url": {
+                            "raw": "/api/auth/users/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "users",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete User",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "/api/auth/users/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "users",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Activate User",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/auth/users/:id/activate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "users",
+                                ":id",
+                                "activate"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Deactivate User",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/auth/users/:id/deactivate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "users",
+                                ":id",
+                                "deactivate"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Request Password Reset",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"user@example.com\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/auth/request-password-reset",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "request-password-reset"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Reset Password With OTP",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"123456\",\n  \"newPassword\": \"NewPassword123!\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/auth/reset-password-with-otp",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "reset-password-with-otp"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Change Password",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"currentPassword\": \"OldPassword123!\",\n  \"newPassword\": \"NewPassword123!\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/auth/change-password",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "change-password"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Projects",
+            "item": [
+                {
+                    "name": "Create Project",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Project Alpha\",\n  \"code\": \"PRJ001\",\n  \"description\": \"Main project\",\n  \"startDate\": \"2024-06-01T00:00:00.000Z\",\n  \"endDate\": \"2024-12-31T00:00:00.000Z\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/projects",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "projects"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Projects",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/projects?search=alpha&isActive=true&sortBy=createdAt&sortOrder=desc&page=1&limit=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "projects"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "alpha",
+                                    "description": "Search in name, code, description"
+                                },
+                                {
+                                    "key": "isActive",
+                                    "value": "true",
+                                    "description": "Filter by active status"
+                                },
+                                {
+                                    "key": "sortBy",
+                                    "value": "createdAt",
+                                    "description": "Sort field (name, code, createdAt, etc.)"
+                                },
+                                {
+                                    "key": "sortOrder",
+                                    "value": "desc",
+                                    "description": "Sort order (asc/desc)"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10",
+                                    "description": "Items per page"
+                                }
+                            ]
+                        },
+                        "description": "Get projects with filtering, searching, and pagination. Supports search in name, code, description fields."
+                    }
+                },
+                {
+                    "name": "Get Project By ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/projects/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "projects",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Project",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Project Alpha Updated\",\n  \"description\": \"Updated description\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/projects/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "projects",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Project",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "/api/projects/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "projects",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Activate Project",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/projects/:id/activate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "projects",
+                                ":id",
+                                "activate"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Deactivate Project",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/projects/:id/deactivate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "projects",
+                                ":id",
+                                "deactivate"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Sections",
+            "item": [
+                {
+                    "name": "Create Section",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Section 1\",\n  \"code\": \"SEC001\",\n  \"description\": \"Section description\",\n  \"projectId\": \"<projectId>\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/sections",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "sections"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Sections",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/sections?search=section&projectId=<projectId>&isActive=true&sortBy=createdAt&sortOrder=desc&page=1&limit=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "sections"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "section",
+                                    "description": "Search in name, code, description"
+                                },
+                                {
+                                    "key": "projectId",
+                                    "value": "<projectId>",
+                                    "description": "Filter by project ID"
+                                },
+                                {
+                                    "key": "isActive",
+                                    "value": "true",
+                                    "description": "Filter by active status"
+                                },
+                                {
+                                    "key": "sortBy",
+                                    "value": "createdAt",
+                                    "description": "Sort field (name, code, createdAt, etc.)"
+                                },
+                                {
+                                    "key": "sortOrder",
+                                    "value": "desc",
+                                    "description": "Sort order (asc/desc)"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10",
+                                    "description": "Items per page"
+                                }
+                            ]
+                        },
+                        "description": "Get sections with filtering, searching, and pagination. Supports search in name, code, description fields."
+                    }
+                },
+                {
+                    "name": "Get Section By ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/sections/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "sections",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Section",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Section 1 Updated\",\n  \"description\": \"Updated section description\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/sections/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "sections",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Section",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "/api/sections/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "sections",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Activate Section",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/sections/:id/activate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "sections",
+                                ":id",
+                                "activate"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Deactivate Section",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/sections/:id/deactivate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "sections",
+                                ":id",
+                                "deactivate"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Sections With Site Incharge Assignment Status",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/assignments/site-incharge/sections-with-status?projectId=<projectId>&userId=<userId>",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "site-incharge",
+                                "sections-with-status"
+                            ],
+                            "query": [
+                                {
+                                    "key": "projectId",
+                                    "value": "<projectId>"
+                                },
+                                {
+                                    "key": "userId",
+                                    "value": "<userId>"
+                                }
+                            ]
+                        },
+                        "description": "Get all sections in a project with assignment status for a given Site Incharge user.\n\nResponse fields for each section:\n- isAssigned: true if assigned to the given user\n- assignedToCurrentUser: true if assigned to the given user\n- assignedToOther: true if assigned to another site incharge in the project"
+                    }
+                },
+                {
+                    "name": "Get Sections With Accountant Assignment Status",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/assignments/accountant/sections-with-status?projectId=<projectId>&userId=<userId>",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "accountant",
+                                "sections-with-status"
+                            ],
+                            "query": [
+                                {
+                                    "key": "projectId",
+                                    "value": "<projectId>"
+                                },
+                                {
+                                    "key": "userId",
+                                    "value": "<userId>"
+                                }
+                            ]
+                        },
+                        "description": "Get all sections in a project with isAssigned status for a given Accountant user."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Stores",
+            "item": [
+                {
+                    "name": "Create Store",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Main Store\",\n  \"type\": \"HEAD_STORE\",\n  \"sectionId\": \"<sectionId>\",\n  \"cmUserId\": \"<userId>\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/stores",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Stores",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/stores",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Store By ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/stores/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Store",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Main Store Updated\",\n  \"type\": \"CM_STORE\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/stores/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Store",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "/api/stores/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Activate Store",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/stores/:id/activate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores",
+                                ":id",
+                                "activate"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Deactivate Store",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/stores/:id/deactivate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores",
+                                ":id",
+                                "deactivate"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Stock In",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"materialId\": \"<materialId>\",\n  \"quantity\": 10,\n  \"notes\": \"Received delivery\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/stores/:storeId/stock-in",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores",
+                                ":storeId",
+                                "stock-in"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Stock Out",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"materialId\": \"<materialId>\",\n  \"quantity\": 5,\n  \"notes\": \"Issued for site\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/stores/:storeId/stock-out",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores",
+                                ":storeId",
+                                "stock-out"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Store Inventory",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/stores/:storeId/inventory",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores",
+                                ":storeId",
+                                "inventory"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Store Transactions",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/stores/:storeId/transactions",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores",
+                                ":storeId",
+                                "transactions"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Project Inventory",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/stores/project/:projectId/inventory",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "stores",
+                                "project",
+                                ":projectId",
+                                "inventory"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Materials",
+            "item": [
+                {
+                    "name": "Create Material",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Cement\",\n  \"description\": \"OPC 53 Grade\",\n  \"unit\": \"bag\",\n  \"category\": \"Building Material\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/materials",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "materials"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Materials",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/materials?search=cement&category=Building Material&isActive=true&sortBy=createdAt&sortOrder=desc&page=1&limit=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "materials"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "cement",
+                                    "description": "Search in name, description, category"
+                                },
+                                {
+                                    "key": "category",
+                                    "value": "Building Material",
+                                    "description": "Filter by category"
+                                },
+                                {
+                                    "key": "isActive",
+                                    "value": "true",
+                                    "description": "Filter by active status"
+                                },
+                                {
+                                    "key": "sortBy",
+                                    "value": "createdAt",
+                                    "description": "Sort field (name, category, createdAt, etc.)"
+                                },
+                                {
+                                    "key": "sortOrder",
+                                    "value": "desc",
+                                    "description": "Sort order (asc/desc)"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10",
+                                    "description": "Items per page"
+                                }
+                            ]
+                        },
+                        "description": "Get materials with filtering, searching, and pagination. Supports search in name, description, category fields."
+                    }
+                },
+                {
+                    "name": "Get Material By ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/materials/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "materials",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Material",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Cement Updated\",\n  \"description\": \"Updated description\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/materials/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "materials",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Material",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "/api/materials/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "materials",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Activate Material",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/materials/:id/activate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "materials",
+                                ":id",
+                                "activate"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Deactivate Material",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/materials/:id/deactivate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "materials",
+                                ":id",
+                                "deactivate"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Vendors",
+            "item": [
+                {
+                    "name": "Create Vendor",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"ABC Suppliers\",\n  \"contactPerson\": \"Mr. Smith\",\n  \"phone\": \"1234567890\",\n  \"email\": \"abc@suppliers.com\",\n  \"address\": \"123 Main St\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/vendors",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendors"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Vendors",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/vendors?search=abc&isActive=true&sortBy=createdAt&sortOrder=desc&page=1&limit=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendors"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "abc",
+                                    "description": "Search in name, contactPerson, email, phone, address"
+                                },
+                                {
+                                    "key": "isActive",
+                                    "value": "true",
+                                    "description": "Filter by active status"
+                                },
+                                {
+                                    "key": "sortBy",
+                                    "value": "createdAt",
+                                    "description": "Sort field (name, email, createdAt, etc.)"
+                                },
+                                {
+                                    "key": "sortOrder",
+                                    "value": "desc",
+                                    "description": "Sort order (asc/desc)"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10",
+                                    "description": "Items per page"
+                                }
+                            ]
+                        },
+                        "description": "Get vendors with filtering, searching, and pagination. Supports search in name, contactPerson, email, phone, address fields."
+                    }
+                },
+                {
+                    "name": "Get Vendor By ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/vendors/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendors",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Vendor",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"ABC Suppliers Updated\",\n  \"contactPerson\": \"Mr. John\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/vendors/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendors",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Vendor",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "/api/vendors/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendors",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Activate Vendor",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/vendors/:id/activate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendors",
+                                ":id",
+                                "activate"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Deactivate Vendor",
+                    "request": {
+                        "method": "PATCH",
+                        "url": {
+                            "raw": "/api/vendors/:id/deactivate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendors",
+                                ":id",
+                                "deactivate"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Demands",
+            "item": [
+                {
+                    "name": "Create Demand",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"activity\": \"Pouring Concrete\",\n  \"materialId\": \"<materialId>\",\n  \"quantity\": 100,\n  \"unit\": \"bag\",\n  \"sectionId\": \"<sectionId>\",\n  \"notes\": \"Urgent\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/demands",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "demands"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Demands",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/demands",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "demands"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Demand By ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/demands/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "demands",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Demand",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"activity\": \"Pouring Concrete Updated\",\n  \"quantity\": 120\n}"
+                        },
+                        "url": {
+                            "raw": "/api/demands/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "demands",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Demand",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "/api/demands/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "demands",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Demand Status",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"status\": \"APPROVED\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/demands/:id/status",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "demands",
+                                ":id",
+                                "status"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Approve Demand",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"notes\": \"Approved by manager\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/demands/:id/approve",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "demands",
+                                ":id",
+                                "approve"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Reject Demand",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"reason\": \"Insufficient stock\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/demands/:id/reject",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "demands",
+                                ":id",
+                                "reject"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Fulfill Demand",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"quantity\": 50,\n  \"notes\": \"Partial fulfillment\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/demands/:id/fulfill",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "demands",
+                                ":id",
+                                "fulfill"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Assignments",
+            "item": [
+                {
+                    "name": "Create Site Incharge Assignment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"userId\": \"<userId>\",\n  \"projectId\": \"<projectId>\",\n  \"sectionIds\": [\"<sectionId1>\", \"<sectionId2>\"]\n}"
+                        },
+                        "url": {
+                            "raw": "/api/assignments/site-incharge",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "site-incharge"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Site Incharge Assignments",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/assignments/site-incharge",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "site-incharge"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create Project Manager Assignment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"userId\": \"<userId>\",\n  \"projectId\": \"<projectId>\",\n  \"sectionId\": \"<sectionId>\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/assignments/project-manager",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "project-manager"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create and Assign Project Manager",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"John Doe\",\n  \"email\": \"john.doe@example.com\",\n  \"projectId\": \"<projectId>\",\n  \"sectionId\": \"<sectionId>\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/assignments/project-manager/create-and-assign",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "project-manager",
+                                "create-and-assign"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Project Manager Assignments",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/assignments/project-manager",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "project-manager"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create Construction Manager Assignment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"userId\": \"<userId>\",\n  \"sectionId\": \"<sectionId>\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/assignments/construction-manager",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "construction-manager"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Construction Manager Assignments",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/assignments/construction-manager",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "construction-manager"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create Store Incharge Assignment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"userId\": \"<userId>\",\n  \"storeId\": \"<storeId>\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/assignments/store-incharge",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "store-incharge"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Store Incharge Assignments",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/assignments/store-incharge",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "store-incharge"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create Accountant Assignment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"userId\": \"<userId>\",\n  \"projectId\": \"<projectId>\",\n  \"sectionId\": \"<sectionId>\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/assignments/accountant",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "accountant"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Accountant Assignments",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/assignments/accountant",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "accountant"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Deactivate Assignment (Generic)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"isActive\": false\n}"
+                        },
+                        "url": {
+                            "raw": "/api/assignments/:type/:id/deactivate",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                ":type",
+                                ":id",
+                                "deactivate"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Users By Role For Assignment",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/assignments/users-by-role?role=PROJECT_MANAGER&projectId=<projectId>",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "assignments",
+                                "users-by-role"
+                            ],
+                            "query": [
+                                {
+                                    "key": "role",
+                                    "value": "PROJECT_MANAGER",
+                                    "description": "Role to filter users by (e.g. PROJECT_MANAGER, SITE_INCHARGE, etc.)"
+                                },
+                                {
+                                    "key": "projectId",
+                                    "value": "<projectId>",
+                                    "description": "(Optional) Project ID for assignment logic"
+                                }
+                            ]
+                        },
+                        "description": "Get users by role for assignment. Optionally filter by projectId for assignment logic."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Get Vendor Account Statement",
+            "request": {
+                "method": "GET",
+                "url": {
+                    "raw": "/api/vendor-account/vendors/:vendorId/statement",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "vendor-account",
+                        "vendors",
+                        ":vendorId",
+                        "statement"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "Add Vendor Payment",
+            "request": {
+                "method": "POST",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"amount\": 10000,\n  \"date\": \"2024-06-01\",\n  \"notes\": \"Advance payment\"\n}"
+                },
+                "url": {
+                    "raw": "/api/vendor-account/vendors/:vendorId/payments",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "vendor-account",
+                        "vendors",
+                        ":vendorId",
+                        "payments"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "Get Vendor Payments",
+            "request": {
+                "method": "GET",
+                "url": {
+                    "raw": "/api/vendor-account/vendors/payments",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "vendor-account",
+                        "vendors",
+                        "payments"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "Get Vendor Account Transactions",
+            "request": {
+                "method": "GET",
+                "url": {
+                    "raw": "/api/vendor-account/transactions",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "vendor-account",
+                        "transactions"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "Get Vendor Account Summary",
+            "request": {
+                "method": "GET",
+                "url": {
+                    "raw": "/api/vendor-account/vendors/:vendorId/summary",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "vendor-account",
+                        "vendors",
+                        ":vendorId",
+                        "summary"
+                    ]
+                }
+            }
+        },
+        {
+            "name": "Add PO Item Amount",
+            "request": {
+                "method": "PATCH",
+                "header": [
+                    {
+                        "key": "Content-Type",
+                        "value": "application/json"
+                    }
+                ],
+                "body": {
+                    "mode": "raw",
+                    "raw": "{\n  \"amount\": 5000\n}"
+                },
+                "url": {
+                    "raw": "/api/purchase-orders/items/:itemId/add-amount",
+                    "host": [
+                        "{{baseUrl}}"
+                    ],
+                    "path": [
+                        "api",
+                        "purchase-orders",
+                        "items",
+                        ":itemId",
+                        "add-amount"
+                    ]
+                }
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "localhost:3000"
+        }
+    ]
+}

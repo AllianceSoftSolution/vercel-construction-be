@@ -1,0 +1,513 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "cockroachdb"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  SITE_INCHARGE
+  PROJECT_MANAGER
+  CONSTRUCTION_MANAGER
+  STORE_INCHARGE
+  ACCOUNTANT
+}
+
+enum DemandStatus {
+  REQUEST_SENT
+  PARTIALLY_APPROVED
+  APPROVED
+  REJECTED
+  FULFILLED_FROM_STORE
+  PO_IN_PROGRESS
+  PO_CREATED
+  ORDER_PLACED
+  IN_STORE
+  COMPLETED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum StoreType {
+  HEAD_STORE
+  CM_STORE
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIALLY_PAID
+  FULLY_PAID
+}
+
+enum VendorAccountTransactionType {
+  CREDIT
+  DEBIT
+}
+
+// Core Models
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  password    String
+  name        String
+  employeeId  String   @unique
+  role        UserRole
+  isHead      Boolean  @default(false) // For Head Store Incharge, Head Accountant
+  isActive    Boolean  @default(true)
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String?
+  updatedBy   String?
+
+  // User who created this user
+  creator     User? @relation("UserCreator", fields: [createdBy], references: [id])
+  createdUsers User[] @relation("UserCreator")
+
+  // Assignments
+  siteInchargeAssignments    SiteInchargeAssignment[]
+  projectManagerAssignments ProjectManagerAssignment[]
+  constructionManagerAssignments ConstructionManagerAssignment[]
+  storeInchargeAssignments   StoreInchargeAssignment[]
+  accountantAssignments      AccountantAssignment[]
+
+  // Activity tracking
+  demandsCreated             Demand[] @relation("DemandCreator")
+  demandsUpdated             Demand[] @relation("DemandUpdater")
+  approvals                  DemandApproval[]
+  purchaseOrdersCreated      PurchaseOrder[] @relation("POCreator")
+  storeTransactions          StoreTransaction[]
+  auditLogs                  AuditLog[]
+  cmStore                    Store[] @relation("UserCMStore")
+
+  @@map("users")
+}
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   @unique // For reference number generation
+  description String?
+  startDate   DateTime?
+  endDate     DateTime?
+  isActive    Boolean  @default(true)
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  updatedBy   String?
+
+  sections    Section[]
+  siteInchargeAssignments    SiteInchargeAssignment[]
+  projectManagerAssignments ProjectManagerAssignment[]
+  accountantAssignments      AccountantAssignment[]
+  purchaseOrders            PurchaseOrder[]
+
+  @@map("projects")
+}
+
+model Section {
+  id          String   @id @default(cuid())
+  name        String
+  code        String   // For reference number generation
+  description String?
+  projectId   String
+  isActive    Boolean  @default(true)
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  updatedBy   String?
+
+  project     Project @relation(fields: [projectId], references: [id])
+  
+  // All stores in this section (both head and CM stores)
+  stores      Store[] @relation("SectionStores")
+  
+  siteInchargeAssignments    SiteInchargeAssignment[]
+  projectManagerAssignments ProjectManagerAssignment[]
+  constructionManagerAssignments ConstructionManagerAssignment[]
+  accountantAssignments      AccountantAssignment[]
+  demands                    Demand[]
+  purchaseOrders            PurchaseOrder[]
+
+  @@unique([projectId, code])
+  @@map("sections")
+}
+
+// Assignment Models
+model SiteInchargeAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  sectionId String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  createdBy String
+  
+  user      User     @relation(fields: [userId], references: [id])
+  project   Project  @relation(fields: [projectId], references: [id])
+  section   Section  @relation(fields: [sectionId], references: [id])
+  
+  @@unique([userId, sectionId])
+  @@map("site_incharge_assignments")
+}
+
+model ProjectManagerAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  sectionId String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  createdBy String
+  
+  user      User     @relation(fields: [userId], references: [id])
+  project   Project  @relation(fields: [projectId], references: [id])
+  section   Section  @relation(fields: [sectionId], references: [id])
+  
+  @@unique([userId, sectionId])
+  @@map("project_manager_assignments")
+}
+
+model ConstructionManagerAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  sectionId String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  createdBy String
+  
+  user      User     @relation(fields: [userId], references: [id])
+  section   Section  @relation(fields: [sectionId], references: [id])
+  
+  @@unique([userId, sectionId])
+  @@map("construction_manager_assignments")
+}
+
+model StoreInchargeAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  storeId   String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  createdBy String
+  
+  user      User     @relation(fields: [userId], references: [id])
+  store     Store    @relation(fields: [storeId], references: [id])
+  
+  @@unique([userId, storeId])
+  @@map("store_incharge_assignments")
+}
+
+model AccountantAssignment {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  sectionId String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  createdBy String
+  
+  user      User     @relation(fields: [userId], references: [id])
+  project   Project  @relation(fields: [projectId], references: [id])
+  section   Section  @relation(fields: [sectionId], references: [id])
+  
+  @@unique([userId, projectId, sectionId])
+  @@map("accountant_assignments")
+}
+
+// Store Management
+model Store {
+  id          String    @id @default(cuid())
+  name        String
+  type        StoreType
+  sectionId   String
+  cmUserId    String?   // Only for CM stores
+  isActive    Boolean   @default(true)
+  isDeleted   Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  createdBy   String
+  updatedBy   String?
+
+  section     Section @relation("SectionStores", fields: [sectionId], references: [id], map: "stores_section_fkey")
+  cmUser      User?   @relation("UserCMStore", fields: [cmUserId], references: [id], map: "stores_cm_user_fkey")
+
+  storeInchargeAssignments StoreInchargeAssignment[]
+  inventory                StoreInventory[]
+  transactions             StoreTransaction[]
+  fulfillmentsFrom         DemandFulfillment[] @relation("FulfillmentFromStore")
+  fulfillmentsTo           DemandFulfillment[] @relation("FulfillmentToStore")
+
+  @@map("stores")
+}
+
+model Material {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  unit        String   // Default unit
+  category    String?
+  isActive    Boolean  @default(true)
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  updatedBy   String?
+
+  demands           Demand[]
+  storeInventory    StoreInventory[]
+  purchaseOrderItems PurchaseOrderItem[]
+
+  @@map("materials")
+}
+
+model Vendor {
+  id          String   @id @default(cuid())
+  name        String
+  contactPerson String?
+  phone       String?
+  email       String?
+  address     String?
+  isActive    Boolean  @default(true)
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  updatedBy   String?
+
+  purchaseOrderItems PurchaseOrderItem[]
+  vendorAccounts     VendorAccount[]
+  vendorPayments     VendorPayment[]
+
+  @@map("vendors")
+}
+
+// Demand Management
+model Demand {
+  id              String        @id @default(cuid())
+  referenceNumber String        @unique
+  materialId      String
+  quantity        Decimal
+  unit            String
+  poQuantity      Decimal?
+  notes           String?
+  status          DemandStatus  @default(REQUEST_SENT)
+  quantityFulfilled Decimal     @default(0)
+  quantityRemaining Decimal?
+  sectionId       String
+  isDeleted       Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  createdBy       String        // CM who created
+  updatedBy       String?
+
+  section         Section       @relation(fields: [sectionId], references: [id])
+  material        Material      @relation(fields: [materialId], references: [id])
+  creator         User          @relation("DemandCreator", fields: [createdBy], references: [id])
+  updater         User?         @relation("DemandUpdater", fields: [updatedBy], references: [id])
+
+  approvals       DemandApproval[]
+  fulfillments    DemandFulfillment[]
+  purchaseOrders  PurchaseOrder[]
+
+  @@map("demands")
+}
+
+model DemandApproval {
+  id        String         @id @default(cuid())
+  demandId  String
+  userId    String         // Who approved/rejected
+  status    ApprovalStatus
+  remarks   String?
+  createdAt DateTime       @default(now())
+
+  demand    Demand @relation(fields: [demandId], references: [id])
+  user      User   @relation(fields: [userId], references: [id])
+
+  @@unique([demandId, userId])
+  @@map("demand_approvals")
+}
+
+model DemandFulfillment {
+  id              String   @id @default(cuid())
+  demandId        String
+  fromStoreId     String   // Head store fulfilling to CM store
+  toStoreId       String   // CM store receiving
+  quantity        Decimal
+  fulfilledAt     DateTime @default(now())
+  fulfilledBy     String   // PM or Site Incharge who fulfilled
+
+  demand          Demand @relation(fields: [demandId], references: [id])
+  fromStore       Store  @relation("FulfillmentFromStore", fields: [fromStoreId], references: [id])
+  toStore         Store  @relation("FulfillmentToStore", fields: [toStoreId], references: [id])
+
+  @@map("demand_fulfillments")
+}
+
+// Purchase Order Management
+model PurchaseOrder {
+  id              String   @id @default(cuid())
+  demandId        String
+  projectId       String   // Added for project tracking
+  sectionId       String   // Added for section tracking
+  referenceNumber String
+  totalQuantity   Decimal
+  status          String   @default("DRAFT")
+  isDeleted       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  createdBy       String   // Site Incharge who created PO
+  updatedBy       String?
+
+  demand          Demand @relation(fields: [demandId], references: [id])
+  project         Project @relation(fields: [projectId], references: [id])
+  section         Section @relation(fields: [sectionId], references: [id])
+  creator         User   @relation("POCreator", fields: [createdBy], references: [id])
+
+  items           PurchaseOrderItem[]
+
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id              String   @id @default(cuid())
+  purchaseOrderId String
+  materialId      String
+  vendorId        String
+  quantity        Decimal
+  status          String   @default("ORDER_PLACED")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  unitPrice       Decimal?
+  totalPrice      Decimal?
+  isPaymentAdded  Boolean  @default(false)
+  amountAddedBy   String?
+  amountAddedAt   DateTime?
+
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  material        Material      @relation(fields: [materialId], references: [id])
+  vendor          Vendor        @relation(fields: [vendorId], references: [id])
+
+  @@map("purchase_order_items")
+}
+
+// Store Inventory & Transactions
+model StoreInventory {
+  id         String   @id @default(cuid())
+  storeId    String
+  materialId String
+  stock      Decimal  @default(0)
+  reserved   Decimal  @default(0) // Reserved for pending demands
+  available  Decimal  @default(0) // stock - reserved
+  updatedAt  DateTime @updatedAt
+
+  store      Store    @relation(fields: [storeId], references: [id])
+  material   Material @relation(fields: [materialId], references: [id])
+
+  @@unique([storeId, materialId])
+  @@map("store_inventory")
+}
+
+model StoreTransaction {
+  id            String   @id @default(cuid())
+  storeId       String
+  materialId    String
+  type          String   // IN, OUT, TRANSFER
+  quantity      Decimal
+  reference     String?  // Reference to PO, Demand, etc.
+  notes         String?
+  transactionDate DateTime @default(now())
+  createdBy     String
+
+  store         Store @relation(fields: [storeId], references: [id])
+  user          User  @relation(fields: [createdBy], references: [id])
+
+  @@map("store_transactions")
+}
+
+// Finance Management - Vendor Level
+model VendorAccount {
+  id              String   @id @default(cuid())
+  vendorId        String   @unique
+  totalCredited   Decimal  @default(0)
+  totalDebited    Decimal  @default(0)
+  balance         Decimal  @default(0)
+  lastUpdated     DateTime @updatedAt
+  createdAt       DateTime @default(now())
+
+  vendor          Vendor   @relation(fields: [vendorId], references: [id])
+  transactions    VendorAccountTransaction[]
+}
+
+model VendorAccountTransaction {
+  id              String   @id @default(cuid())
+  vendorAccountId String
+  type            VendorAccountTransactionType
+  amount          Decimal
+  purchaseOrderItemId String?
+  vendorPaymentId String?
+  addedBy         String
+  createdAt       DateTime @default(now())
+  proofOfPayment  String?
+  note            String?
+
+  vendorAccount   VendorAccount @relation(fields: [vendorAccountId], references: [id])
+}
+
+model VendorPayment {
+  id             String   @id @default(cuid())
+  vendorId       String
+  amount         Decimal
+  addedBy        String
+  createdAt      DateTime @default(now())
+  proofOfPayment String?
+  note           String?
+
+  vendor         Vendor   @relation(fields: [vendorId], references: [id])
+}
+
+// Audit Trail
+model AuditLog {
+  id          String   @id @default(cuid())
+  tableName   String
+  recordId    String
+  action      String   // CREATE, UPDATE, DELETE
+  oldValues   Json?
+  newValues   Json?
+  changedBy   String
+  changedAt   DateTime @default(now())
+  ipAddress   String?
+  userAgent   String?
+
+  user        User @relation(fields: [changedBy], references: [id])
+
+  @@index([tableName, recordId])
+  @@index([changedBy])
+  @@index([changedAt])
+  @@map("audit_logs")
+}
+
+// Reference Number Counter
+model ReferenceCounter {
+  id        String @id @default(cuid())
+  prefix    String @unique // DCRA
+  projectCode String
+  sectionCode String
+  counter   Int    @default(0)
+  
+  @@unique([projectCode, sectionCode])
+  @@map("reference_counters")
+}

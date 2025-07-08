@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "outDir": "dist",
+    "rootDir": ".",
+    "strict": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "sourceMap": true,
+    "noImplicitAny": false,
+    "strictNullChecks": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noEmit": false, // Ensures files are emitted
+    "noEmitOnError": true, // Prevents emitting if there are errors
+    "declaration": true, // Generate `.d.ts` files for type definitions
+    "removeComments": true // Remove comments from generated files
+  },
+  "include": [
+    "src",
+    "prisma/seedQuestions.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
