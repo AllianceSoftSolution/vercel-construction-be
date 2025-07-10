@@ -169,7 +169,13 @@ const getDemands = catchAsync(async (req, res) => {
   const demands = await prisma.demand.findMany({
     ...queryOptions,
     include: {
-      section: true,
+      section: {
+        include: {
+          project: {
+            select: { name: true }
+          }
+        }
+      },
       material: true,
       creator: true,
       updater: true,
@@ -177,6 +183,15 @@ const getDemands = catchAsync(async (req, res) => {
       fulfillments: true,
       purchaseOrders: true
     }
+  });
+
+  // Add projectName to each demand's section and remove the full project object
+  const demandsWithProjectName = demands.map(demand => {
+    if (demand.section && typeof demand.section === 'object' && 'project' in demand.section && demand.section.project && typeof demand.section.project === 'object' && 'name' in demand.section.project) {
+      (demand.section as any).projectName = demand.section.project.name;
+      delete (demand.section as any).project;
+    }
+    return demand;
   });
 
   // Build pagination metadata
@@ -188,7 +203,7 @@ const getDemands = catchAsync(async (req, res) => {
 
   res.json({
     message: "Demands retrieved successfully",
-    demands,
+    demands: demandsWithProjectName,
     ...paginationMeta
   });
 });
@@ -198,11 +213,21 @@ const getDemandById = catchAsync(async (req, res, next) => {
   const demand = await prisma.demand.findUnique({
     where: { id },
     include: {
-      section: true,
+      section: {
+        include: {
+          project: {
+            select: { name: true }
+          }
+        }
+      },
       material: true,
       creator: true,
       updater: true,
-      approvals: true,
+      approvals: {
+        include: {
+          user: { select: { name: true } }
+        }
+      },
       fulfillments: true,
       purchaseOrders: true
     }
@@ -210,9 +235,81 @@ const getDemandById = catchAsync(async (req, res, next) => {
   if (!demand) {
     return next(new AppError("Demand not found", 404));
   }
+  // Add projectName to section and remove the full project object
+  if (demand.section && typeof demand.section === 'object' && 'project' in demand.section && demand.section.project && typeof demand.section.project === 'object' && 'name' in demand.section.project) {
+    (demand.section as any).projectName = demand.section.project.name;
+    delete (demand.section as any).project;
+  }
+
+  // --- New logic: Fetch CM and Head store stock for the material ---
+  let cmStoreQty: number | null = null;
+  let headStoreQty: number | null = null;
+  let cmStoreId: string | null = null;
+  let headStoreId: string | null = null;
+  try {
+    const [cmStore, headStore] = await Promise.all([
+      prisma.store.findFirst({
+        where: {
+          sectionId: demand.sectionId,
+          type: 'CM_STORE',
+          isActive: true,
+          isDeleted: false,
+        },
+      }),
+      prisma.store.findFirst({
+        where: {
+          sectionId: demand.sectionId,
+          type: 'HEAD_STORE',
+          isActive: true,
+          isDeleted: false,
+        },
+      })
+    ]);
+
+    if (cmStore) {
+      cmStoreId = cmStore.id;
+      const cmInv = await prisma.storeInventory.findUnique({
+        where: {
+          storeId_materialId: {
+            storeId: cmStore.id,
+            materialId: demand.materialId,
+          }
+        }
+      });
+      cmStoreQty = cmInv ? Number(cmInv.available) : 0;
+    }
+    if (headStore) {
+      headStoreId = headStore.id;
+      const headInv = await prisma.storeInventory.findUnique({
+        where: {
+          storeId_materialId: {
+            storeId: headStore.id,
+            materialId: demand.materialId,
+          }
+        }
+      });
+      headStoreQty = headInv ? Number(headInv.available) : 0;
+    }
+  } catch (e) {
+    // If error, leave as null
+  }
+  // --- End new logic ---
+
   res.json({
     message: "Demand retrieved successfully",
-    demand,
+    demand: {
+      ...demand,
+      cmStoreQty,
+      headStoreQty,
+      cmStoreId,
+      headStoreId,
+      approvals: Array.isArray(demand.approvals)
+        ? demand.approvals.map(a => ({
+            ...a,
+            userName: a.user && a.user.name ? a.user.name : null
+          }))
+        : demand.approvals
+    },
   });
 });
 

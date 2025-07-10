@@ -269,7 +269,7 @@ model Material {
 
   demands           Demand[]
   storeInventory    StoreInventory[]
-  purchaseOrderItems PurchaseOrderItem[]
+  purchaseOrders    PurchaseOrder[]
 
   @@map("materials")
 }
@@ -288,7 +288,7 @@ model Vendor {
   createdBy   String
   updatedBy   String?
 
-  purchaseOrderItems PurchaseOrderItem[]
+  purchaseOrders PurchaseOrder[]
   vendorAccounts     VendorAccount[]
   vendorPayments     VendorPayment[]
 
@@ -364,7 +364,9 @@ model PurchaseOrder {
   projectId       String   // Added for project tracking
   sectionId       String   // Added for section tracking
   referenceNumber String
-  totalQuantity   Decimal
+  materialId      String   // NEW: direct reference
+  vendorId        String   // NEW: direct reference
+  quantity        Decimal  // Renamed from totalQuantity
   status          String   @default("DRAFT")
   isDeleted       Boolean  @default(false)
   createdAt       DateTime @default(now())
@@ -372,37 +374,17 @@ model PurchaseOrder {
   createdBy       String   // Site Incharge who created PO
   updatedBy       String?
 
-  demand          Demand @relation(fields: [demandId], references: [id])
-  project         Project @relation(fields: [projectId], references: [id])
-  section         Section @relation(fields: [sectionId], references: [id])
-  creator         User   @relation("POCreator", fields: [createdBy], references: [id])
-
-  items           PurchaseOrderItem[]
+  demand          Demand   @relation(fields: [demandId], references: [id])
+  project         Project  @relation(fields: [projectId], references: [id])
+  section         Section  @relation(fields: [sectionId], references: [id])
+  material        Material @relation(fields: [materialId], references: [id])
+  vendor          Vendor   @relation(fields: [vendorId], references: [id])
+  creator         User     @relation("POCreator", fields: [createdBy], references: [id])
 
   @@map("purchase_orders")
 }
 
-model PurchaseOrderItem {
-  id              String   @id @default(cuid())
-  purchaseOrderId String
-  materialId      String
-  vendorId        String
-  quantity        Decimal
-  status          String   @default("ORDER_PLACED")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-  unitPrice       Decimal?
-  totalPrice      Decimal?
-  isPaymentAdded  Boolean  @default(false)
-  amountAddedBy   String?
-  amountAddedAt   DateTime?
-
-  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
-  material        Material      @relation(fields: [materialId], references: [id])
-  vendor          Vendor        @relation(fields: [vendorId], references: [id])
-
-  @@map("purchase_order_items")
-}
+// REMOVE PurchaseOrderItem model
 
 // Store Inventory & Transactions
 model StoreInventory {
@@ -457,7 +439,7 @@ model VendorAccountTransaction {
   vendorAccountId String
   type            VendorAccountTransactionType
   amount          Decimal
-  purchaseOrderItemId String?
+  purchaseOrderId String?
   vendorPaymentId String?
   addedBy         String
   createdAt       DateTime @default(now())

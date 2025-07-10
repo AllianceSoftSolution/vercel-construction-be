@@ -1,22 +1,23 @@
 import { PrismaClient, UserRole } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
-import { generateEmployeeId } from '../utils/generateCode';
-const crypto = require('crypto');
+import { generateEmployeeId } from "../utils/generateCode";
+const crypto = require("crypto");
 
 const prisma = new PrismaClient();
 
 // Site Incharge Assignments
 const createSiteInchargeAssignment = catchAsync(async (req, res, next) => {
-  const {
-    userId,
-    projectId,
-    sectionIds,
-  } = req.body;
+  const { userId, projectId, sectionIds } = req.body;
   const currentUserId = req.user.id;
 
   if (!userId || !projectId || !Array.isArray(sectionIds)) {
-    return next(new AppError("userId, projectId, and sectionIds (array) are required", 400));
+    return next(
+      new AppError(
+        "userId, projectId, and sectionIds (array) are required",
+        400
+      )
+    );
   }
 
   // Check if user exists and has SITE_INCHARGE role
@@ -28,7 +29,7 @@ const createSiteInchargeAssignment = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  if (user.role !== 'SITE_INCHARGE') {
+  if (user.role !== "SITE_INCHARGE") {
     return next(new AppError("User must have SITE_INCHARGE role", 400));
   }
 
@@ -44,28 +45,34 @@ const createSiteInchargeAssignment = catchAsync(async (req, res, next) => {
   // Get all valid sections in the project
   const validSections = await prisma.section.findMany({
     where: { projectId, id: { in: sectionIds }, isDeleted: false },
-    select: { id: true }
+    select: { id: true },
   });
-  const validSectionIds = validSections.map(s => s.id);
+  const validSectionIds = validSections.map((s) => s.id);
   if (validSectionIds.length !== sectionIds.length) {
-    return next(new AppError("One or more sectionIds are invalid for this project", 400));
+    return next(
+      new AppError("One or more sectionIds are invalid for this project", 400)
+    );
   }
 
   // Get all current assignments for this user in this project
   const currentAssignments = await prisma.siteInchargeAssignment.findMany({
     where: { userId, projectId, isActive: true },
-    select: { id: true, sectionId: true }
+    select: { id: true, sectionId: true },
   });
-  const currentSectionIds = currentAssignments.map(a => a.sectionId);
+  const currentSectionIds = currentAssignments.map((a) => a.sectionId);
 
   // Sections to assign (new ones not already assigned)
-  const toAssign = validSectionIds.filter(id => !currentSectionIds.includes(id));
+  const toAssign = validSectionIds.filter(
+    (id) => !currentSectionIds.includes(id)
+  );
   // Sections to unassign (previously assigned but not in new list)
-  const toUnassign = currentAssignments.filter(a => !validSectionIds.includes(a.sectionId));
+  const toUnassign = currentAssignments.filter(
+    (a) => !validSectionIds.includes(a.sectionId)
+  );
 
   // Assign new sections
   const createdAssignments = await Promise.all(
-    toAssign.map(sectionId =>
+    toAssign.map((sectionId) =>
       prisma.siteInchargeAssignment.create({
         data: {
           userId,
@@ -76,18 +83,18 @@ const createSiteInchargeAssignment = catchAsync(async (req, res, next) => {
         include: {
           user: { select: { id: true, name: true, email: true, role: true } },
           project: { select: { id: true, name: true, code: true } },
-          section: { select: { id: true, name: true, code: true } }
-        }
+          section: { select: { id: true, name: true, code: true } },
+        },
       })
     )
   );
 
   // Unassign removed sections (set isActive to false)
   await Promise.all(
-    toUnassign.map(a =>
+    toUnassign.map((a) =>
       prisma.siteInchargeAssignment.update({
         where: { id: a.id },
-        data: { isActive: false }
+        data: { isActive: false },
       })
     )
   );
@@ -96,7 +103,7 @@ const createSiteInchargeAssignment = catchAsync(async (req, res, next) => {
     message: "Site Incharge assignments updated successfully",
     assignedSectionIds: validSectionIds,
     createdAssignments,
-    unassignedSectionIds: toUnassign.map(a => a.sectionId)
+    unassignedSectionIds: toUnassign.map((a) => a.sectionId),
   });
 });
 
@@ -114,7 +121,7 @@ const getSiteInchargeAssignments = catchAsync(async (req, res) => {
     where.sectionId = sectionId as string;
   }
   if (isActive !== undefined) {
-    where.isActive = isActive === 'true';
+    where.isActive = isActive === "true";
   }
 
   const assignments = await prisma.siteInchargeAssignment.findMany({
@@ -126,24 +133,24 @@ const getSiteInchargeAssignments = catchAsync(async (req, res) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       project: {
         select: {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       section: {
         select: {
           id: true,
           name: true,
           code: true,
-        }
-      }
+        },
+      },
     },
-    orderBy: { createdAt: 'desc' }
+    orderBy: { createdAt: "desc" },
   });
 
   res.json({
@@ -154,15 +161,13 @@ const getSiteInchargeAssignments = catchAsync(async (req, res) => {
 
 // Project Manager Assignments
 const createProjectManagerAssignment = catchAsync(async (req, res, next) => {
-  const {
-    userId,
-    projectId,
-    sectionId,
-  } = req.body;
+  const { userId, projectId, sectionId } = req.body;
   const currentUserId = req.user.id;
 
   if (!userId || !projectId || !sectionId) {
-    return next(new AppError("UserId, projectId, and sectionId are required", 400));
+    return next(
+      new AppError("UserId, projectId, and sectionId are required", 400)
+    );
   }
 
   // Check if user exists and has PROJECT_MANAGER role
@@ -174,7 +179,7 @@ const createProjectManagerAssignment = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  if (user.role !== 'PROJECT_MANAGER') {
+  if (user.role !== "PROJECT_MANAGER") {
     return next(new AppError("User must have PROJECT_MANAGER role", 400));
   }
 
@@ -189,14 +194,16 @@ const createProjectManagerAssignment = catchAsync(async (req, res, next) => {
 
   // Check if section exists and belongs to the project
   const section = await prisma.section.findFirst({
-    where: { 
+    where: {
       id: sectionId,
       projectId,
     },
   });
 
   if (!section) {
-    return next(new AppError("Section not found or does not belong to the project", 404));
+    return next(
+      new AppError("Section not found or does not belong to the project", 404)
+    );
   }
 
   // Check if assignment already exists
@@ -226,23 +233,23 @@ const createProjectManagerAssignment = catchAsync(async (req, res, next) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       project: {
         select: {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       section: {
         select: {
           id: true,
           name: true,
           code: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   res.status(201).json({
@@ -265,7 +272,7 @@ const getProjectManagerAssignments = catchAsync(async (req, res) => {
     where.sectionId = sectionId as string;
   }
   if (isActive !== undefined) {
-    where.isActive = isActive === 'true';
+    where.isActive = isActive === "true";
   }
 
   const assignments = await prisma.projectManagerAssignment.findMany({
@@ -277,24 +284,24 @@ const getProjectManagerAssignments = catchAsync(async (req, res) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       project: {
         select: {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       section: {
         select: {
           id: true,
           name: true,
           code: true,
-        }
-      }
+        },
+      },
     },
-    orderBy: { createdAt: 'desc' }
+    orderBy: { createdAt: "desc" },
   });
 
   res.json({
@@ -304,89 +311,93 @@ const getProjectManagerAssignments = catchAsync(async (req, res) => {
 });
 
 // Construction Manager Assignments
-const createConstructionManagerAssignment = catchAsync(async (req, res, next) => {
-  const {
-    userId,
-    sectionId,
-  } = req.body;
-  const currentUserId = req.user.id;
+const createConstructionManagerAssignment = catchAsync(
+  async (req, res, next) => {
+    const { userId, sectionId } = req.body;
+    const currentUserId = req.user.id;
 
-  if (!userId || !sectionId) {
-    return next(new AppError("UserId and sectionId are required", 400));
-  }
-
-  // Check if user exists and has CONSTRUCTION_MANAGER role
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-  });
-
-  if (!user) {
-    return next(new AppError("User not found", 404));
-  }
-
-  if (user.role !== 'CONSTRUCTION_MANAGER') {
-    return next(new AppError("User must have CONSTRUCTION_MANAGER role", 400));
-  }
-
-  // Check if section exists
-  const section = await prisma.section.findUnique({
-    where: { id: sectionId },
-  });
-
-  if (!section) {
-    return next(new AppError("Section not found", 404));
-  }
-
-  // Check if assignment already exists
-  const existingAssignment = await prisma.constructionManagerAssignment.findFirst({
-    where: {
-      userId,
-      sectionId,
-      isActive: true,
-    },
-  });
-
-  if (existingAssignment) {
-    return next(new AppError("User is already assigned to this section", 400));
-  }
-
-  const assignment = await prisma.constructionManagerAssignment.create({
-    data: {
-      userId,
-      sectionId,
-      createdBy: currentUserId,
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        }
-      },
-      section: {
-        select: {
-          id: true,
-          name: true,
-          code: true,
-          project: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
-            }
-          }
-        }
-      }
+    if (!userId || !sectionId) {
+      return next(new AppError("UserId and sectionId are required", 400));
     }
-  });
 
-  res.status(201).json({
-    message: "Construction Manager assignment created successfully",
-    assignment,
-  });
-});
+    // Check if user exists and has CONSTRUCTION_MANAGER role
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+    });
+
+    if (!user) {
+      return next(new AppError("User not found", 404));
+    }
+
+    if (user.role !== "CONSTRUCTION_MANAGER") {
+      return next(
+        new AppError("User must have CONSTRUCTION_MANAGER role", 400)
+      );
+    }
+
+    // Check if section exists
+    const section = await prisma.section.findUnique({
+      where: { id: sectionId },
+    });
+
+    if (!section) {
+      return next(new AppError("Section not found", 404));
+    }
+
+    // Check if assignment already exists
+    const existingAssignment =
+      await prisma.constructionManagerAssignment.findFirst({
+        where: {
+          userId,
+          sectionId,
+          isActive: true,
+        },
+      });
+
+    if (existingAssignment) {
+      return next(
+        new AppError("User is already assigned to this section", 400)
+      );
+    }
+
+    const assignment = await prisma.constructionManagerAssignment.create({
+      data: {
+        userId,
+        sectionId,
+        createdBy: currentUserId,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+          },
+        },
+        section: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            project: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(201).json({
+      message: "Construction Manager assignment created successfully",
+      assignment,
+    });
+  }
+);
 
 const getConstructionManagerAssignments = catchAsync(async (req, res) => {
   const { userId, sectionId, isActive } = req.query;
@@ -399,7 +410,7 @@ const getConstructionManagerAssignments = catchAsync(async (req, res) => {
     where.sectionId = sectionId as string;
   }
   if (isActive !== undefined) {
-    where.isActive = isActive === 'true';
+    where.isActive = isActive === "true";
   }
 
   const assignments = await prisma.constructionManagerAssignment.findMany({
@@ -411,7 +422,7 @@ const getConstructionManagerAssignments = catchAsync(async (req, res) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       section: {
         select: {
@@ -423,12 +434,12 @@ const getConstructionManagerAssignments = catchAsync(async (req, res) => {
               id: true,
               name: true,
               code: true,
-            }
-          }
-        }
-      }
+            },
+          },
+        },
+      },
     },
-    orderBy: { createdAt: 'desc' }
+    orderBy: { createdAt: "desc" },
   });
 
   res.json({
@@ -439,10 +450,7 @@ const getConstructionManagerAssignments = catchAsync(async (req, res) => {
 
 // Store Incharge Assignments
 const createStoreInchargeAssignment = catchAsync(async (req, res, next) => {
-  const {
-    userId,
-    storeId,
-  } = req.body;
+  const { userId, storeId } = req.body;
   const currentUserId = req.user.id;
 
   if (!userId || !storeId) {
@@ -458,7 +466,7 @@ const createStoreInchargeAssignment = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  if (user.role !== 'STORE_INCHARGE') {
+  if (user.role !== "STORE_INCHARGE") {
     return next(new AppError("User must have STORE_INCHARGE role", 400));
   }
 
@@ -497,7 +505,7 @@ const createStoreInchargeAssignment = catchAsync(async (req, res, next) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       store: {
         select: {
@@ -514,13 +522,13 @@ const createStoreInchargeAssignment = catchAsync(async (req, res, next) => {
                   id: true,
                   name: true,
                   code: true,
-                }
-              }
-            }
-          }
-        }
-      }
-    }
+                },
+              },
+            },
+          },
+        },
+      },
+    },
   });
 
   res.status(201).json({
@@ -540,7 +548,7 @@ const getStoreInchargeAssignments = catchAsync(async (req, res) => {
     where.storeId = storeId as string;
   }
   if (isActive !== undefined) {
-    where.isActive = isActive === 'true';
+    where.isActive = isActive === "true";
   }
 
   const assignments = await prisma.storeInchargeAssignment.findMany({
@@ -552,7 +560,7 @@ const getStoreInchargeAssignments = catchAsync(async (req, res) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       store: {
         select: {
@@ -569,14 +577,14 @@ const getStoreInchargeAssignments = catchAsync(async (req, res) => {
                   id: true,
                   name: true,
                   code: true,
-                }
-              }
-            }
-          }
-        }
-      }
+                },
+              },
+            },
+          },
+        },
+      },
     },
-    orderBy: { createdAt: 'desc' }
+    orderBy: { createdAt: "desc" },
   });
 
   res.json({
@@ -587,15 +595,16 @@ const getStoreInchargeAssignments = catchAsync(async (req, res) => {
 
 // Accountant Assignments
 const createAccountantAssignment = catchAsync(async (req, res, next) => {
-  const {
-    userId,
-    projectId,
-    sectionId,
-  } = req.body;
+  const { userId, projectId, sectionIds } = req.body;
   const currentUserId = req.user.id;
 
-  if (!userId || !projectId || !sectionId) {
-    return next(new AppError("UserId, projectId, and sectionId are required", 400));
+  if (!userId || !projectId || !Array.isArray(sectionIds)) {
+    return next(
+      new AppError(
+        "userId, projectId, and sectionIds (array) are required",
+        400
+      )
+    );
   }
 
   // Check if user exists and has ACCOUNTANT role
@@ -607,7 +616,7 @@ const createAccountantAssignment = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  if (user.role !== 'ACCOUNTANT') {
+  if (user.role !== "ACCOUNTANT") {
     return next(new AppError("User must have ACCOUNTANT role", 400));
   }
 
@@ -620,68 +629,68 @@ const createAccountantAssignment = catchAsync(async (req, res, next) => {
     return next(new AppError("Project not found", 404));
   }
 
-  // Check if section exists and belongs to the project
-  const section = await prisma.section.findFirst({
-    where: { 
-      id: sectionId,
-      projectId,
-    },
+  // Get all valid sections in the project
+  const validSections = await prisma.section.findMany({
+    where: { projectId, id: { in: sectionIds }, isDeleted: false },
+    select: { id: true },
   });
-
-  if (!section) {
-    return next(new AppError("Section not found or does not belong to the project", 404));
+  const validSectionIds = validSections.map((s) => s.id);
+  if (validSectionIds.length !== sectionIds.length) {
+    return next(
+      new AppError("One or more sectionIds are invalid for this project", 400)
+    );
   }
 
-  // Check if assignment already exists
-  const existingAssignment = await prisma.accountantAssignment.findFirst({
-    where: {
-      userId,
-      projectId,
-      sectionId,
-      isActive: true,
-    },
+  // Get all current assignments for this user in this project
+  const currentAssignments = await prisma.accountantAssignment.findMany({
+    where: { userId, projectId, isActive: true },
+    select: { id: true, sectionId: true },
   });
+  const currentSectionIds = currentAssignments.map((a) => a.sectionId);
 
-  if (existingAssignment) {
-    return next(new AppError("User is already assigned to this project-section combination", 400));
-  }
+  // Sections to assign (new ones not already assigned)
+  const toAssign = validSectionIds.filter(
+    (id) => !currentSectionIds.includes(id)
+  );
+  // Sections to unassign (previously assigned but not in new list)
+  const toUnassign = currentAssignments.filter(
+    (a) => !validSectionIds.includes(a.sectionId)
+  );
 
-  const assignment = await prisma.accountantAssignment.create({
-    data: {
-      userId,
-      projectId,
-      sectionId,
-      createdBy: currentUserId,
-    },
-    include: {
-      user: {
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-        }
-      },
-      project: {
-        select: {
-          id: true,
-          name: true,
-          code: true,
-        }
-      },
-      section: {
-        select: {
-          id: true,
-          name: true,
-          code: true,
-        }
-      }
-    }
-  });
+  // Assign new sections
+  const createdAssignments = await Promise.all(
+    toAssign.map((sectionId) =>
+      prisma.accountantAssignment.create({
+        data: {
+          userId,
+          projectId,
+          sectionId,
+          createdBy: currentUserId,
+        },
+        include: {
+          user: { select: { id: true, name: true, email: true, role: true } },
+          project: { select: { id: true, name: true, code: true } },
+          section: { select: { id: true, name: true, code: true } },
+        },
+      })
+    )
+  );
+
+  // Unassign removed sections (set isActive to false)
+  await Promise.all(
+    toUnassign.map((a) =>
+      prisma.accountantAssignment.update({
+        where: { id: a.id },
+        data: { isActive: false },
+      })
+    )
+  );
 
   res.status(201).json({
-    message: "Accountant assignment created successfully",
-    assignment,
+    message: "Accountant assignments updated successfully",
+    assignedSectionIds: validSectionIds,
+    createdAssignments,
+    unassignedSectionIds: toUnassign.map((a) => a.sectionId),
   });
 });
 
@@ -699,7 +708,7 @@ const getAccountantAssignments = catchAsync(async (req, res) => {
     where.sectionId = sectionId as string;
   }
   if (isActive !== undefined) {
-    where.isActive = isActive === 'true';
+    where.isActive = isActive === "true";
   }
 
   const assignments = await prisma.accountantAssignment.findMany({
@@ -711,24 +720,24 @@ const getAccountantAssignments = catchAsync(async (req, res) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       project: {
         select: {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       section: {
         select: {
           id: true,
           name: true,
           code: true,
-        }
-      }
+        },
+      },
     },
-    orderBy: { createdAt: 'desc' }
+    orderBy: { createdAt: "desc" },
   });
 
   res.json({
@@ -750,19 +759,19 @@ const deactivateAssignment = catchAsync(async (req, res, next) => {
   let model;
 
   switch (type) {
-    case 'site-incharge':
+    case "site-incharge":
       model = prisma.siteInchargeAssignment;
       break;
-    case 'project-manager':
+    case "project-manager":
       model = prisma.projectManagerAssignment;
       break;
-    case 'construction-manager':
+    case "construction-manager":
       model = prisma.constructionManagerAssignment;
       break;
-    case 'store-incharge':
+    case "store-incharge":
       model = prisma.storeInchargeAssignment;
       break;
-    case 'accountant':
+    case "accountant":
       model = prisma.accountantAssignment;
       break;
     default:
@@ -779,7 +788,7 @@ const deactivateAssignment = catchAsync(async (req, res, next) => {
     data: {
       isActive: false,
       updatedBy: currentUserId,
-    }
+    },
   });
 
   res.json({
@@ -799,19 +808,19 @@ const createAndAssignProjectManager = catchAsync(async (req, res, next) => {
 
   // Check if user/email already exists
   const existingUser = await prisma.user.findFirst({
-    where: { email }
+    where: { email },
   });
   if (existingUser) {
     return next(new AppError("User with this email already exists", 400));
   }
 
   // Generate employee ID automatically
-  const employeeId = await generateEmployeeId('PROJECT_MANAGER');
+  const employeeId = await generateEmployeeId("PROJECT_MANAGER");
 
   // Generate random password
-  const plainPassword = crypto.randomBytes(8).toString('base64');
+  const plainPassword = crypto.randomBytes(8).toString("base64");
   console.log(`Generated password for user ${email}: ${plainPassword}`);
-  const hashedPassword = require('bcryptjs').hashSync(plainPassword, 10);
+  const hashedPassword = require("bcryptjs").hashSync(plainPassword, 10);
 
   // Create user
   const user = await prisma.user.create({
@@ -820,9 +829,9 @@ const createAndAssignProjectManager = catchAsync(async (req, res, next) => {
       email,
       password: hashedPassword,
       employeeId,
-      role: 'PROJECT_MANAGER',
-      createdBy: currentUserId
-    }
+      role: "PROJECT_MANAGER",
+      createdBy: currentUserId,
+    },
   });
 
   // Assign to section/project
@@ -831,19 +840,27 @@ const createAndAssignProjectManager = catchAsync(async (req, res, next) => {
       userId: user.id,
       projectId,
       sectionId,
-      createdBy: currentUserId
+      createdBy: currentUserId,
     },
     include: {
-      user: { select: { id: true, name: true, email: true, role: true, employeeId: true } },
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          employeeId: true,
+        },
+      },
       project: { select: { id: true, name: true, code: true } },
-      section: { select: { id: true, name: true, code: true } }
-    }
+      section: { select: { id: true, name: true, code: true } },
+    },
   });
 
   res.status(201).json({
     message: "Project Manager created and assigned successfully",
     user,
-    assignment
+    assignment,
   });
 });
 
@@ -857,33 +874,42 @@ const getUsersByRoleForAssignment = catchAsync(async (req, res, next) => {
   // Get all users with the role
   let users = await prisma.user.findMany({
     where: { role: role as UserRole, isActive: true, isDeleted: false },
-    select: { id: true, name: true, email: true, employeeId: true }
+    select: { id: true, name: true, email: true, employeeId: true },
   });
 
-  if (role === 'PROJECT_MANAGER' || role === 'CONSTRUCTION_MANAGER') {
+  if (role === "PROJECT_MANAGER" || role === "CONSTRUCTION_MANAGER") {
     if (projectId) {
       // Get users already assigned to this project
       const assigned = await prisma.projectManagerAssignment.findMany({
         where: { projectId: projectId as string, isActive: true },
-        select: { userId: true }
+        select: { userId: true },
       });
-      const assignedIds = new Set(assigned.map(a => a.userId));
+      const assignedIds = new Set(assigned.map((a) => a.userId));
       // Users not assigned to any project
-      const neverAssigned = users.filter(async u => {
-        const count = await prisma.projectManagerAssignment.count({ where: { userId: u.id, isActive: true } });
+      const neverAssigned = users.filter(async (u) => {
+        const count = await prisma.projectManagerAssignment.count({
+          where: { userId: u.id, isActive: true },
+        });
         return count === 0;
       });
       // Users assigned to this project
-      const assignedToThisProject = users.filter(u => assignedIds.has(u.id));
-      users = [...assignedToThisProject, ...neverAssigned.filter(u => !assignedIds.has(u.id))];
+      const assignedToThisProject = users.filter((u) => assignedIds.has(u.id));
+      users = [
+        ...assignedToThisProject,
+        ...neverAssigned.filter((u) => !assignedIds.has(u.id)),
+      ];
     } else {
       // Only users not assigned to any project
-      users = await Promise.all(users.filter(async u => {
-        const count = await prisma.projectManagerAssignment.count({ where: { userId: u.id, isActive: true } });
-        return count === 0;
-      }));
+      users = await Promise.all(
+        users.filter(async (u) => {
+          const count = await prisma.projectManagerAssignment.count({
+            where: { userId: u.id, isActive: true },
+          });
+          return count === 0;
+        })
+      );
     }
-  } else if (role === 'STORE_INCHARGE' || role === 'ACCOUNTANT') {
+  } else if (role === "STORE_INCHARGE" || role === "ACCOUNTANT") {
     // For these roles, just return all users of that role (optionally filter by projectId for accountants)
     // For ACCOUNTANT, if projectId is provided, return all accountants (assigned or not) for that project
     // For STORE_INCHARGE, always return all store incharges
@@ -893,86 +919,114 @@ const getUsersByRoleForAssignment = catchAsync(async (req, res, next) => {
 
   res.json({
     message: "Users retrieved successfully",
-    users
+    users,
   });
 });
 
 // List sections in a project with isAssigned for a site incharge
-const getSectionsWithSiteInchargeAssignmentStatus = catchAsync(async (req, res, next) => {
-  const { projectId, userId } = req.query;
-  if (!projectId || !userId) {
-    return next(new AppError("projectId and userId are required", 400));
+const getSectionsWithSiteInchargeAssignmentStatus = catchAsync(
+  async (req, res, next) => {
+    const { projectId, userId } = req.query;
+    if (!projectId || !userId) {
+      return next(new AppError("projectId and userId are required", 400));
+    }
+
+    // Get all sections in the project
+    const sections = await prisma.section.findMany({
+      where: { projectId: projectId as string, isDeleted: false },
+      select: { id: true, name: true, code: true, description: true },
+    });
+
+    // Get all assignments for this user in this project
+    const userAssignments = await prisma.siteInchargeAssignment.findMany({
+      where: {
+        userId: userId as string,
+        projectId: projectId as string,
+        isActive: true,
+      },
+      select: { sectionId: true },
+    });
+    const assignedSectionIds = new Set(userAssignments.map((a) => a.sectionId));
+
+    // Get all assignments for other site incharges in this project
+    const otherAssignments = await prisma.siteInchargeAssignment.findMany({
+      where: {
+        projectId: projectId as string,
+        isActive: true,
+        NOT: { userId: userId as string },
+      },
+      select: { sectionId: true },
+    });
+    const otherAssignedSectionIds = new Set(
+      otherAssignments.map((a) => a.sectionId)
+    );
+
+    // Add isAssigned, assignedToCurrentUser, assignedToOther fields
+    const result = sections.map((section) => ({
+      ...section,
+      isAssigned: assignedSectionIds.has(section.id),
+      assignedToCurrentUser: assignedSectionIds.has(section.id),
+      assignedToOther: otherAssignedSectionIds.has(section.id),
+    }));
+
+    res.json({
+      message: "Sections with assignment status retrieved successfully",
+      sections: result,
+    });
   }
-
-  // Get all sections in the project
-  const sections = await prisma.section.findMany({
-    where: { projectId: projectId as string, isDeleted: false },
-    select: { id: true, name: true, code: true, description: true }
-  });
-
-  // Get all assignments for this user in this project
-  const userAssignments = await prisma.siteInchargeAssignment.findMany({
-    where: { userId: userId as string, projectId: projectId as string, isActive: true },
-    select: { sectionId: true }
-  });
-  const assignedSectionIds = new Set(userAssignments.map(a => a.sectionId));
-
-  // Get all assignments for other site incharges in this project
-  const otherAssignments = await prisma.siteInchargeAssignment.findMany({
-    where: {
-      projectId: projectId as string,
-      isActive: true,
-      NOT: { userId: userId as string }
-    },
-    select: { sectionId: true }
-  });
-  const otherAssignedSectionIds = new Set(otherAssignments.map(a => a.sectionId));
-
-  // Add isAssigned, assignedToCurrentUser, assignedToOther fields
-  const result = sections.map(section => ({
-    ...section,
-    isAssigned: assignedSectionIds.has(section.id),
-    assignedToCurrentUser: assignedSectionIds.has(section.id),
-    assignedToOther: otherAssignedSectionIds.has(section.id)
-  }));
-
-  res.json({
-    message: "Sections with assignment status retrieved successfully",
-    sections: result
-  });
-});
+);
 
 // List sections in a project with isAssigned for an accountant
-const getSectionsWithAccountantAssignmentStatus = catchAsync(async (req, res, next) => {
-  const { projectId, userId } = req.query;
-  if (!projectId || !userId) {
-    return next(new AppError("projectId and userId are required", 400));
+const getSectionsWithAccountantAssignmentStatus = catchAsync(
+  async (req, res, next) => {
+    const { projectId, userId } = req.query;
+    if (!projectId || !userId) {
+      return next(new AppError("projectId and userId are required", 400));
+    }
+
+    // Get all sections in the project
+    const sections = await prisma.section.findMany({
+      where: { projectId: projectId as string, isDeleted: false },
+      select: { id: true, name: true, code: true, description: true },
+    });
+
+    // Get all assignments for this user in this project
+    const userAssignments = await prisma.accountantAssignment.findMany({
+      where: {
+        userId: userId as string,
+        projectId: projectId as string,
+        isActive: true,
+      },
+      select: { sectionId: true },
+    });
+    const assignedSectionIds = new Set(userAssignments.map((a) => a.sectionId));
+
+    // Get all assignments for other accountants in this project
+    const otherAssignments = await prisma.accountantAssignment.findMany({
+      where: {
+        projectId: projectId as string,
+        isActive: true,
+        NOT: { userId: userId as string },
+      },
+      select: { sectionId: true },
+    });
+    const otherAssignedSectionIds = new Set(
+      otherAssignments.map((a) => a.sectionId)
+    );
+
+    // Add assignedToCurrentUser and assignedToOther fields
+    const result = sections.map((section) => ({
+      ...section,
+      assignedToCurrentUser: assignedSectionIds.has(section.id),
+      assignedToOther: otherAssignedSectionIds.has(section.id),
+    }));
+
+    res.json({
+      message: "Sections with assignment status retrieved successfully",
+      sections: result,
+    });
   }
-
-  // Get all sections in the project
-  const sections = await prisma.section.findMany({
-    where: { projectId: projectId as string, isDeleted: false },
-    select: { id: true, name: true, code: true, description: true }
-  });
-
-  // Get all assignments for this user in this project
-  const assignments = await prisma.accountantAssignment.findMany({
-    where: { userId: userId as string, projectId: projectId as string, isActive: true },
-    select: { sectionId: true }
-  });
-  const assignedSectionIds = new Set(assignments.map(a => a.sectionId));
-
-  // Add isAssigned field
-  const result = sections.map(section => ({
-    ...section,
-    isAssigned: assignedSectionIds.has(section.id)
-  }));
-
-  res.json({
-    message: "Sections with assignment status retrieved successfully",
-    sections: result
-  });
-});
+);
 
 export {
   createSiteInchargeAssignment,
@@ -990,4 +1044,4 @@ export {
   getUsersByRoleForAssignment,
   getSectionsWithSiteInchargeAssignmentStatus,
   getSectionsWithAccountantAssignmentStatus,
-}; 
+};

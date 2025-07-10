@@ -1555,6 +1555,217 @@
             ]
         },
         {
+            "name": "Purchase Orders",
+            "item": [
+                {
+                    "name": "Create Purchase Order",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"demandId\": \"<demandId>\",\n  \"sectionId\": \"<sectionId>\",\n  \"materialId\": \"<materialId>\",\n  \"vendorId\": \"<vendorId>\",\n  \"quantity\": 100,\n  \"notes\": \"Purchase order for construction materials\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/purchase-orders",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "purchase-orders"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Purchase Orders",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/purchase-orders?projectId=<projectId>&sectionId=<sectionId>&demandId=<demandId>&status=DRAFT&page=1&limit=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "purchase-orders"
+                            ],
+                            "query": [
+                                {
+                                    "key": "projectId",
+                                    "value": "<projectId>"
+                                },
+                                {
+                                    "key": "sectionId",
+                                    "value": "<sectionId>"
+                                },
+                                {
+                                    "key": "demandId",
+                                    "value": "<demandId>"
+                                },
+                                {
+                                    "key": "status",
+                                    "value": "DRAFT"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Purchase Order By ID",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/purchase-orders/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "purchase-orders",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Purchase Order",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"status\": \"ORDER_PLACED\",\n  \"materialId\": \"<materialId>\",\n  \"vendorId\": \"<vendorId>\",\n  \"quantity\": 100,\n  \"notes\": \"Updated purchase order details\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/purchase-orders/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "purchase-orders",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Delete Purchase Order",
+                    "request": {
+                        "method": "DELETE",
+                        "url": {
+                            "raw": "/api/purchase-orders/:id",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "purchase-orders",
+                                ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Purchase Orders By Vendor",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/purchase-orders/vendor?vendorId=<vendorId>&projectId=<projectId>&sectionId=<sectionId>",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "purchase-orders",
+                                "vendor"
+                            ],
+                            "query": [
+                                {
+                                    "key": "vendorId",
+                                    "value": "<vendorId>"
+                                },
+                                {
+                                    "key": "projectId",
+                                    "value": "<projectId>"
+                                },
+                                {
+                                    "key": "sectionId",
+                                    "value": "<sectionId>"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Purchase Order Summary",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/purchase-orders/summary?projectId=<projectId>&sectionId=<sectionId>",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "purchase-orders",
+                                "summary"
+                            ],
+                            "query": [
+                                {
+                                    "key": "projectId",
+                                    "value": "<projectId>"
+                                },
+                                {
+                                    "key": "sectionId",
+                                    "value": "<sectionId>"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Demand PO Statistics",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/purchase-orders/demand/:demandId/statistics",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "purchase-orders",
+                                "demand",
+                                ":demandId",
+                                "statistics"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
             "name": "Assignments",
             "item": [
                 {
@@ -1964,35 +2175,6 @@
                         "vendors",
                         ":vendorId",
                         "summary"
-                    ]
-                }
-            }
-        },
-        {
-            "name": "Add PO Item Amount",
-            "request": {
-                "method": "PATCH",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
-                    }
-                ],
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"amount\": 5000\n}"
-                },
-                "url": {
-                    "raw": "/api/purchase-orders/items/:itemId/add-amount",
-                    "host": [
-                        "{{baseUrl}}"
-                    ],
-                    "path": [
-                        "api",
-                        "purchase-orders",
-                        "items",
-                        ":itemId",
-                        "add-amount"
                     ]
                 }
             }

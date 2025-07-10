@@ -412,6 +412,40 @@ const getProjectById = catchAsync(async (req, res, next) => {
   // Convert map to array
   const associatedMembers = Array.from(allMembers.values());
 
+  // Group site incharge assignments by user
+  const siteInchargeMap = new Map();
+  project.siteInchargeAssignments.forEach(assignment => {
+    const userId = assignment.user.id;
+    if (!siteInchargeMap.has(userId)) {
+      siteInchargeMap.set(userId, {
+        id: assignment.user.id,
+        name: assignment.user.name,
+        email: assignment.user.email,
+        role: assignment.user.role,
+        sections: []
+      });
+    }
+    siteInchargeMap.get(userId).sections.push(assignment.section);
+  });
+  const assignedSiteIncharges = Array.from(siteInchargeMap.values());
+
+  // Group accountant assignments by user
+  const accountantMap = new Map();
+  project.accountantAssignments.forEach(assignment => {
+    const userId = assignment.user.id;
+    if (!accountantMap.has(userId)) {
+      accountantMap.set(userId, {
+        id: assignment.user.id,
+        name: assignment.user.name,
+        email: assignment.user.email,
+        role: assignment.user.role,
+        sections: []
+      });
+    }
+    accountantMap.get(userId).sections.push(assignment.section);
+  });
+  const assignedAccountants = Array.from(accountantMap.values());
+
   // Prepare the response
   const response = {
     id: project.id,
@@ -427,8 +461,8 @@ const getProjectById = catchAsync(async (req, res, next) => {
     createdBy: project.createdBy,
     updatedBy: project.updatedBy,
     sections: project.sections,
-    assignedSiteIncharges: project.siteInchargeAssignments,
-    assignedAccountants: project.accountantAssignments,
+    assignedSiteIncharges: assignedSiteIncharges,
+    assignedAccountants: assignedAccountants,
     associatedMembers: associatedMembers
   };
 

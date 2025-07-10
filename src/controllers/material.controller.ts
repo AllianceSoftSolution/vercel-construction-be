@@ -87,7 +87,6 @@ const getMaterialById = catchAsync(async (req, res, next) => {
     include: {
       demands: true,
       storeInventory: true,
-      purchaseOrderItems: true
     }
   });
   if (!material) {

@@ -2,16 +2,16 @@ import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { generateSectionCode } from "../utils/generateCode";
-import { buildQueryOptions, extractQueryParams, buildPaginationMeta } from "../utils/buildQueryOptions";
+import {
+  buildQueryOptions,
+  extractQueryParams,
+  buildPaginationMeta,
+} from "../utils/buildQueryOptions";
 
 const prisma = new PrismaClient();
 
 const createSection = catchAsync(async (req, res, next) => {
-  const {
-    name,
-    description,
-    projectId,
-  } = req.body;
+  const { name, description, projectId } = req.body;
   const userId = req.user.id;
 
   if (!name || !projectId) {
@@ -28,7 +28,7 @@ const createSection = catchAsync(async (req, res, next) => {
   }
 
   // Generate automatic section code
-  const code = await generateSectionCode(projectId);
+  const code = await generateSectionCode();
 
   const section = await prisma.section.create({
     data: {
@@ -44,7 +44,7 @@ const createSection = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       stores: {
         where: { isDeleted: false },
@@ -52,9 +52,9 @@ const createSection = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           type: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   res.status(201).json({
@@ -68,59 +68,63 @@ const getSections = catchAsync(async (req, res) => {
 
   // Extract query parameters
   const filterOptions = extractQueryParams(req);
-  
+
   // Define searchable fields for sections
-  const searchableFields = ['name', 'code', 'description'];
-  
+  const searchableFields = ["name", "code", "description"];
+
   // Build default filters based on user role
   let defaultFilters: any = { isDeleted: false };
 
   // Role-based filtering for sections
-  if (user.role === 'ADMIN') {
+  if (user.role === "ADMIN") {
     // No filter, see all
-  } else if (user.role === 'SITE_INCHARGE') {
+  } else if (user.role === "SITE_INCHARGE") {
     const assignments = await prisma.siteInchargeAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { sectionId: true }
+      select: { sectionId: true },
     });
-    const sectionIds = assignments.map(a => a.sectionId);
+    const sectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.id = { in: sectionIds };
-  } else if (user.role === 'PROJECT_MANAGER') {
+  } else if (user.role === "PROJECT_MANAGER") {
     const assignments = await prisma.projectManagerAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { sectionId: true }
+      select: { sectionId: true },
     });
-    const sectionIds = assignments.map(a => a.sectionId);
+    const sectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.id = { in: sectionIds };
-  } else if (user.role === 'CONSTRUCTION_MANAGER') {
+  } else if (user.role === "CONSTRUCTION_MANAGER") {
     const assignments = await prisma.constructionManagerAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { sectionId: true }
+      select: { sectionId: true },
     });
-    const sectionIds = assignments.map(a => a.sectionId);
+    const sectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.id = { in: sectionIds };
-  } else if (user.role === 'STORE_INCHARGE') {
+  } else if (user.role === "STORE_INCHARGE") {
     const assignments = await prisma.storeInchargeAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { store: { select: { sectionId: true } } }
+      select: { store: { select: { sectionId: true } } },
     });
-    const sectionIds = assignments.map(a => a.store.sectionId);
+    const sectionIds = assignments.map((a) => a.store.sectionId);
     defaultFilters.id = { in: sectionIds };
-  } else if (user.role === 'ACCOUNTANT') {
+  } else if (user.role === "ACCOUNTANT") {
     const assignments = await prisma.accountantAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { sectionId: true }
+      select: { sectionId: true },
     });
-    const sectionIds = assignments.map(a => a.sectionId);
+    const sectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.id = { in: sectionIds };
   }
 
   // Build query options
-  const queryOptions = buildQueryOptions(filterOptions, defaultFilters, searchableFields);
+  const queryOptions = buildQueryOptions(
+    filterOptions,
+    defaultFilters,
+    searchableFields
+  );
 
   // Get total count for pagination
   const total = await prisma.section.count({
-    where: queryOptions.where
+    where: queryOptions.where,
   });
 
   // Get sections with pagination
@@ -132,7 +136,7 @@ const getSections = catchAsync(async (req, res) => {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       stores: {
         where: { isDeleted: false },
@@ -140,15 +144,15 @@ const getSections = catchAsync(async (req, res) => {
           id: true,
           name: true,
           type: true,
-        }
+        },
       },
       _count: {
         select: {
           stores: true,
           demands: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   // Build pagination metadata
@@ -161,7 +165,7 @@ const getSections = catchAsync(async (req, res) => {
   res.json({
     message: "Sections retrieved successfully",
     sections,
-    ...paginationMeta
+    ...paginationMeta,
   });
 });
 
@@ -176,12 +180,12 @@ const getSectionById = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       stores: {
-        where: { 
+        where: {
           isDeleted: false,
-          type: 'HEAD_STORE' // Only get head stores
+          type: "HEAD_STORE", // Only get head stores
         },
         include: {
           storeInchargeAssignments: {
@@ -193,11 +197,11 @@ const getSectionById = catchAsync(async (req, res, next) => {
                   name: true,
                   email: true,
                   role: true,
-                }
-              }
-            }
-          }
-        }
+                },
+              },
+            },
+          },
+        },
       },
       siteInchargeAssignments: {
         where: { isActive: true },
@@ -208,9 +212,9 @@ const getSectionById = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
-          }
-        }
+            },
+          },
+        },
       },
       projectManagerAssignments: {
         where: { isActive: true },
@@ -221,9 +225,9 @@ const getSectionById = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
-          }
-        }
+            },
+          },
+        },
       },
       constructionManagerAssignments: {
         where: { isActive: true },
@@ -234,9 +238,10 @@ const getSectionById = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
-          }
-        }
+              creator: true,
+            },
+          },
+        },
       },
       accountantAssignments: {
         where: { isActive: true },
@@ -247,9 +252,9 @@ const getSectionById = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
-          }
-        }
+            },
+          },
+        },
       },
       demands: {
         where: { isDeleted: false },
@@ -259,10 +264,10 @@ const getSectionById = catchAsync(async (req, res, next) => {
           status: true,
           createdAt: true,
         },
-        orderBy: { createdAt: 'desc' },
-        take: 10
-      }
-    }
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      },
+    },
   });
 
   if (!section) {
@@ -283,12 +288,15 @@ const getSectionById = catchAsync(async (req, res, next) => {
     createdBy: section.createdBy,
     updatedBy: section.updatedBy,
     project: section.project,
-    associatedProjectManager: section.projectManagerAssignments.length > 0 ? section.projectManagerAssignments[0] : null,
+    associatedProjectManager:
+      section.projectManagerAssignments.length > 0
+        ? section.projectManagerAssignments[0]
+        : null,
     associatedConstructionManagers: section.constructionManagerAssignments,
     associatedHeadStores: section.stores,
     associatedSiteIncharges: section.siteInchargeAssignments,
     associatedAccountants: section.accountantAssignments,
-    recentDemands: section.demands
+    recentDemands: section.demands,
   };
 
   res.json({
@@ -327,7 +335,7 @@ const updateSection = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       stores: {
         where: { isDeleted: false },
@@ -335,9 +343,9 @@ const updateSection = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           type: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   res.json({
@@ -362,7 +370,7 @@ const deleteSection = catchAsync(async (req, res, next) => {
       isActive: false,
       updatedBy: userId,
       updatedAt: new Date(),
-    }
+    },
   });
 
   res.json({
@@ -392,7 +400,7 @@ const activateSection = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       stores: {
         where: { isDeleted: false },
@@ -400,9 +408,9 @@ const activateSection = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           type: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   res.json({
@@ -433,7 +441,7 @@ const deactivateSection = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       stores: {
         where: { isDeleted: false },
@@ -441,9 +449,9 @@ const deactivateSection = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           type: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   res.json({
@@ -460,4 +468,4 @@ export {
   deleteSection,
   activateSection,
   deactivateSection,
-}; 
+};

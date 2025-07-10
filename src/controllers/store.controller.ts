@@ -1,7 +1,11 @@
 import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
-import { buildQueryOptions, extractQueryParams, buildPaginationMeta } from "../utils/buildQueryOptions";
+import {
+  buildQueryOptions,
+  extractQueryParams,
+  buildPaginationMeta,
+} from "../utils/buildQueryOptions";
 
 const prisma = new PrismaClient();
 
@@ -29,7 +33,7 @@ const createStore = catchAsync(async (req, res, next) => {
   }
 
   // For CM stores, cmUserId is required
-  if (type === 'CM_STORE' && !cmUserId) {
+  if (type === "CM_STORE" && !cmUserId) {
     return next(new AppError("CM User ID is required for CM stores", 400));
   }
 
@@ -43,8 +47,10 @@ const createStore = catchAsync(async (req, res, next) => {
       return next(new AppError("CM User not found", 404));
     }
 
-    if (cmUser.role !== 'CONSTRUCTION_MANAGER') {
-      return next(new AppError("CM User must have CONSTRUCTION_MANAGER role", 400));
+    if (cmUser.role !== "CONSTRUCTION_MANAGER") {
+      return next(
+        new AppError("CM User must have CONSTRUCTION_MANAGER role", 400)
+      );
     }
   }
 
@@ -52,11 +58,18 @@ const createStore = catchAsync(async (req, res, next) => {
   if (initialStock && Array.isArray(initialStock)) {
     for (const item of initialStock) {
       if (!item.materialId || !item.quantity) {
-        return next(new AppError("Each initial stock item must have materialId and quantity", 400));
+        return next(
+          new AppError(
+            "Each initial stock item must have materialId and quantity",
+            400
+          )
+        );
       }
-      
+
       if (item.quantity <= 0) {
-        return next(new AppError("Initial stock quantity must be greater than 0", 400));
+        return next(
+          new AppError("Initial stock quantity must be greater than 0", 400)
+        );
       }
 
       // Check if material exists
@@ -65,7 +78,9 @@ const createStore = catchAsync(async (req, res, next) => {
       });
 
       if (!material) {
-        return next(new AppError(`Material with ID ${item.materialId} not found`, 404));
+        return next(
+          new AppError(`Material with ID ${item.materialId} not found`, 404)
+        );
       }
     }
   }
@@ -86,7 +101,7 @@ const createStore = catchAsync(async (req, res, next) => {
           select: {
             id: true,
             name: true,
-          }
+          },
         },
         cmUser: {
           select: {
@@ -94,7 +109,7 @@ const createStore = catchAsync(async (req, res, next) => {
             name: true,
             email: true,
             role: true,
-          }
+          },
         },
         storeInchargeAssignments: {
           where: { isActive: true },
@@ -105,11 +120,11 @@ const createStore = catchAsync(async (req, res, next) => {
                 name: true,
                 email: true,
                 role: true,
-              }
-            }
-          }
-        }
-      }
+              },
+            },
+          },
+        },
+      },
     });
 
     // Add initial stock if provided
@@ -121,15 +136,15 @@ const createStore = catchAsync(async (req, res, next) => {
             storeId_materialId: {
               storeId: store.id,
               materialId: item.materialId,
-            }
+            },
           },
           update: {
             stock: {
-              increment: item.quantity
+              increment: item.quantity,
             },
             available: {
-              increment: item.quantity
-            }
+              increment: item.quantity,
+            },
           },
           create: {
             storeId: store.id,
@@ -137,7 +152,7 @@ const createStore = catchAsync(async (req, res, next) => {
             stock: item.quantity,
             available: item.quantity,
             reserved: 0,
-          }
+          },
         });
 
         // Create store transaction record
@@ -145,12 +160,12 @@ const createStore = catchAsync(async (req, res, next) => {
           data: {
             storeId: store.id,
             materialId: item.materialId,
-            type: 'IN',
+            type: "IN",
             quantity: item.quantity,
-            reference: 'INITIAL_STOCK',
-            notes: item.notes || 'Initial stock setup',
+            reference: "INITIAL_STOCK",
+            notes: item.notes || "Initial stock setup",
             createdBy: userId,
-          }
+          },
         });
       }
     }
@@ -165,21 +180,60 @@ const createStore = catchAsync(async (req, res, next) => {
 });
 
 const getStores = catchAsync(async (req, res) => {
+  const user = req.user;
   // Extract query parameters
   const filterOptions = extractQueryParams(req);
-  
+
   // Define searchable fields for stores
-  const searchableFields = ['name'];
-  
+  const searchableFields = ["name"];
+
   // Build default filters
-  const defaultFilters = { isDeleted: false };
+  let defaultFilters: any = { isDeleted: false };
+
+  if (user.role === "ADMIN") {
+    // No filter, see all
+  } else if (user.role === "PROJECT_MANAGER") {
+    // Get assigned sectionIds
+    const assignments = await prisma.projectManagerAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { sectionId: true },
+    });
+    const sectionIds = assignments.map((a) => a.sectionId);
+    defaultFilters.sectionId = { in: sectionIds };
+  } else if (user.role === "SITE_INCHARGE") {
+    const assignments = await prisma.siteInchargeAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { sectionId: true },
+    });
+    const sectionIds = assignments.map((a) => a.sectionId);
+    defaultFilters.sectionId = { in: sectionIds };
+  } else if (user.role === "STORE_INCHARGE") {
+    if (user.isHead) {
+      // Head store incharge can see all stores
+    } else {
+      // Only stores assigned to this store incharge
+      const assignments = await prisma.storeInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { storeId: true },
+      });
+      const storeIds = assignments.map((a) => a.storeId);
+      defaultFilters.id = { in: storeIds };
+    }
+  } else {
+    // Other roles: no stores
+    defaultFilters.id = { in: [] };
+  }
 
   // Build query options
-  const queryOptions = buildQueryOptions(filterOptions, defaultFilters, searchableFields);
+  const queryOptions = buildQueryOptions(
+    filterOptions,
+    defaultFilters,
+    searchableFields
+  );
 
   // Get total count for pagination
   const total = await prisma.store.count({
-    where: queryOptions.where
+    where: queryOptions.where,
   });
 
   // Get stores with pagination
@@ -190,7 +244,7 @@ const getStores = catchAsync(async (req, res) => {
         select: {
           id: true,
           name: true,
-        }
+        },
       },
       cmUser: {
         select: {
@@ -198,7 +252,7 @@ const getStores = catchAsync(async (req, res) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       storeInchargeAssignments: {
         where: { isActive: true },
@@ -209,11 +263,11 @@ const getStores = catchAsync(async (req, res) => {
               name: true,
               email: true,
               role: true,
-            }
-          }
-        }
-      }
-    }
+            },
+          },
+        },
+      },
+    },
   });
 
   // Build pagination metadata
@@ -226,7 +280,7 @@ const getStores = catchAsync(async (req, res) => {
   res.json({
     message: "Stores retrieved successfully",
     stores,
-    ...paginationMeta
+    ...paginationMeta,
   });
 });
 
@@ -240,7 +294,7 @@ const getStoreById = catchAsync(async (req, res, next) => {
         select: {
           id: true,
           name: true,
-        }
+        },
       },
       cmUser: {
         select: {
@@ -248,7 +302,7 @@ const getStoreById = catchAsync(async (req, res, next) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       storeInchargeAssignments: {
         where: { isActive: true },
@@ -259,9 +313,9 @@ const getStoreById = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
-          }
-        }
+            },
+          },
+        },
       },
       inventory: {
         include: {
@@ -270,12 +324,12 @@ const getStoreById = catchAsync(async (req, res, next) => {
               id: true,
               name: true,
               unit: true,
-            }
-          }
+            },
+          },
         },
       },
       transactions: true,
-    }
+    },
   });
 
   if (!store) {
@@ -305,7 +359,7 @@ const updateStore = catchAsync(async (req, res, next) => {
   }
 
   // For CM stores, cmUserId is required
-  if (updates.type === 'CM_STORE' && !updates.cmUserId) {
+  if (updates.type === "CM_STORE" && !updates.cmUserId) {
     return next(new AppError("CM User ID is required for CM stores", 400));
   }
 
@@ -319,8 +373,10 @@ const updateStore = catchAsync(async (req, res, next) => {
       return next(new AppError("CM User not found", 404));
     }
 
-    if (cmUser.role !== 'CONSTRUCTION_MANAGER') {
-      return next(new AppError("CM User must have CONSTRUCTION_MANAGER role", 400));
+    if (cmUser.role !== "CONSTRUCTION_MANAGER") {
+      return next(
+        new AppError("CM User must have CONSTRUCTION_MANAGER role", 400)
+      );
     }
   }
 
@@ -336,7 +392,7 @@ const updateStore = catchAsync(async (req, res, next) => {
         select: {
           id: true,
           name: true,
-        }
+        },
       },
       cmUser: {
         select: {
@@ -344,7 +400,7 @@ const updateStore = catchAsync(async (req, res, next) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       storeInchargeAssignments: {
         where: { isActive: true },
@@ -355,11 +411,11 @@ const updateStore = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
-          }
-        }
-      }
-    }
+            },
+          },
+        },
+      },
+    },
   });
 
   res.json({
@@ -384,7 +440,7 @@ const deleteStore = catchAsync(async (req, res, next) => {
       isActive: false,
       updatedBy: userId,
       updatedAt: new Date(),
-    }
+    },
   });
 
   res.json({
@@ -413,7 +469,7 @@ const activateStore = catchAsync(async (req, res, next) => {
         select: {
           id: true,
           name: true,
-        }
+        },
       },
       cmUser: {
         select: {
@@ -421,7 +477,7 @@ const activateStore = catchAsync(async (req, res, next) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       storeInchargeAssignments: {
         where: { isActive: true },
@@ -432,11 +488,11 @@ const activateStore = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
-          }
-        }
-      }
-    }
+            },
+          },
+        },
+      },
+    },
   });
 
   res.json({
@@ -466,7 +522,7 @@ const deactivateStore = catchAsync(async (req, res, next) => {
         select: {
           id: true,
           name: true,
-        }
+        },
       },
       cmUser: {
         select: {
@@ -474,7 +530,7 @@ const deactivateStore = catchAsync(async (req, res, next) => {
           name: true,
           email: true,
           role: true,
-        }
+        },
       },
       storeInchargeAssignments: {
         where: { isActive: true },
@@ -485,11 +541,11 @@ const deactivateStore = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
-          }
-        }
-      }
-    }
+            },
+          },
+        },
+      },
+    },
   });
 
   res.json({
@@ -505,7 +561,7 @@ const stockIn = catchAsync(async (req, res, next) => {
     quantity,
     poReferenceNumber, // Optional - for PO-based stock in
     notes,
-    stockInType = 'PO', // PO, INITIAL, TRANSFER, MANUAL
+    stockInType = "PO", // PO, INITIAL, TRANSFER, MANUAL
   } = req.body;
   const userId = req.user.id;
 
@@ -526,11 +582,11 @@ const stockIn = catchAsync(async (req, res, next) => {
         where: { isActive: true },
         include: {
           user: {
-            select: { id: true }
-          }
-        }
-      }
-    }
+            select: { id: true },
+          },
+        },
+      },
+    },
   });
 
   if (!store) {
@@ -543,11 +599,13 @@ const stockIn = catchAsync(async (req, res, next) => {
 
   // Check if user is store incharge for this store
   const isStoreIncharge = store.storeInchargeAssignments.some(
-    assignment => assignment.user.id === userId
+    (assignment) => assignment.user.id === userId
   );
 
   if (!isStoreIncharge) {
-    return next(new AppError("Only store incharges can perform stock operations", 403));
+    return next(
+      new AppError("Only store incharges can perform stock operations", 403)
+    );
   }
 
   // Validate material exists
@@ -564,31 +622,28 @@ const stockIn = catchAsync(async (req, res, next) => {
   }
 
   // Validate PO reference if provided
-  if (poReferenceNumber && stockInType === 'PO') {
+  if (poReferenceNumber && stockInType === "PO") {
     const purchaseOrder = await prisma.purchaseOrder.findFirst({
-      where: { 
+      where: {
         referenceNumber: poReferenceNumber,
-        isDeleted: false
+        isDeleted: false,
       },
-      include: {
-        items: {
-          where: { materialId }
-        }
-      }
+      // items removed; use materialId and vendorId directly if needed
     });
 
     if (!purchaseOrder) {
       return next(new AppError("Purchase order not found", 404));
     }
 
-    if (purchaseOrder.items.length === 0) {
-      return next(new AppError("Material not found in this purchase order", 400));
-    }
-
     // Check if PO is in appropriate status for stock in
-    if (!['ORDER_PLACED', 'IN_STORE'].includes(purchaseOrder.status)) {
-      return next(new AppError("Purchase order is not in appropriate status for stock in", 400));
-    }
+    // if (!["ORDER_PLACED", "IN_STORE"].includes(purchaseOrder.status)) {
+    //   return next(
+    //     new AppError(
+    //       "Purchase order is not in appropriate status for stock in",
+    //       400
+    //     )
+    //   );
+    // }
   }
 
   // Perform stock in operation in transaction
@@ -599,15 +654,15 @@ const stockIn = catchAsync(async (req, res, next) => {
         storeId_materialId: {
           storeId,
           materialId,
-        }
+        },
       },
       update: {
         stock: {
-          increment: quantity
+          increment: quantity,
         },
         available: {
-          increment: quantity
-        }
+          increment: quantity,
+        },
       },
       create: {
         storeId,
@@ -615,7 +670,7 @@ const stockIn = catchAsync(async (req, res, next) => {
         stock: quantity,
         available: quantity,
         reserved: 0,
-      }
+      },
     });
 
     // Create store transaction record
@@ -623,30 +678,30 @@ const stockIn = catchAsync(async (req, res, next) => {
       data: {
         storeId,
         materialId,
-        type: 'IN',
+        type: "IN",
         quantity,
         reference: poReferenceNumber || stockInType.toUpperCase(),
         notes: notes || `${stockInType} stock in`,
         createdBy: userId,
-      }
+      },
     });
 
     // Update PO status if it's a PO-based stock in
-    if (poReferenceNumber && stockInType === 'PO') {
+    if (poReferenceNumber && stockInType === "PO") {
       const po = await tx.purchaseOrder.findFirst({
-        where: { referenceNumber: poReferenceNumber }
+        where: { referenceNumber: poReferenceNumber },
       });
       if (po) {
         await tx.purchaseOrder.update({
           where: { id: po.id },
-          data: { status: 'IN_STORE' }
+          data: { status: "IN_STORE" },
         });
       }
     }
 
     return {
       inventory,
-      transaction
+      transaction,
     };
   });
 
@@ -658,8 +713,8 @@ const stockIn = catchAsync(async (req, res, next) => {
       quantity,
       newStock: result.inventory.stock,
       newAvailable: result.inventory.available,
-      transaction: result.transaction
-    }
+      transaction: result.transaction,
+    },
   });
 });
 
@@ -670,7 +725,7 @@ const stockOut = catchAsync(async (req, res, next) => {
     quantity,
     demandReferenceNumber, // Optional - for demand-based stock out
     notes,
-    stockOutType = 'DEMAND', // DEMAND, TRANSFER, MANUAL, LOSS
+    stockOutType = "DEMAND", // DEMAND, TRANSFER, MANUAL, LOSS
   } = req.body;
   const userId = req.user.id;
 
@@ -691,11 +746,11 @@ const stockOut = catchAsync(async (req, res, next) => {
         where: { isActive: true },
         include: {
           user: {
-            select: { id: true }
-          }
-        }
-      }
-    }
+            select: { id: true },
+          },
+        },
+      },
+    },
   });
 
   if (!store) {
@@ -708,11 +763,13 @@ const stockOut = catchAsync(async (req, res, next) => {
 
   // Check if user is store incharge for this store
   const isStoreIncharge = store.storeInchargeAssignments.some(
-    assignment => assignment.user.id === userId
+    (assignment) => assignment.user.id === userId
   );
 
   if (!isStoreIncharge) {
-    return next(new AppError("Only store incharges can perform stock operations", 403));
+    return next(
+      new AppError("Only store incharges can perform stock operations", 403)
+    );
   }
 
   // Validate material exists
@@ -734,26 +791,33 @@ const stockOut = catchAsync(async (req, res, next) => {
       storeId_materialId: {
         storeId,
         materialId,
-      }
-    }
+      },
+    },
   });
 
   if (!currentInventory) {
-    return next(new AppError("No inventory found for this material in the store", 404));
+    return next(
+      new AppError("No inventory found for this material in the store", 404)
+    );
   }
 
   // Check if sufficient stock is available
   if (currentInventory.available < quantity) {
-    return next(new AppError(`Insufficient stock. Available: ${currentInventory.available}, Requested: ${quantity}`, 400));
+    return next(
+      new AppError(
+        `Insufficient stock. Available: ${currentInventory.available}, Requested: ${quantity}`,
+        400
+      )
+    );
   }
 
   // Validate demand reference if provided
-  if (demandReferenceNumber && stockOutType === 'DEMAND') {
+  if (demandReferenceNumber && stockOutType === "DEMAND") {
     const demand = await prisma.demand.findFirst({
-      where: { 
+      where: {
         referenceNumber: demandReferenceNumber,
-        isDeleted: false
-      }
+        isDeleted: false,
+      },
     });
 
     if (!demand) {
@@ -761,14 +825,21 @@ const stockOut = catchAsync(async (req, res, next) => {
     }
 
     // Check if demand is in appropriate status for stock out
-    if (!['APPROVED', 'FULFILLED_FROM_STORE'].includes(demand.status)) {
-      return next(new AppError("Demand is not in appropriate status for stock out", 400));
+    if (!["APPROVED", "FULFILLED_FROM_STORE"].includes(demand.status)) {
+      return next(
+        new AppError("Demand is not in appropriate status for stock out", 400)
+      );
     }
 
     // Check if remaining quantity is sufficient
     const remainingQuantity = demand.quantityRemaining || demand.quantity;
     if (remainingQuantity < quantity) {
-      return next(new AppError(`Requested quantity exceeds remaining demand quantity. Remaining: ${remainingQuantity}, Requested: ${quantity}`, 400));
+      return next(
+        new AppError(
+          `Requested quantity exceeds remaining demand quantity. Remaining: ${remainingQuantity}, Requested: ${quantity}`,
+          400
+        )
+      );
     }
   }
 
@@ -780,16 +851,16 @@ const stockOut = catchAsync(async (req, res, next) => {
         storeId_materialId: {
           storeId,
           materialId,
-        }
+        },
       },
       data: {
         stock: {
-          decrement: quantity
+          decrement: quantity,
         },
         available: {
-          decrement: quantity
-        }
-      }
+          decrement: quantity,
+        },
+      },
     });
 
     // Create store transaction record
@@ -797,43 +868,43 @@ const stockOut = catchAsync(async (req, res, next) => {
       data: {
         storeId,
         materialId,
-        type: 'OUT',
+        type: "OUT",
         quantity,
         reference: demandReferenceNumber || stockOutType.toUpperCase(),
         notes: notes || `${stockOutType} stock out`,
         createdBy: userId,
-      }
+      },
     });
 
     // Update demand status if it's a demand-based stock out
-    if (demandReferenceNumber && stockOutType === 'DEMAND') {
+    if (demandReferenceNumber && stockOutType === "DEMAND") {
       const demand = await tx.demand.findFirst({
-        where: { referenceNumber: demandReferenceNumber }
+        where: { referenceNumber: demandReferenceNumber },
       });
 
       if (demand) {
         // Check if this will complete the demand
         const currentRemaining = demand.quantityRemaining || demand.quantity;
         const willComplete = currentRemaining <= quantity;
-        
+
         await tx.demand.update({
           where: { id: demand.id },
           data: {
             quantityRemaining: {
-              decrement: quantity
+              decrement: quantity,
             },
             quantityFulfilled: {
-              increment: quantity
+              increment: quantity,
             },
-            status: willComplete ? 'COMPLETED' : 'FULFILLED_FROM_STORE'
-          }
+            status: willComplete ? "COMPLETED" : "FULFILLED_FROM_STORE",
+          },
         });
       }
     }
 
     return {
       inventory: updatedInventory,
-      transaction
+      transaction,
     };
   });
 
@@ -845,8 +916,8 @@ const stockOut = catchAsync(async (req, res, next) => {
       quantity,
       remainingStock: result.inventory.stock,
       remainingAvailable: result.inventory.available,
-      transaction: result.transaction
-    }
+      transaction: result.transaction,
+    },
   });
 });
 
@@ -878,14 +949,14 @@ const getStoreInventory = catchAsync(async (req, res, next) => {
           name: true,
           unit: true,
           description: true,
-        }
-      }
+        },
+      },
     },
     orderBy: {
       material: {
-        name: 'asc'
-      }
-    }
+        name: "asc",
+      },
+    },
   });
 
   res.json({
@@ -895,19 +966,19 @@ const getStoreInventory = catchAsync(async (req, res, next) => {
       name: store.name,
       type: store.type,
     },
-    inventory
+    inventory,
   });
 });
 
 const getStoreTransactions = catchAsync(async (req, res, next) => {
   const { storeId } = req.params;
-  const { 
-    materialId, 
-    type, 
-    startDate, 
-    endDate, 
-    page = 1, 
-    limit = 50 
+  const {
+    materialId,
+    type,
+    startDate,
+    endDate,
+    page = 1,
+    limit = 50,
   } = req.query;
 
   // Validate store exists
@@ -948,16 +1019,16 @@ const getStoreTransactions = catchAsync(async (req, res, next) => {
             id: true,
             name: true,
             email: true,
-          }
-        }
+          },
+        },
       },
       orderBy: {
-        transactionDate: 'desc'
+        transactionDate: "desc",
       },
       skip,
-      take: parseInt(limit as string)
+      take: parseInt(limit as string),
     }),
-    prisma.storeTransaction.count({ where })
+    prisma.storeTransaction.count({ where }),
   ]);
 
   res.json({
@@ -972,8 +1043,8 @@ const getStoreTransactions = catchAsync(async (req, res, next) => {
       page: parseInt(page as string),
       limit: parseInt(limit as string),
       total,
-      pages: Math.ceil(total / parseInt(limit as string))
-    }
+      pages: Math.ceil(total / parseInt(limit as string)),
+    },
   });
 });
 
@@ -991,9 +1062,9 @@ const getProjectInventory = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           code: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   if (!project) {
@@ -1010,15 +1081,19 @@ const getProjectInventory = catchAsync(async (req, res, next) => {
     }
   } else {
     // If no section IDs provided, get all sections in the project
-    targetSectionIds = project.sections.map(section => section.id);
+    targetSectionIds = project.sections.map((section) => section.id);
   }
 
   // Validate that all provided section IDs belong to this project
-  const validSectionIds = project.sections.map(section => section.id);
-  const invalidSectionIds = targetSectionIds.filter(id => !validSectionIds.includes(id));
-  
+  const validSectionIds = project.sections.map((section) => section.id);
+  const invalidSectionIds = targetSectionIds.filter(
+    (id) => !validSectionIds.includes(id)
+  );
+
   if (invalidSectionIds.length > 0) {
-    return next(new AppError(`Invalid section IDs: ${invalidSectionIds.join(', ')}`, 400));
+    return next(
+      new AppError(`Invalid section IDs: ${invalidSectionIds.join(", ")}`, 400)
+    );
   }
 
   // Get all stores in the target sections
@@ -1026,7 +1101,7 @@ const getProjectInventory = catchAsync(async (req, res, next) => {
     where: {
       sectionId: { in: targetSectionIds },
       isDeleted: false,
-      isActive: true
+      isActive: true,
     },
     include: {
       section: {
@@ -1034,7 +1109,7 @@ const getProjectInventory = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           code: true,
-        }
+        },
       },
       inventory: {
         include: {
@@ -1044,33 +1119,33 @@ const getProjectInventory = catchAsync(async (req, res, next) => {
               name: true,
               unit: true,
               description: true,
-            }
-          }
-        }
+            },
+          },
+        },
       },
       transactions: {
         where: {
           transactionDate: {
-            gte: new Date(new Date().getFullYear(), 0, 1) // From start of current year
-          }
+            gte: new Date(new Date().getFullYear(), 0, 1), // From start of current year
+          },
         },
         select: {
           materialId: true,
           type: true,
           quantity: true,
           transactionDate: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   // Group inventory by material across all stores
   const materialInventoryMap = new Map();
 
-  stores.forEach(store => {
-    store.inventory.forEach(inventoryItem => {
+  stores.forEach((store) => {
+    store.inventory.forEach((inventoryItem) => {
       const materialId = inventoryItem.materialId;
-      
+
       if (!materialInventoryMap.has(materialId)) {
         materialInventoryMap.set(materialId, {
           material: inventoryItem.material,
@@ -1081,8 +1156,8 @@ const getProjectInventory = catchAsync(async (req, res, next) => {
           usage: {
             totalIn: 0,
             totalOut: 0,
-            netUsage: 0
-          }
+            netUsage: 0,
+          },
         });
       }
 
@@ -1100,21 +1175,21 @@ const getProjectInventory = catchAsync(async (req, res, next) => {
         sectionCode: store.section.code,
         stock: Number(inventoryItem.stock),
         reserved: Number(inventoryItem.reserved),
-        available: Number(inventoryItem.available)
+        available: Number(inventoryItem.available),
       });
     });
 
     // Calculate usage from transactions
-    store.transactions.forEach(transaction => {
+    store.transactions.forEach((transaction) => {
       const materialId = transaction.materialId;
-      
+
       if (materialInventoryMap.has(materialId)) {
         const materialData = materialInventoryMap.get(materialId);
         const quantity = Number(transaction.quantity);
-        
-        if (transaction.type === 'IN') {
+
+        if (transaction.type === "IN") {
           materialData.usage.totalIn += quantity;
-        } else if (transaction.type === 'OUT') {
+        } else if (transaction.type === "OUT") {
           materialData.usage.totalOut += quantity;
         }
       }
@@ -1122,32 +1197,41 @@ const getProjectInventory = catchAsync(async (req, res, next) => {
   });
 
   // Calculate net usage and prepare final response
-  const inventorySummary = Array.from(materialInventoryMap.values()).map(materialData => {
-    materialData.usage.netUsage = materialData.usage.totalOut - materialData.usage.totalIn;
-    
-    // Calculate usage percentage
-    const totalReceived = materialData.usage.totalIn + materialData.totalStock;
-    const usagePercentage = totalReceived > 0 ? (materialData.usage.totalOut / totalReceived) * 100 : 0;
-    
-    return {
-      material: materialData.material,
-      summary: {
-        totalStock: materialData.totalStock,
-        totalReserved: materialData.totalReserved,
-        totalAvailable: materialData.totalAvailable,
-        usage: {
-          totalIn: materialData.usage.totalIn,
-          totalOut: materialData.usage.totalOut,
-          netUsage: materialData.usage.netUsage,
-          usagePercentage: Math.round(usagePercentage * 100) / 100
-        }
-      },
-      stores: materialData.stores
-    };
-  });
+  const inventorySummary = Array.from(materialInventoryMap.values()).map(
+    (materialData) => {
+      materialData.usage.netUsage =
+        materialData.usage.totalOut - materialData.usage.totalIn;
+
+      // Calculate usage percentage
+      const totalReceived =
+        materialData.usage.totalIn + materialData.totalStock;
+      const usagePercentage =
+        totalReceived > 0
+          ? (materialData.usage.totalOut / totalReceived) * 100
+          : 0;
+
+      return {
+        material: materialData.material,
+        summary: {
+          totalStock: materialData.totalStock,
+          totalReserved: materialData.totalReserved,
+          totalAvailable: materialData.totalAvailable,
+          usage: {
+            totalIn: materialData.usage.totalIn,
+            totalOut: materialData.usage.totalOut,
+            netUsage: materialData.usage.netUsage,
+            usagePercentage: Math.round(usagePercentage * 100) / 100,
+          },
+        },
+        stores: materialData.stores,
+      };
+    }
+  );
 
   // Sort by material name
-  inventorySummary.sort((a, b) => a.material.name.localeCompare(b.material.name));
+  inventorySummary.sort((a, b) =>
+    a.material.name.localeCompare(b.material.name)
+  );
 
   // Prepare response
   const response = {
@@ -1156,15 +1240,15 @@ const getProjectInventory = catchAsync(async (req, res, next) => {
       name: project.name,
       code: project.code,
     },
-    sections: targetSectionIds.map(sectionId => {
-      const section = project.sections.find(s => s.id === sectionId);
+    sections: targetSectionIds.map((sectionId) => {
+      const section = project.sections.find((s) => s.id === sectionId);
       return {
         id: section?.id,
         name: section?.name,
         code: section?.code,
       };
     }),
-    stores: stores.map(store => ({
+    stores: stores.map((store) => ({
       id: store.id,
       name: store.name,
       type: store.type,
@@ -1175,9 +1259,15 @@ const getProjectInventory = catchAsync(async (req, res, next) => {
       totalMaterials: inventorySummary.length,
       totalStores: stores.length,
       totalSections: targetSectionIds.length,
-      totalStockValue: inventorySummary.reduce((sum, item) => sum + item.summary.totalStock, 0),
-      totalUsage: inventorySummary.reduce((sum, item) => sum + item.summary.usage.totalOut, 0),
-    }
+      totalStockValue: inventorySummary.reduce(
+        (sum, item) => sum + item.summary.totalStock,
+        0
+      ),
+      totalUsage: inventorySummary.reduce(
+        (sum, item) => sum + item.summary.usage.totalOut,
+        0
+      ),
+    },
   };
 
   res.json({
@@ -1199,4 +1289,4 @@ export {
   getStoreInventory,
   getStoreTransactions,
   getProjectInventory,
-}; 
+};

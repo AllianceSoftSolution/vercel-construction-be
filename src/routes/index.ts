@@ -11,6 +11,7 @@ import vendorRoutes from "./vendor";
 import demandRoutes from "./demand";
 import assignmentRoutes from "./assignment";
 import vendorAccountRoutes from "./vendorAccount";
+import purchaseOrderRoutes from "./purchaseOrder";
 
 // Authentication and user management
 router.use("/auth", authRoutes);
@@ -23,6 +24,7 @@ router.use("/materials", materialRoutes);
 router.use("/vendors", vendorRoutes);
 router.use("/demands", demandRoutes);
 router.use("/assignments", assignmentRoutes);
+router.use("/purchase-orders", purchaseOrderRoutes);
 
 // Finance management routes
 router.use("/vendor-account", vendorAccountRoutes);
