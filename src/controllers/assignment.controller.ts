@@ -2,6 +2,7 @@ import { PrismaClient, UserRole } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { generateEmployeeId } from "../utils/generateCode";
+import { TRANSACTION_REFERENCES } from "../constants";
 const crypto = require("crypto");
 
 const prisma = new PrismaClient();
@@ -360,41 +361,91 @@ const createConstructionManagerAssignment = catchAsync(
       );
     }
 
-    const assignment = await prisma.constructionManagerAssignment.create({
-      data: {
-        userId,
+    // Check if CM already has a store in this section
+    const existingCMStore = await prisma.store.findFirst({
+      where: {
+        type: "CM_STORE",
+        cmUserId: userId,
         sectionId,
-        createdBy: currentUserId,
+        isDeleted: false,
       },
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            role: true,
-          },
+    });
+
+    if (existingCMStore) {
+      return next(new AppError("CM already has a store in this section", 400));
+    }
+
+    // Create assignment and CM store in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // Create the CM assignment
+      const assignment = await tx.constructionManagerAssignment.create({
+        data: {
+          userId,
+          sectionId,
+          createdBy: currentUserId,
         },
-        section: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-            project: {
-              select: {
-                id: true,
-                name: true,
-                code: true,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          section: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+              project: {
+                select: {
+                  id: true,
+                  name: true,
+                  code: true,
+                },
               },
             },
           },
         },
-      },
+      });
+
+      // Create CM store for this CM
+      const cmStore = await tx.store.create({
+        data: {
+          name: `CM Store - ${user.name} - ${section.code}`,
+          type: "CM_STORE",
+          sectionId,
+          cmUserId: userId,
+          createdBy: currentUserId,
+        },
+        include: {
+          section: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+          cmUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+        },
+      });
+
+      return { assignment, cmStore };
     });
 
     res.status(201).json({
-      message: "Construction Manager assignment created successfully",
-      assignment,
+      message:
+        "Construction Manager assignment and CM store created successfully",
+      assignment: result.assignment,
+      cmStore: result.cmStore,
     });
   }
 );
@@ -783,18 +834,147 @@ const deactivateAssignment = catchAsync(async (req, res, next) => {
     return next(new AppError("Assignment not found", 404));
   }
 
-  assignment = await model.update({
-    where: { id },
-    data: {
-      isActive: false,
-      updatedBy: currentUserId,
-    },
-  });
+  // For construction manager assignments, also handle CM store cleanup
+  if (type === "construction-manager") {
+    const result = await prisma.$transaction(async (tx) => {
+      // Deactivate the assignment
+      const updatedAssignment = await tx.constructionManagerAssignment.update({
+        where: { id },
+        data: {
+          isActive: false,
+        },
+      });
 
-  res.json({
-    message: "Assignment deactivated successfully",
-    assignment,
-  });
+      // Find the CM store associated with this assignment
+      const cmStore = await tx.store.findFirst({
+        where: {
+          type: "CM_STORE",
+          cmUserId: existing.userId,
+          sectionId: existing.sectionId,
+          isDeleted: false,
+        },
+        include: {
+          inventory: {
+            include: {
+              material: {
+                select: {
+                  id: true,
+                  name: true,
+                  unit: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      if (cmStore) {
+        // Find the head store in the same section
+        const headStore = await tx.store.findFirst({
+          where: {
+            type: "HEAD_STORE",
+            sectionId: existing.sectionId,
+            isDeleted: false,
+            isActive: true,
+          },
+        });
+
+        // Transfer stock from CM store to head store if there's stock
+        if (cmStore.inventory && cmStore.inventory.length > 0 && headStore) {
+          for (const inventoryItem of cmStore.inventory) {
+            if (Number(inventoryItem.stock) > 0) {
+              // Transfer stock to head store
+              await tx.storeInventory.upsert({
+                where: {
+                  storeId_materialId: {
+                    storeId: headStore.id,
+                    materialId: inventoryItem.materialId,
+                  },
+                },
+                update: {
+                  stock: {
+                    increment: inventoryItem.stock,
+                  },
+                  available: {
+                    increment: inventoryItem.stock,
+                  },
+                },
+                create: {
+                  storeId: headStore.id,
+                  materialId: inventoryItem.materialId,
+                  stock: inventoryItem.stock,
+                  available: inventoryItem.stock,
+                  reserved: 0,
+                },
+              });
+
+              // Create transaction record for the transfer
+              await tx.storeTransaction.create({
+                data: {
+                  storeId: headStore.id,
+                  materialId: inventoryItem.materialId,
+                  type: "IN",
+                  quantity: inventoryItem.stock,
+                  reference: TRANSACTION_REFERENCES.CM_DEACTIVATION_TRANSFER,
+                  notes: `Stock transferred from deactivated CM store (${cmStore.name})`,
+                  createdBy: currentUserId,
+                },
+              });
+
+              // Clear the CM store inventory
+              await tx.storeInventory.update({
+                where: {
+                  storeId_materialId: {
+                    storeId: cmStore.id,
+                    materialId: inventoryItem.materialId,
+                  },
+                },
+                data: {
+                  stock: 0,
+                  available: 0,
+                  reserved: 0,
+                },
+              });
+            }
+          }
+        }
+
+        // Deactivate the CM store
+        await tx.store.update({
+          where: { id: cmStore.id },
+          data: {
+            isActive: false,
+            isDeleted: true,
+            updatedBy: currentUserId,
+            updatedAt: new Date(),
+          },
+        });
+      }
+
+      return { assignment: updatedAssignment, cmStore };
+    });
+
+    res.json({
+      message:
+        "Construction Manager assignment and CM store deactivated successfully. Any remaining stock has been transferred to the head store.",
+      assignment: result.assignment,
+      cmStore: result.cmStore,
+    });
+  } else {
+    // For other assignment types, just deactivate the assignment
+    assignment = await model.update({
+      where: { id },
+      data: {
+        isActive: false,
+        updatedBy: currentUserId,
+      },
+    });
+
+    res.json({
+      message: "Assignment deactivated successfully",
+      assignment,
+    });
+  }
 });
 
 // Create and assign a new Project Manager to a section in a project

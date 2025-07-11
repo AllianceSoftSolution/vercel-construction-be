@@ -6,6 +6,7 @@ import {
   extractQueryParams,
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
+import { TRANSACTION_REFERENCES } from "../constants";
 
 const prisma = new PrismaClient();
 
@@ -162,7 +163,7 @@ const createStore = catchAsync(async (req, res, next) => {
             materialId: item.materialId,
             type: "IN",
             quantity: item.quantity,
-            reference: "INITIAL_STOCK",
+            reference: TRANSACTION_REFERENCES.INITIAL_STOCK,
             notes: item.notes || "Initial stock setup",
             createdBy: userId,
           },
@@ -582,7 +583,7 @@ const stockIn = catchAsync(async (req, res, next) => {
         where: { isActive: true },
         include: {
           user: {
-            select: { id: true },
+            select: { id: true, isHead: true },
           },
         },
       },
@@ -597,14 +598,23 @@ const stockIn = catchAsync(async (req, res, next) => {
     return next(new AppError("Store is not active", 400));
   }
 
-  // Check if user is store incharge for this store
+  // Check if user is store incharge for this store or has isHead permission
   const isStoreIncharge = store.storeInchargeAssignments.some(
     (assignment) => assignment.user.id === userId
   );
 
-  if (!isStoreIncharge) {
+  // Get current user to check isHead status
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isHead: true },
+  });
+
+  if (!isStoreIncharge && !currentUser?.isHead) {
     return next(
-      new AppError("Only store incharges can perform stock operations", 403)
+      new AppError(
+        "Only store incharges or head store incharges can perform stock operations",
+        403
+      )
     );
   }
 
@@ -746,7 +756,7 @@ const stockOut = catchAsync(async (req, res, next) => {
         where: { isActive: true },
         include: {
           user: {
-            select: { id: true },
+            select: { id: true, isHead: true },
           },
         },
       },
@@ -761,14 +771,23 @@ const stockOut = catchAsync(async (req, res, next) => {
     return next(new AppError("Store is not active", 400));
   }
 
-  // Check if user is store incharge for this store
+  // Check if user is store incharge for this store or has isHead permission
   const isStoreIncharge = store.storeInchargeAssignments.some(
     (assignment) => assignment.user.id === userId
   );
 
-  if (!isStoreIncharge) {
+  // Get current user to check isHead status
+  const currentUser = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { isHead: true },
+  });
+
+  if (!isStoreIncharge && !currentUser?.isHead) {
     return next(
-      new AppError("Only store incharges can perform stock operations", 403)
+      new AppError(
+        "Only store incharges or head store incharges can perform stock operations",
+        403
+      )
     );
   }
 

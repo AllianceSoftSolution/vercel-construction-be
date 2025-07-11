@@ -1,1 +1,28 @@
 export const SAUDI_TZ = "Asia/Riyadh";
+
+// Transaction Reference Constants
+export const TRANSACTION_REFERENCES = {
+  INITIAL_STOCK: "INITIAL_STOCK",
+  CM_DEACTIVATION_TRANSFER: "CM_DEACTIVATION_TRANSFER",
+  PO_TRANSFER: "PO_TRANSFER",
+  DEMAND_FULFILLMENT: "DEMAND_FULFILLMENT",
+  MANUAL_ADJUSTMENT: "MANUAL_ADJUSTMENT",
+  LOSS_ADJUSTMENT: "LOSS_ADJUSTMENT",
+} as const;
+
+// Transaction Type Constants
+export const TRANSACTION_TYPES = {
+  IN: "IN",
+  OUT: "OUT",
+  TRANSFER: "TRANSFER",
+} as const;
+
+// Stock Operation Types
+export const STOCK_OPERATION_TYPES = {
+  PO: "PO",
+  INITIAL: "INITIAL",
+  TRANSFER: "TRANSFER",
+  MANUAL: "MANUAL",
+  DEMAND: "DEMAND",
+  LOSS: "LOSS",
+} as const;

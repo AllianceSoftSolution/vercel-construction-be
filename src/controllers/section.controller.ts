@@ -30,14 +30,36 @@ const createSection = catchAsync(async (req, res, next) => {
   // Generate automatic section code
   const code = await generateSectionCode();
 
-  const section = await prisma.section.create({
-    data: {
-      name,
-      code,
-      description,
-      projectId,
-      createdBy: userId,
-    },
+  // Create section and head store in a transaction
+  const result = await prisma.$transaction(async (tx) => {
+    const section = await tx.section.create({
+      data: {
+        name,
+        code,
+        description,
+        projectId,
+        createdBy: userId,
+      },
+    });
+
+    // Create head store for the section
+    const headStore = await tx.store.create({
+      data: {
+        name: `Head Store - ${section.code}`,
+        type: "HEAD_STORE",
+        sectionId: section.id,
+        isActive: true,
+        isDeleted: false,
+        createdBy: userId,
+      },
+    });
+
+    return { section, headStore };
+  });
+
+  // Fetch the section with all details and the head store
+  const section = await prisma.section.findUnique({
+    where: { id: result.section.id },
     include: {
       project: {
         select: {
@@ -48,18 +70,46 @@ const createSection = catchAsync(async (req, res, next) => {
       },
       stores: {
         where: { isDeleted: false },
-        select: {
-          id: true,
-          name: true,
-          type: true,
+        include: {
+          cmUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          storeInchargeAssignments: {
+            where: { isActive: true },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+            },
+          },
         },
       },
     },
   });
 
+  if (!section) {
+    return next(new AppError("Section not found after creation", 404));
+  }
+
+  // Find the head store (should be only one)
+  const headStore = section.stores.find((s) => s.type === "HEAD_STORE");
+
   res.status(201).json({
     message: "Section created successfully",
-    section,
+    section: {
+      ...section,
+      headStore,
+    },
   });
 });
 
@@ -140,10 +190,28 @@ const getSections = catchAsync(async (req, res) => {
       },
       stores: {
         where: { isDeleted: false },
-        select: {
-          id: true,
-          name: true,
-          type: true,
+        include: {
+          cmUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          storeInchargeAssignments: {
+            where: { isActive: true },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+            },
+          },
         },
       },
       _count: {
@@ -185,9 +253,16 @@ const getSectionById = catchAsync(async (req, res, next) => {
       stores: {
         where: {
           isDeleted: false,
-          type: "HEAD_STORE", // Only get head stores
         },
         include: {
+          cmUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
           storeInchargeAssignments: {
             where: { isActive: true },
             include: {
@@ -225,6 +300,7 @@ const getSectionById = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
+              creator: true,
             },
           },
         },
@@ -274,6 +350,9 @@ const getSectionById = catchAsync(async (req, res, next) => {
     return next(new AppError("Section not found", 404));
   }
 
+  // Find the head store (should be only one)
+  const headStore = section.stores.find((s) => s.type === "HEAD_STORE");
+
   // Prepare the response with organized data
   const response = {
     id: section.id,
@@ -288,12 +367,38 @@ const getSectionById = catchAsync(async (req, res, next) => {
     createdBy: section.createdBy,
     updatedBy: section.updatedBy,
     project: section.project,
+    headStore,
     associatedProjectManager:
       section.projectManagerAssignments.length > 0
         ? section.projectManagerAssignments[0]
         : null,
-    associatedConstructionManagers: section.constructionManagerAssignments,
-    associatedHeadStores: section.stores,
+    associatedConstructionManagers: await Promise.all(
+      section.constructionManagerAssignments.map(async (cmAssignment) => {
+        // Find the CM store for this CM
+        const cmStore = await prisma.store.findFirst({
+          where: {
+            type: "CM_STORE",
+            cmUserId: cmAssignment.userId,
+            sectionId: section.id,
+            isDeleted: false,
+          },
+          select: {
+            id: true,
+            name: true,
+            type: true,
+            isActive: true,
+            isDeleted: true,
+            createdAt: true,
+            updatedAt: true,
+          },
+        });
+
+        return {
+          ...cmAssignment,
+          cmStore,
+        };
+      })
+    ),
     associatedSiteIncharges: section.siteInchargeAssignments,
     associatedAccountants: section.accountantAssignments,
     recentDemands: section.demands,
@@ -339,10 +444,28 @@ const updateSection = catchAsync(async (req, res, next) => {
       },
       stores: {
         where: { isDeleted: false },
-        select: {
-          id: true,
-          name: true,
-          type: true,
+        include: {
+          cmUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          storeInchargeAssignments: {
+            where: { isActive: true },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -404,10 +527,28 @@ const activateSection = catchAsync(async (req, res, next) => {
       },
       stores: {
         where: { isDeleted: false },
-        select: {
-          id: true,
-          name: true,
-          type: true,
+        include: {
+          cmUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          storeInchargeAssignments: {
+            where: { isActive: true },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+            },
+          },
         },
       },
     },
@@ -445,10 +586,28 @@ const deactivateSection = catchAsync(async (req, res, next) => {
       },
       stores: {
         where: { isDeleted: false },
-        select: {
-          id: true,
-          name: true,
-          type: true,
+        include: {
+          cmUser: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              role: true,
+            },
+          },
+          storeInchargeAssignments: {
+            where: { isActive: true },
+            include: {
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  role: true,
+                },
+              },
+            },
+          },
         },
       },
     },
