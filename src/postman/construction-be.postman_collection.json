@@ -21,7 +21,7 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"email\": \"user@example.com\",\n  \"name\": \"John Doe\",\n  \"role\": \"ADMIN\"\n}"
+                            "raw": "{\n  \"email\": \"user@example.com\",\n  \"name\": \"John Doe\",\n  \"role\": \"ADMIN\",\n  \"isHead\": false\n}"
                         },
                         "url": {
                             "raw": "/api/auth/register",
@@ -33,7 +33,8 @@
                                 "auth",
                                 "register"
                             ]
-                        }
+                        },
+                        "description": "Register a new user. Only admins can create users with isHead: true, and only for ACCOUNTANT and STORE_INCHARGE roles. Users with isHead: true have access to all projects and sections."
                     }
                 },
                 {
@@ -378,7 +379,7 @@
                                 }
                             ]
                         },
-                        "description": "Get projects with filtering, searching, and pagination. Supports search in name, code, description fields."
+                        "description": "Get projects with filtering, searching, and pagination. Supports search in name, code, description fields. Returns totalAmountSpent for each project and its sections based on POs with amounts."
                     }
                 },
                 {
@@ -560,7 +561,7 @@
                                 }
                             ]
                         },
-                        "description": "Get sections with filtering, searching, and pagination. Supports search in name, code, description fields."
+                        "description": "Get sections with filtering, searching, and pagination. Supports search in name, code, description fields. Returns totalAmountSpent for each section based on POs with amounts."
                     }
                 },
                 {
@@ -1335,6 +1336,148 @@
             ]
         },
         {
+            "name": "Vendor Account Management",
+            "item": [
+                {
+                    "name": "Get All Vendor Accounts Overview",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/vendor-account/vendors?page=1&limit=10&search=abc",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendor-account",
+                                "vendors"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10",
+                                    "description": "Items per page"
+                                },
+                                {
+                                    "key": "search",
+                                    "value": "abc",
+                                    "description": "Search in vendor name, contact person, or email"
+                                }
+                            ]
+                        },
+                        "description": "Get all vendor accounts with overview including balance, paid amount, remaining amount, overdue amount, etc."
+                    }
+                },
+                {
+                    "name": "Get Vendor Account Statement",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/vendor-account/vendors/:vendorId/statement",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendor-account",
+                                "vendors",
+                                ":vendorId",
+                                "statement"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Add Vendor Payment",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"amount\": 10000,\n  \"proofOfPayment\": \"https://example.com/payment-receipt.pdf\",\n  \"note\": \"Advance payment\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/vendor-account/vendors/:vendorId/payments",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendor-account",
+                                "vendors",
+                                ":vendorId",
+                                "payments"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Vendor Payments",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/vendor-account/vendors/payments",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendor-account",
+                                "vendors",
+                                "payments"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Vendor Account Transactions",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/vendor-account/transactions",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendor-account",
+                                "transactions"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Vendor Account Summary",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/vendor-account/vendors/:vendorId/summary",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "vendor-account",
+                                "vendors",
+                                ":vendorId",
+                                "summary"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
             "name": "Demands",
             "item": [
                 {
@@ -1588,7 +1731,7 @@
                     "request": {
                         "method": "GET",
                         "url": {
-                            "raw": "/api/purchase-orders?projectId=<projectId>&sectionId=<sectionId>&demandId=<demandId>&status=DRAFT&page=1&limit=10",
+                            "raw": "/api/purchase-orders?projectId=<projectId>&sectionId=<sectionId>&demandId=<demandId>&status=CREATED&page=1&limit=10",
                             "host": [
                                 "{{baseUrl}}"
                             ],
@@ -1611,7 +1754,7 @@
                                 },
                                 {
                                     "key": "status",
-                                    "value": "DRAFT"
+                                    "value": "CREATED"
                                 },
                                 {
                                     "key": "page",
@@ -1665,6 +1808,34 @@
                                 "api",
                                 "purchase-orders",
                                 ":id"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update PO Status",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"status\": \"ORDER_PLACED\",\n  \"notes\": \"Order placed with vendor\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/purchase-orders/:id/status",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "purchase-orders",
+                                ":id",
+                                "status"
                             ]
                         }
                     }
@@ -1762,6 +1933,42 @@
                             ]
                         }
                     }
+                },
+                {
+                    "name": "Add PO Amount",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"unitPrice\": 150.50,\n  \"proofOfBill\": \"https://example.com/bill-invoice.pdf\",\n  \"notes\": \"Vendor bill for materials\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/purchase-orders/:id/amount",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "purchase-orders",
+                                ":id",
+                                "amount"
+                            ],
+                            "variable": [
+                                {
+                                    "key": "id",
+                                    "value": "<purchaseOrderId>"
+                                }
+                            ]
+                        }
+                    },
+                    "response": [],
+                    "description": "Add amount to PO. Automatically changes PO status to CONFIRMED and credits vendor account. Only works for POs in CREATED status."
                 }
             ]
         },
@@ -2078,106 +2285,183 @@
             ]
         },
         {
-            "name": "Get Vendor Account Statement",
-            "request": {
-                "method": "GET",
-                "url": {
-                    "raw": "/api/vendor-account/vendors/:vendorId/statement",
-                    "host": [
-                        "{{baseUrl}}"
-                    ],
-                    "path": [
-                        "api",
-                        "vendor-account",
-                        "vendors",
-                        ":vendorId",
-                        "statement"
-                    ]
-                }
-            }
-        },
-        {
-            "name": "Add Vendor Payment",
-            "request": {
-                "method": "POST",
-                "header": [
-                    {
-                        "key": "Content-Type",
-                        "value": "application/json"
+            "name": "Analytics & Dashboards",
+            "item": [
+                {
+                    "name": "Get Dashboard Analytics (Role-based)",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "/api/analytics/dashboard",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "dashboard"
+                            ]
+                        },
+                        "description": "Get role-specific dashboard analytics. Automatically returns data based on user's role and access level."
                     }
-                ],
-                "body": {
-                    "mode": "raw",
-                    "raw": "{\n  \"amount\": 10000,\n  \"date\": \"2024-06-01\",\n  \"notes\": \"Advance payment\"\n}"
                 },
-                "url": {
-                    "raw": "/api/vendor-account/vendors/:vendorId/payments",
-                    "host": [
-                        "{{baseUrl}}"
-                    ],
-                    "path": [
-                        "api",
-                        "vendor-account",
-                        "vendors",
-                        ":vendorId",
-                        "payments"
-                    ]
+                {
+                    "name": "Get Admin Dashboard",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "/api/analytics/admin/dashboard",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "admin",
+                                "dashboard"
+                            ]
+                        },
+                        "description": "Get comprehensive admin dashboard analytics including: total projects, amounts spent/pending/paid, vendors, demands, POs, demand breakdown pie chart, PO distribution by vendor bar chart, financial progress per project grouped bar chart, users by role graph, and amount by vendor breakdown chart."
+                    }
+                },
+                {
+                    "name": "Get Site Incharge Dashboard",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "/api/analytics/site-incharge/dashboard",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "site-incharge",
+                                "dashboard"
+                            ]
+                        },
+                        "description": "Get site incharge dashboard analytics for assigned sections only. Includes: total projects, amount spent, demands, POs, demand breakdown, PO distribution by vendor, and amount by vendor breakdown."
+                    }
+                },
+                {
+                    "name": "Get Project Manager Dashboard",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "/api/analytics/project-manager/dashboard",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "project-manager",
+                                "dashboard"
+                            ]
+                        },
+                        "description": "Get project manager dashboard analytics for assigned sections only. Includes: total projects, amount spent, demands, POs, demand breakdown, and amount by vendor breakdown."
+                    }
+                },
+                {
+                    "name": "Get Construction Manager Dashboard",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "/api/analytics/construction-manager/dashboard",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "construction-manager",
+                                "dashboard"
+                            ]
+                        },
+                        "description": "Get construction manager dashboard analytics for assigned sections only. Includes: total demands, POs, and demand breakdown."
+                    }
+                },
+                {
+                    "name": "Get Store Incharge Dashboard",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "/api/analytics/store-incharge/dashboard",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "store-incharge",
+                                "dashboard"
+                            ]
+                        },
+                        "description": "Get store incharge dashboard analytics for assigned stores only. Includes: total stores, materials, stock, reserved items, and assigned sections."
+                    }
+                },
+                {
+                    "name": "Get Accountant Dashboard",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{token}}"
+                            }
+                        ],
+                        "url": {
+                            "raw": "/api/analytics/accountant/dashboard",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "analytics",
+                                "accountant",
+                                "dashboard"
+                            ]
+                        },
+                        "description": "Get accountant dashboard analytics. Includes: total vendors, amounts spent/pending/paid, and top vendor accounts with balances."
+                    }
                 }
-            }
-        },
-        {
-            "name": "Get Vendor Payments",
-            "request": {
-                "method": "GET",
-                "url": {
-                    "raw": "/api/vendor-account/vendors/payments",
-                    "host": [
-                        "{{baseUrl}}"
-                    ],
-                    "path": [
-                        "api",
-                        "vendor-account",
-                        "vendors",
-                        "payments"
-                    ]
-                }
-            }
-        },
-        {
-            "name": "Get Vendor Account Transactions",
-            "request": {
-                "method": "GET",
-                "url": {
-                    "raw": "/api/vendor-account/transactions",
-                    "host": [
-                        "{{baseUrl}}"
-                    ],
-                    "path": [
-                        "api",
-                        "vendor-account",
-                        "transactions"
-                    ]
-                }
-            }
-        },
-        {
-            "name": "Get Vendor Account Summary",
-            "request": {
-                "method": "GET",
-                "url": {
-                    "raw": "/api/vendor-account/vendors/:vendorId/summary",
-                    "host": [
-                        "{{baseUrl}}"
-                    ],
-                    "path": [
-                        "api",
-                        "vendor-account",
-                        "vendors",
-                        ":vendorId",
-                        "summary"
-                    ]
-                }
-            }
+            ]
         }
     ],
     "variable": [

@@ -2,17 +2,16 @@ import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { generateProjectCode } from "../utils/generateCode";
-import { buildQueryOptions, extractQueryParams, buildPaginationMeta } from "../utils/buildQueryOptions";
+import {
+  buildQueryOptions,
+  extractQueryParams,
+  buildPaginationMeta,
+} from "../utils/buildQueryOptions";
 
 const prisma = new PrismaClient();
 
 const createProject = catchAsync(async (req, res, next) => {
-  const {
-    name,
-    description,
-    startDate,
-    endDate,
-  } = req.body;
+  const { name, description, startDate, endDate } = req.body;
   const userId = req.user.id;
 
   if (!name) {
@@ -39,9 +38,9 @@ const createProject = catchAsync(async (req, res, next) => {
           name: true,
           code: true,
           description: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   res.status(201).json({
@@ -55,65 +54,73 @@ const getProjects = catchAsync(async (req, res) => {
 
   // Extract query parameters
   const filterOptions = extractQueryParams(req);
-  
+
   // Define searchable fields for projects
-  const searchableFields = ['name', 'code', 'description'];
-  
+  const searchableFields = ["name", "code", "description"];
+
   // Build default filters
   let defaultFilters: any = { isDeleted: false };
 
   // Role-based filtering for projects
   let assignedSectionIds: string[] = [];
-  if (user.role === 'ADMIN') {
+  if (user.role === "ADMIN") {
     // No filter, see all
-  } else if (user.role === 'SITE_INCHARGE') {
+  } else if (user.role === "SITE_INCHARGE") {
     const assignments = await prisma.siteInchargeAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { projectId: true, sectionId: true }
+      select: { projectId: true, sectionId: true },
     });
-    const projectIds = assignments.map(a => a.projectId);
-    assignedSectionIds = assignments.map(a => a.sectionId);
+    const projectIds = assignments.map((a) => a.projectId);
+    assignedSectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.id = { in: projectIds };
-  } else if (user.role === 'PROJECT_MANAGER') {
+  } else if (user.role === "PROJECT_MANAGER") {
     const assignments = await prisma.projectManagerAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { projectId: true, sectionId: true }
+      select: { projectId: true, sectionId: true },
     });
-    const projectIds = assignments.map(a => a.projectId);
-    assignedSectionIds = assignments.map(a => a.sectionId);
+    const projectIds = assignments.map((a) => a.projectId);
+    assignedSectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.id = { in: projectIds };
-  } else if (user.role === 'CONSTRUCTION_MANAGER') {
+  } else if (user.role === "CONSTRUCTION_MANAGER") {
     const assignments = await prisma.constructionManagerAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { section: { select: { projectId: true, id: true } } }
+      select: { section: { select: { projectId: true, id: true } } },
     });
-    const projectIds = assignments.map(a => a.section.projectId);
-    assignedSectionIds = assignments.map(a => a.section.id);
+    const projectIds = assignments.map((a) => a.section.projectId);
+    assignedSectionIds = assignments.map((a) => a.section.id);
     defaultFilters.id = { in: projectIds };
-  } else if (user.role === 'STORE_INCHARGE') {
+  } else if (user.role === "STORE_INCHARGE") {
     const assignments = await prisma.storeInchargeAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { store: { select: { section: { select: { projectId: true, id: true } } } } }
+      select: {
+        store: {
+          select: { section: { select: { projectId: true, id: true } } },
+        },
+      },
     });
-    const projectIds = assignments.map(a => a.store.section.projectId);
-    assignedSectionIds = assignments.map(a => a.store.section.id);
+    const projectIds = assignments.map((a) => a.store.section.projectId);
+    assignedSectionIds = assignments.map((a) => a.store.section.id);
     defaultFilters.id = { in: projectIds };
-  } else if (user.role === 'ACCOUNTANT') {
+  } else if (user.role === "ACCOUNTANT") {
     const assignments = await prisma.accountantAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { projectId: true, sectionId: true }
+      select: { projectId: true, sectionId: true },
     });
-    const projectIds = assignments.map(a => a.projectId);
-    assignedSectionIds = assignments.map(a => a.sectionId);
+    const projectIds = assignments.map((a) => a.projectId);
+    assignedSectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.id = { in: projectIds };
   }
 
   // Build query options
-  const queryOptions = buildQueryOptions(filterOptions, defaultFilters, searchableFields);
+  const queryOptions = buildQueryOptions(
+    filterOptions,
+    defaultFilters,
+    searchableFields
+  );
 
   // Get total count for pagination
   const total = await prisma.project.count({
-    where: queryOptions.where
+    where: queryOptions.where,
   });
 
   // Get projects with pagination
@@ -127,32 +134,80 @@ const getProjects = catchAsync(async (req, res) => {
           name: true,
           code: true,
           description: true,
-        }
+        },
       },
-      
+
       _count: {
         select: {
           sections: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
+  // Calculate total amounts for each project and section
+  const projectsWithAmounts = await Promise.all(
+    projects.map(async (project) => {
+      // Get total amount spent on POs for this project
+      const projectPOs = await prisma.purchaseOrder.aggregate({
+        where: {
+          projectId: project.id,
+          isDeleted: false,
+          totalAmount: { not: null },
+        },
+        _sum: {
+          totalAmount: true,
+        },
+      });
+
+      // Get amounts for each section
+      const sectionsWithAmounts = await Promise.all(
+        project.sections.map(async (section) => {
+          const sectionPOs = await prisma.purchaseOrder.aggregate({
+            where: {
+              sectionId: section.id,
+              isDeleted: false,
+              totalAmount: { not: null },
+            },
+            _sum: {
+              totalAmount: true,
+            },
+          });
+
+          return {
+            ...section,
+            totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+          };
+        })
+      );
+
+      return {
+        ...project,
+        sections: sectionsWithAmounts,
+        totalAmountSpent: projectPOs._sum.totalAmount || 0,
+      };
+    })
+  );
+
   // Filter sections per project based on role/assignments
-  const filteredProjects = projects.map(project => {
+  const filteredProjects = projectsWithAmounts.map((project) => {
     let filteredSections = project.sections;
-    if (user.role !== 'ADMIN' && Array.isArray(filteredSections)) {
+    if (user.role !== "ADMIN" && Array.isArray(filteredSections)) {
       // Only keep sections with required properties
       filteredSections = filteredSections
-        .filter(section =>
-          section && typeof section === 'object' &&
-          'id' in section && 'name' in section && 'code' in section
+        .filter(
+          (section) =>
+            section &&
+            typeof section === "object" &&
+            "id" in section &&
+            "name" in section &&
+            "code" in section
         )
-        .filter(section => assignedSectionIds.includes((section as any).id));
+        .filter((section) => assignedSectionIds.includes((section as any).id));
     }
     return {
       ...project,
-      sections: filteredSections
+      sections: filteredSections,
     };
   });
 
@@ -166,7 +221,7 @@ const getProjects = catchAsync(async (req, res) => {
   res.json({
     message: "Projects retrieved successfully",
     projects: filteredProjects,
-    ...paginationMeta
+    ...paginationMeta,
   });
 });
 
@@ -198,7 +253,7 @@ const getProjectById = catchAsync(async (req, res, next) => {
                   name: true,
                   email: true,
                   role: true,
-                }
+                },
               },
               storeInchargeAssignments: {
                 where: { isActive: true },
@@ -209,11 +264,11 @@ const getProjectById = catchAsync(async (req, res, next) => {
                       name: true,
                       email: true,
                       role: true,
-                    }
-                  }
-                }
-              }
-            }
+                    },
+                  },
+                },
+              },
+            },
           },
           constructionManagerAssignments: {
             where: { isActive: true },
@@ -224,11 +279,11 @@ const getProjectById = catchAsync(async (req, res, next) => {
                   name: true,
                   email: true,
                   role: true,
-                }
-              }
-            }
-          }
-        }
+                },
+              },
+            },
+          },
+        },
       },
       siteInchargeAssignments: {
         where: { isActive: true },
@@ -239,16 +294,16 @@ const getProjectById = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
+            },
           },
           section: {
             select: {
               id: true,
               name: true,
               code: true,
-            }
-          }
-        }
+            },
+          },
+        },
       },
       projectManagerAssignments: {
         where: { isActive: true },
@@ -259,16 +314,16 @@ const getProjectById = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
+            },
           },
           section: {
             select: {
               id: true,
               name: true,
               code: true,
-            }
-          }
-        }
+            },
+          },
+        },
       },
       accountantAssignments: {
         where: { isActive: true },
@@ -279,29 +334,62 @@ const getProjectById = catchAsync(async (req, res, next) => {
               name: true,
               email: true,
               role: true,
-            }
+            },
           },
           section: {
             select: {
               id: true,
               name: true,
               code: true,
-            }
-          }
-        }
-      }
-    }
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!project) {
     return next(new AppError("Project not found", 404));
   }
 
+  // Calculate total amount spent on POs for this project
+  const projectPOs = await prisma.purchaseOrder.aggregate({
+    where: {
+      projectId: project.id,
+      isDeleted: false,
+      totalAmount: { not: null },
+    },
+    _sum: {
+      totalAmount: true,
+    },
+  });
+
+  // Calculate amounts for each section
+  const sectionsWithAmounts = await Promise.all(
+    project.sections.map(async (section) => {
+      const sectionPOs = await prisma.purchaseOrder.aggregate({
+        where: {
+          sectionId: section.id,
+          isDeleted: false,
+          totalAmount: { not: null },
+        },
+        _sum: {
+          totalAmount: true,
+        },
+      });
+
+      return {
+        ...section,
+        totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+      };
+    })
+  );
+
   // Create a single list of all associated members with their roles
   const allMembers = new Map();
 
   // Add site incharges
-  project.siteInchargeAssignments.forEach(assignment => {
+  project.siteInchargeAssignments.forEach((assignment) => {
     const userId = assignment.user.id;
     if (!allMembers.has(userId)) {
       allMembers.set(userId, {
@@ -309,17 +397,17 @@ const getProjectById = catchAsync(async (req, res, next) => {
         name: assignment.user.name,
         email: assignment.user.email,
         role: assignment.user.role,
-        assignments: []
+        assignments: [],
       });
     }
     allMembers.get(userId).assignments.push({
-      type: 'Site Incharge',
-      section: assignment.section
+      type: "Site Incharge",
+      section: assignment.section,
     });
   });
 
   // Add project managers
-  project.projectManagerAssignments.forEach(assignment => {
+  project.projectManagerAssignments.forEach((assignment) => {
     const userId = assignment.user.id;
     if (!allMembers.has(userId)) {
       allMembers.set(userId, {
@@ -327,17 +415,17 @@ const getProjectById = catchAsync(async (req, res, next) => {
         name: assignment.user.name,
         email: assignment.user.email,
         role: assignment.user.role,
-        assignments: []
+        assignments: [],
       });
     }
     allMembers.get(userId).assignments.push({
-      type: 'Project Manager',
-      section: assignment.section
+      type: "Project Manager",
+      section: assignment.section,
     });
   });
 
   // Add accountants
-  project.accountantAssignments.forEach(assignment => {
+  project.accountantAssignments.forEach((assignment) => {
     const userId = assignment.user.id;
     if (!allMembers.has(userId)) {
       allMembers.set(userId, {
@@ -345,76 +433,20 @@ const getProjectById = catchAsync(async (req, res, next) => {
         name: assignment.user.name,
         email: assignment.user.email,
         role: assignment.user.role,
-        assignments: []
+        assignments: [],
       });
     }
     allMembers.get(userId).assignments.push({
-      type: 'Accountant',
-      section: assignment.section
+      type: "Accountant",
+      section: assignment.section,
     });
   });
 
-  // Add construction managers from sections
-  project.sections.forEach(section => {
-    section.constructionManagerAssignments.forEach(assignment => {
-      const userId = assignment.user.id;
-      if (!allMembers.has(userId)) {
-        allMembers.set(userId, {
-          id: assignment.user.id,
-          name: assignment.user.name,
-          email: assignment.user.email,
-          role: assignment.user.role,
-          assignments: []
-        });
-      }
-      allMembers.get(userId).assignments.push({
-        type: 'Construction Manager',
-        section: {
-          id: section.id,
-          name: section.name,
-          code: section.code
-        }
-      });
-    });
-  });
-
-  // Add store incharges from all stores in sections
-  project.sections.forEach(section => {
-    section.stores.forEach(store => {
-      store.storeInchargeAssignments.forEach(assignment => {
-        const userId = assignment.user.id;
-        if (!allMembers.has(userId)) {
-          allMembers.set(userId, {
-            id: assignment.user.id,
-            name: assignment.user.name,
-            email: assignment.user.email,
-            role: assignment.user.role,
-            assignments: []
-          });
-        }
-        allMembers.get(userId).assignments.push({
-          type: `Store Incharge (${store.type})`,
-          section: {
-            id: section.id,
-            name: section.name,
-            code: section.code
-          },
-          store: {
-            id: store.id,
-            name: store.name,
-            type: store.type
-          }
-        });
-      });
-    });
-  });
-
-  // Convert map to array
   const associatedMembers = Array.from(allMembers.values());
 
-  // Group site incharge assignments by user
+  // Group site incharges by user
   const siteInchargeMap = new Map();
-  project.siteInchargeAssignments.forEach(assignment => {
+  project.siteInchargeAssignments.forEach((assignment) => {
     const userId = assignment.user.id;
     if (!siteInchargeMap.has(userId)) {
       siteInchargeMap.set(userId, {
@@ -422,16 +454,16 @@ const getProjectById = catchAsync(async (req, res, next) => {
         name: assignment.user.name,
         email: assignment.user.email,
         role: assignment.user.role,
-        sections: []
+        sections: [],
       });
     }
     siteInchargeMap.get(userId).sections.push(assignment.section);
   });
   const assignedSiteIncharges = Array.from(siteInchargeMap.values());
 
-  // Group accountant assignments by user
+  // Group accountants by user
   const accountantMap = new Map();
-  project.accountantAssignments.forEach(assignment => {
+  project.accountantAssignments.forEach((assignment) => {
     const userId = assignment.user.id;
     if (!accountantMap.has(userId)) {
       accountantMap.set(userId, {
@@ -439,7 +471,7 @@ const getProjectById = catchAsync(async (req, res, next) => {
         name: assignment.user.name,
         email: assignment.user.email,
         role: assignment.user.role,
-        sections: []
+        sections: [],
       });
     }
     accountantMap.get(userId).sections.push(assignment.section);
@@ -460,10 +492,11 @@ const getProjectById = catchAsync(async (req, res, next) => {
     updatedAt: project.updatedAt,
     createdBy: project.createdBy,
     updatedBy: project.updatedBy,
-    sections: project.sections,
+    sections: sectionsWithAmounts,
     assignedSiteIncharges: assignedSiteIncharges,
     assignedAccountants: assignedAccountants,
-    associatedMembers: associatedMembers
+    associatedMembers: associatedMembers,
+    totalAmountSpent: projectPOs._sum.totalAmount || 0,
   };
 
   res.json({
@@ -511,9 +544,9 @@ const updateProject = catchAsync(async (req, res, next) => {
           name: true,
           code: true,
           description: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   res.json({
@@ -538,7 +571,7 @@ const deleteProject = catchAsync(async (req, res, next) => {
       isActive: false,
       updatedBy: userId,
       updatedAt: new Date(),
-    }
+    },
   });
 
   res.json({
@@ -570,9 +603,9 @@ const activateProject = catchAsync(async (req, res, next) => {
           name: true,
           code: true,
           description: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   res.json({
@@ -605,9 +638,9 @@ const deactivateProject = catchAsync(async (req, res, next) => {
           name: true,
           code: true,
           description: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   res.json({
@@ -624,4 +657,4 @@ export {
   deleteProject,
   activateProject,
   deactivateProject,
-}; 
+};

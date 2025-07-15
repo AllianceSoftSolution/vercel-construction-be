@@ -1,5 +1,6 @@
 import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
+import { Decimal } from "@prisma/client/runtime/library";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 
@@ -206,6 +207,7 @@ export const getPurchaseOrders = catchAsync(
       sectionId,
       demandId,
       status,
+      hasAmount,
       page = 1,
       limit = 10,
     } = req.query;
@@ -221,6 +223,13 @@ export const getPurchaseOrders = catchAsync(
     if (sectionId) where.sectionId = sectionId as string;
     if (demandId) where.demandId = demandId as string;
     if (status) where.status = status as string;
+
+    // Filter by amount status
+    if (hasAmount === "true") {
+      where.unitPrice = { not: null };
+    } else if (hasAmount === "false") {
+      where.unitPrice = null;
+    }
 
     // Role-based filtering for POs
     if (user.role === "ADMIN" || (user.role === "ACCOUNTANT" && user.isHead)) {
@@ -351,9 +360,19 @@ export const updatePurchaseOrder = catchAsync(
       return next(new AppError("Purchase Order not found", 404));
     }
 
-    // Only allow updates if PO is in DRAFT status
-    if (purchaseOrder.status !== "DRAFT") {
-      return next(new AppError("Can only update PO in DRAFT status", 400));
+    // Only allow updates if PO is in CREATED or CONFIRMED status
+    if (!["CREATED", "CONFIRMED"].includes(purchaseOrder.status)) {
+      return next(
+        new AppError("Can only update PO in CREATED or CONFIRMED status", 400)
+      );
+    }
+
+    // Validate status transition
+    if (
+      status &&
+      !["CREATED", "CONFIRMED", "ORDER_PLACED", "CANCELLED"].includes(status)
+    ) {
+      return next(new AppError("Invalid status transition", 400));
     }
 
     // If updating quantity, validate against demand
@@ -452,9 +471,9 @@ export const deletePurchaseOrder = catchAsync(
       return next(new AppError("Purchase Order not found", 404));
     }
 
-    // Only allow deletion if PO is in DRAFT status
-    if (purchaseOrder.status !== "DRAFT") {
-      return next(new AppError("Can only delete PO in DRAFT status", 400));
+    // Only allow deletion if PO is in CREATED or CONFIRMED status
+    if (!["CREATED", "CONFIRMED"].includes(purchaseOrder.status)) {
+      return next(new AppError("Can only delete PO in CREATED or CONFIRMED status", 400));
     }
 
     await prisma.purchaseOrder.update({
@@ -596,6 +615,214 @@ export const getDemandPOStatistics = catchAsync(
         isPartiallyCovered:
           totalPOQuantity > 0 && totalPOQuantity < demandQuantity,
       },
+    });
+  }
+);
+
+// Update PO Status (dedicated endpoint for status transitions)
+export const updatePOStatus = catchAsync(
+  async (req: Request, res: Response, next) => {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const purchaseOrder = await prisma.purchaseOrder.findFirst({
+      where: { id, isDeleted: false },
+      include: {
+        demand: true,
+        material: true,
+        vendor: true,
+      },
+    });
+
+    if (!purchaseOrder) {
+      return next(new AppError("Purchase Order not found", 404));
+    }
+
+    // Define valid status transitions
+    const validTransitions: Record<string, string[]> = {
+      CREATED: ["CONFIRMED", "ORDER_PLACED", "CANCELLED"],
+      CONFIRMED: ["ORDER_PLACED", "CANCELLED"],
+      ORDER_PLACED: ["IN_TRANSIT", "CANCELLED"],
+      IN_TRANSIT: ["IN_STORE", "CANCELLED"],
+      IN_STORE: ["COMPLETED"],
+      COMPLETED: [], // Final state
+      CANCELLED: [], // Final state
+    };
+
+    const currentStatus = purchaseOrder.status;
+    const allowedTransitions = validTransitions[currentStatus] || [];
+
+    if (!allowedTransitions.includes(status)) {
+      return next(
+        new AppError(
+          `Invalid status transition from ${currentStatus} to ${status}. Allowed transitions: ${allowedTransitions.join(
+            ", "
+          )}`,
+          400
+        )
+      );
+    }
+
+    // Additional validation for specific transitions
+    if (status === "ORDER_PLACED") {
+      // Validate that PO has required fields
+      if (
+        !purchaseOrder.materialId ||
+        !purchaseOrder.vendorId ||
+        !purchaseOrder.quantity
+      ) {
+        return next(
+          new AppError(
+            "PO must have material, vendor, and quantity before placing order",
+            400
+          )
+        );
+      }
+    }
+
+    const updatedPO = await prisma.purchaseOrder.update({
+      where: { id },
+      data: {
+        status,
+        updatedBy: req.user.id,
+      },
+      include: {
+        demand: {
+          include: {
+            section: {
+              include: {
+                project: true,
+              },
+            },
+          },
+        },
+        section: true,
+        material: true,
+        vendor: true,
+      },
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: `Purchase Order status updated to ${status}`,
+      data: updatedPO,
+    });
+  }
+);
+
+// Add Amount to PO and Credit Vendor Account
+export const addPOAmount = catchAsync(
+  async (req: Request, res: Response, next) => {
+    const { id } = req.params;
+    const { unitPrice, proofOfBill, notes } = req.body;
+
+    const purchaseOrder = await prisma.purchaseOrder.findFirst({
+      where: { id, isDeleted: false },
+      include: {
+        demand: true,
+        material: true,
+        vendor: true,
+      },
+    });
+
+    if (!purchaseOrder) {
+      return next(new AppError("Purchase Order not found", 404));
+    }
+
+    // Only allow adding amounts if PO is in CREATED status
+    if (purchaseOrder.status !== "CREATED") {
+      return next(
+        new AppError("Can only add amounts to PO in CREATED status", 400)
+      );
+    }
+
+    if (!unitPrice || unitPrice <= 0) {
+      return next(new AppError("Unit price must be greater than 0", 400));
+    }
+
+    if (!proofOfBill) {
+      return next(new AppError("Proof of bill/invoice is required", 400));
+    }
+
+    const totalAmount = Number(purchaseOrder.quantity) * Number(unitPrice);
+
+    // Use transaction to ensure data consistency
+    const result = await prisma.$transaction(async (tx) => {
+      // Update PO with amount details and automatically change status to CONFIRMED
+      const updatedPO = await tx.purchaseOrder.update({
+        where: { id },
+        data: {
+          unitPrice: new Decimal(unitPrice),
+          totalAmount: new Decimal(totalAmount),
+          proofOfBill,
+          amountAddedBy: req.user.id,
+          amountAddedAt: new Date(),
+          status: "CONFIRMED", // Automatically change status to CONFIRMED
+          updatedBy: req.user.id,
+        },
+        include: {
+          demand: {
+            include: {
+              section: {
+                include: {
+                  project: true,
+                },
+              },
+            },
+          },
+          section: true,
+          material: true,
+          vendor: true,
+        },
+      });
+
+      // Get or create vendor account
+      let vendorAccount = await tx.vendorAccount.findUnique({
+        where: { vendorId: purchaseOrder.vendorId },
+      });
+
+      if (!vendorAccount) {
+        vendorAccount = await tx.vendorAccount.create({
+          data: {
+            vendorId: purchaseOrder.vendorId,
+            totalCredited: new Decimal(0),
+            totalDebited: new Decimal(0),
+            balance: new Decimal(0),
+          },
+        });
+      }
+
+      // Create vendor account transaction (CREDIT)
+      await tx.vendorAccountTransaction.create({
+        data: {
+          vendorAccountId: vendorAccount.id,
+          type: "CREDIT",
+          amount: new Decimal(totalAmount),
+          purchaseOrderId: purchaseOrder.id,
+          addedBy: req.user.id,
+          proofOfPayment: proofOfBill,
+          note: notes || `Credit for PO ${purchaseOrder.referenceNumber}`,
+        },
+      });
+
+      // Update vendor account balance
+      await tx.vendorAccount.update({
+        where: { id: vendorAccount.id },
+        data: {
+          totalCredited: vendorAccount.totalCredited.add(
+            new Decimal(totalAmount)
+          ),
+          balance: vendorAccount.balance.add(new Decimal(totalAmount)),
+        },
+      });
+
+      return updatedPO;
+    });
+
+    res.status(200).json({
+      status: "success",
+      message: `Amount added to PO, status changed to CONFIRMED, and vendor account credited with ${totalAmount}`,
+      data: result,
     });
   }
 );

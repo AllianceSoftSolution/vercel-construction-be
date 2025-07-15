@@ -55,6 +55,16 @@ enum VendorAccountTransactionType {
   DEBIT
 }
 
+enum POStatus {
+  CREATED
+  CONFIRMED
+  ORDER_PLACED
+  IN_TRANSIT
+  IN_STORE
+  COMPLETED
+  CANCELLED
+}
+
 // Core Models
 model User {
   id          String   @id @default(cuid())
@@ -76,6 +86,7 @@ model User {
   createdUsers User[] @relation("UserCreator")
 
   // Assignments
+  
   siteInchargeAssignments    SiteInchargeAssignment[]
   projectManagerAssignments ProjectManagerAssignment[]
   constructionManagerAssignments ConstructionManagerAssignment[]
@@ -87,9 +98,11 @@ model User {
   demandsUpdated             Demand[] @relation("DemandUpdater")
   approvals                  DemandApproval[]
   purchaseOrdersCreated      PurchaseOrder[] @relation("POCreator")
+  purchaseOrdersAmountAdded  PurchaseOrder[] @relation("POAmountAdder")
   storeTransactions          StoreTransaction[]
   auditLogs                  AuditLog[]
   cmStore                    Store[] @relation("UserCMStore")
+  deviceTokens               DeviceToken[]
 
   @@map("users")
 }
@@ -367,7 +380,12 @@ model PurchaseOrder {
   materialId      String   // NEW: direct reference
   vendorId        String   // NEW: direct reference
   quantity        Decimal  // Renamed from totalQuantity
-  status          String   @default("DRAFT")
+  unitPrice       Decimal? // NEW: price per unit
+  totalAmount     Decimal? // NEW: total amount (quantity * unitPrice)
+  proofOfBill     String?  // NEW: URL to vendor's bill/invoice
+  amountAddedBy   String?  // NEW: who added the amount
+  amountAddedAt   DateTime? // NEW: when amount was added
+  status          POStatus @default(CREATED)
   isDeleted       Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -380,6 +398,7 @@ model PurchaseOrder {
   material        Material @relation(fields: [materialId], references: [id])
   vendor          Vendor   @relation(fields: [vendorId], references: [id])
   creator         User     @relation("POCreator", fields: [createdBy], references: [id])
+  amountAdder     User?    @relation("POAmountAdder", fields: [amountAddedBy], references: [id])
 
   @@map("purchase_orders")
 }
@@ -492,4 +511,18 @@ model ReferenceCounter {
   
   @@unique([projectCode, sectionCode])
   @@map("reference_counters")
+}
+
+model DeviceToken {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  platform  String   // e.g., 'web', 'android', 'ios'
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@map("device_tokens")
 }

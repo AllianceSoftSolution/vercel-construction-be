@@ -1,5 +1,5 @@
 {
-  "name": "nursing-insight-be-prisma",
+  "name": "construction-be",
   "version": "1.0.0",
   "main": "dist/src/index.js",
   "scripts": {

@@ -375,7 +375,7 @@ async function main() {
     // Demand (for first section of each project)
     const section = allSections.find(s => s.projectId === project.id && s.code === 'SEC-001');
     if (section) {
-      await prisma.demand.upsert({
+      const demand = await prisma.demand.upsert({
         where: { referenceNumber: `DEM-${project.code}` },
         update: {},
         create: {
@@ -389,6 +389,54 @@ async function main() {
           quantityRemaining: 100,
         },
       });
+
+      // Create Purchase Orders with amounts for each demand
+      const po = await prisma.purchaseOrder.create({
+        data: {
+          referenceNumber: `PO-${project.code}-001`,
+          demandId: demand.id,
+          projectId: project.id,
+          sectionId: section.id,
+          materialId: material.id,
+          vendorId: vendor.id,
+          quantity: 50,
+          unitPrice: 150.00,
+          totalAmount: 7500.00,
+          proofOfBill: 'https://example.com/bill-001.pdf',
+          amountAddedBy: siteIncharges[0].id,
+          amountAddedAt: new Date(),
+          status: 'ORDER_PLACED',
+          createdBy: siteIncharges[0].id,
+        },
+      });
+
+      // Create vendor account transaction for the PO amount
+      const vendorAccount = await prisma.vendorAccount.findUnique({
+        where: { vendorId: vendor.id },
+      });
+
+      if (vendorAccount) {
+        await prisma.vendorAccountTransaction.create({
+          data: {
+            vendorAccountId: vendorAccount.id,
+            type: 'CREDIT',
+            amount: 7500.00,
+            purchaseOrderId: po.id,
+            addedBy: siteIncharges[0].id,
+            proofOfPayment: 'https://example.com/bill-001.pdf',
+            note: `Credit for PO ${po.referenceNumber}`,
+          },
+        });
+
+        // Update vendor account balance
+        await prisma.vendorAccount.update({
+          where: { id: vendorAccount.id },
+          data: {
+            totalCredited: vendorAccount.totalCredited.add(7500.00),
+            balance: vendorAccount.balance.add(7500.00),
+          },
+        });
+      }
     }
   }
 

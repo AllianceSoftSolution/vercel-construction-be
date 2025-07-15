@@ -646,14 +646,18 @@ const stockIn = catchAsync(async (req, res, next) => {
     }
 
     // Check if PO is in appropriate status for stock in
-    // if (!["ORDER_PLACED", "IN_STORE"].includes(purchaseOrder.status)) {
-    //   return next(
-    //     new AppError(
-    //       "Purchase order is not in appropriate status for stock in",
-    //       400
-    //     )
-    //   );
-    // }
+    if (
+      !["CONFIRMED", "ORDER_PLACED", "IN_TRANSIT"].includes(
+        purchaseOrder.status
+      )
+    ) {
+      return next(
+        new AppError(
+          "Purchase order is not in appropriate status for stock in. Must be CONFIRMED, ORDER_PLACED, or IN_TRANSIT",
+          400
+        )
+      );
+    }
   }
 
   // Perform stock in operation in transaction
@@ -704,7 +708,7 @@ const stockIn = catchAsync(async (req, res, next) => {
       if (po) {
         await tx.purchaseOrder.update({
           where: { id: po.id },
-          data: { status: "IN_STORE" },
+          data: { status: "COMPLETED" }, // Change to COMPLETED when stock is received
         });
       }
     }

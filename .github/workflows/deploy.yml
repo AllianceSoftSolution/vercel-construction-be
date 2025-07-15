@@ -1,0 +1,70 @@
+name: CI/CD with Docker to ECR & EB
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: eu-north-1
+
+    - name: Log in to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build Docker image
+      run: |
+        docker build \
+          --build-arg DATABASE_URL="${{ secrets.DATABASE_URL }}" \
+          -t ${{ secrets.ECR_REPOSITORY }}:latest .
+
+    - name: Push to Amazon ECR
+      run: |
+        docker push ${{ secrets.ECR_REPOSITORY }}:latest
+
+    - name: Generate Dockerrun.aws.json
+      run: |
+        echo '{
+          "AWSEBDockerrunVersion": "1",
+          "Image": {
+            "Name": "${{ secrets.ECR_REPOSITORY }}:latest",
+            "Update": "true"
+          },
+          "Ports": [
+            {
+              "ContainerPort": 5000
+            }
+          ]
+        }' > Dockerrun.aws.json
+
+    - name: Zip deployment bundle
+      run: zip -r deploy.zip Dockerrun.aws.json
+
+    - name: Upload deploy.zip to S3
+      run: |
+        aws s3 cp deploy.zip s3://elasticbeanstalk-${{ secrets.AWS_REGION }}-${{ secrets.AWS_ACCOUNT_ID }}/deploy.zip
+
+
+    - name: Deploy to Elastic Beanstalk
+      run: |
+        aws elasticbeanstalk create-application-version \
+          --application-name ${{ secrets.EB_APPLICATION_NAME }} \
+          --version-label v-${{ github.run_number }} \
+          --source-bundle S3Bucket="elasticbeanstalk-${{ secrets.AWS_REGION }}-${{ secrets.AWS_ACCOUNT_ID }}",S3Key="deploy.zip"
+
+        aws elasticbeanstalk update-environment \
+          --application-name ${{ secrets.EB_APPLICATION_NAME }} \
+          --environment-name ${{ secrets.EB_ENVIRONMENT_NAME }} \
+          --version-label v-${{ github.run_number }}

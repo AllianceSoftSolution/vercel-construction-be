@@ -3,20 +3,19 @@ import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
-import { randomPassword } from '../utils/helpers';
-import { Email } from '../utils/email';
-import { generateEmployeeId } from '../utils/generateCode';
-import { extractQueryParams, buildQueryOptions, buildPaginationMeta } from '../utils/buildQueryOptions';
+import { randomPassword } from "../utils/helpers";
+import { Email } from "../utils/email";
+import { generateEmployeeId } from "../utils/generateCode";
+import {
+  extractQueryParams,
+  buildQueryOptions,
+  buildPaginationMeta,
+} from "../utils/buildQueryOptions";
 
 const prisma = new Prisma.PrismaClient();
 
 const registerUser = catchAsync(async (req, res, next) => {
-  const {
-    email,
-    name,
-    role,
-    isHead = false,
-  } = req.body;
+  const { email, name, role, isHead = false } = req.body;
 
   // Check if user already exists
   const userCount = await prisma.user.count();
@@ -30,6 +29,24 @@ const registerUser = catchAsync(async (req, res, next) => {
 
   if (!email || !name || !role) {
     return next(new AppError("Email, name, and role are required", 400));
+  }
+
+  // Validate isHead field
+  if (isHead) {
+    // Only admins can create users with isHead: true
+    if (!req.user || req.user.role !== "ADMIN") {
+      return next(new AppError("Only admins can create head users", 403));
+    }
+
+    // isHead can only be true for ACCOUNTANT and STORE_INCHARGE roles
+    if (role !== "ACCOUNTANT" && role !== "STORE_INCHARGE") {
+      return next(
+        new AppError(
+          "isHead can only be set for ACCOUNTANT and STORE_INCHARGE roles",
+          400
+        )
+      );
+    }
   }
 
   // Check if user already exists by email
@@ -70,7 +87,7 @@ const registerUser = catchAsync(async (req, res, next) => {
       isHead: true,
       isActive: true,
       createdAt: true,
-    }
+    },
   });
 
   // Send welcome email
@@ -78,12 +95,12 @@ const registerUser = catchAsync(async (req, res, next) => {
     const emailer = new Email();
     await emailer.send({
       to: email,
-      subject: 'Welcome to Construction Management System',
-      template: 'welcome-email',
+      subject: "Welcome to Construction Management System",
+      template: "welcome-email",
       data: { name, email, password: generatedPassword, employeeId },
     });
   } catch (err) {
-    console.error('Failed to send welcome email:', err);
+    console.error("Failed to send welcome email:", err);
   }
 
   res.status(201).json({
@@ -100,7 +117,7 @@ const loginUser = catchAsync(async (req, res, next) => {
   }
 
   // Find user by email
-  const user = await prisma.user.findUnique({ 
+  const user = await prisma.user.findUnique({
     where: { email },
     select: {
       id: true,
@@ -112,7 +129,7 @@ const loginUser = catchAsync(async (req, res, next) => {
       isHead: true,
       isActive: true,
       isDeleted: true,
-    }
+    },
   });
 
   if (!user) {
@@ -188,19 +205,23 @@ const changePassword = catchAsync(async (req, res, next) => {
 const getUsers = catchAsync(async (req, res) => {
   // Extract query parameters
   const filterOptions = extractQueryParams(req);
-  
+
   // Define searchable fields for users
-  const searchableFields = ['name', 'email', 'employeeId'];
-  
+  const searchableFields = ["name", "email", "employeeId"];
+
   // Build default filters
   const defaultFilters = { isDeleted: false };
 
   // Build query options
-  const queryOptions = buildQueryOptions(filterOptions, defaultFilters, searchableFields);
+  const queryOptions = buildQueryOptions(
+    filterOptions,
+    defaultFilters,
+    searchableFields
+  );
 
   // Get total count for pagination
   const total = await prisma.user.count({
-    where: queryOptions.where
+    where: queryOptions.where,
   });
 
   // Get users with pagination
@@ -221,11 +242,11 @@ const getUsers = catchAsync(async (req, res) => {
           id: true,
           name: true,
           email: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
-  
+
   // Build pagination metadata
   const paginationMeta = buildPaginationMeta(
     total,
@@ -236,14 +257,14 @@ const getUsers = catchAsync(async (req, res) => {
   res.json({
     message: "Users retrieved successfully",
     users,
-    ...paginationMeta
+    ...paginationMeta,
   });
 });
 
 const getUserById = catchAsync(async (req, res, next) => {
   const { id } = req.params;
-  
-  const user = await prisma.user.findUnique({ 
+
+  const user = await prisma.user.findUnique({
     where: { id },
     select: {
       id: true,
@@ -260,7 +281,7 @@ const getUserById = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           email: true,
-        }
+        },
       },
       createdUsers: {
         select: {
@@ -268,15 +289,15 @@ const getUserById = catchAsync(async (req, res, next) => {
           name: true,
           email: true,
           role: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
-  
+
   if (!user) {
     return next(new AppError("User not found", 404));
   }
-  
+
   res.json({
     message: "User retrieved successfully",
     user,
@@ -319,7 +340,7 @@ const updateUser = catchAsync(async (req, res, next) => {
       isHead: true,
       isActive: true,
       updatedAt: true,
-    }
+    },
   });
 
   res.json({
@@ -344,7 +365,7 @@ const deleteUser = catchAsync(async (req, res, next) => {
       isActive: false,
       updatedBy: userId,
       updatedAt: new Date(),
-    }
+    },
   });
 
   res.json({
@@ -377,7 +398,7 @@ const activateUser = catchAsync(async (req, res, next) => {
       isHead: true,
       isActive: true,
       updatedAt: true,
-    }
+    },
   });
 
   res.json({
@@ -411,7 +432,7 @@ const deactivateUser = catchAsync(async (req, res, next) => {
       isHead: true,
       isActive: true,
       updatedAt: true,
-    }
+    },
   });
 
   res.json({
@@ -440,15 +461,15 @@ const requestPasswordReset = catchAsync(async (req, res, next) => {
     const emailer = new Email();
     await emailer.send({
       to: email,
-      subject: 'Password Reset OTP',
-      template: 'password-reset-otp',
+      subject: "Password Reset OTP",
+      template: "password-reset-otp",
       data: { name: user.name, otp },
     });
   } catch (err) {
-    console.error('Failed to send OTP email:', err);
+    console.error("Failed to send OTP email:", err);
   }
   res.status(200).json({
-    message: `OTP sent to ${email} (stub, implement email sending and OTP storage)`
+    message: `OTP sent to ${email} (stub, implement email sending and OTP storage)`,
   });
 });
 
@@ -467,17 +488,44 @@ const resetPasswordWithOTP = catchAsync(async (req, res, next) => {
       const emailer = new Email();
       await emailer.send({
         to: email,
-        subject: 'Password Reset Successful',
-        template: 'password-reset-success',
+        subject: "Password Reset Successful",
+        template: "password-reset-success",
         data: { name: user.name },
       });
     } catch (err) {
-      console.error('Failed to send password reset success email:', err);
+      console.error("Failed to send password reset success email:", err);
     }
   }
   res.status(200).json({
-    message: `Password reset for ${email} (stub, implement OTP validation and password update)`
+    message: `Password reset for ${email} (stub, implement OTP validation and password update)`,
   });
+});
+
+// Save device token for notifications
+export const saveDeviceToken = catchAsync(async (req, res, next) => {
+  const userId = req.user.id;
+  const { token, platform } = req.body;
+  if (!token || !platform) {
+    return next(new AppError("Token and platform are required", 400));
+  }
+  // Upsert device token
+  await prisma.deviceToken.upsert({
+    where: { token },
+    update: { platform, userId },
+    create: { token, platform, userId },
+  });
+  res.json({ message: "Device token saved" });
+});
+
+// Remove device token (e.g., on logout)
+export const removeDeviceToken = catchAsync(async (req, res, next) => {
+  const userId = req.user.id;
+  const { token } = req.body;
+  if (!token) {
+    return next(new AppError("Token is required", 400));
+  }
+  await prisma.deviceToken.deleteMany({ where: { token, userId } });
+  res.json({ message: "Device token removed" });
 });
 
 export {
@@ -493,4 +541,3 @@ export {
   requestPasswordReset,
   resetPasswordWithOTP,
 };
-

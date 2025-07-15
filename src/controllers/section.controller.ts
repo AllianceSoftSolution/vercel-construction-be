@@ -223,6 +223,27 @@ const getSections = catchAsync(async (req, res) => {
     },
   });
 
+  // Calculate total amounts for each section
+  const sectionsWithAmounts = await Promise.all(
+    sections.map(async (section) => {
+      const sectionPOs = await prisma.purchaseOrder.aggregate({
+        where: {
+          sectionId: section.id,
+          isDeleted: false,
+          totalAmount: { not: null }
+        },
+        _sum: {
+          totalAmount: true
+        }
+      });
+
+      return {
+        ...section,
+        totalAmountSpent: sectionPOs._sum.totalAmount || 0
+      };
+    })
+  );
+
   // Build pagination metadata
   const paginationMeta = buildPaginationMeta(
     total,
@@ -232,7 +253,7 @@ const getSections = catchAsync(async (req, res) => {
 
   res.json({
     message: "Sections retrieved successfully",
-    sections,
+    sections: sectionsWithAmounts,
     ...paginationMeta,
   });
 });
@@ -350,6 +371,18 @@ const getSectionById = catchAsync(async (req, res, next) => {
     return next(new AppError("Section not found", 404));
   }
 
+  // Calculate total amount spent on POs for this section
+  const sectionPOs = await prisma.purchaseOrder.aggregate({
+    where: {
+      sectionId: section.id,
+      isDeleted: false,
+      totalAmount: { not: null }
+    },
+    _sum: {
+      totalAmount: true
+    }
+  });
+
   // Find the head store (should be only one)
   const headStore = section.stores.find((s) => s.type === "HEAD_STORE");
 
@@ -402,6 +435,7 @@ const getSectionById = catchAsync(async (req, res, next) => {
     associatedSiteIncharges: section.siteInchargeAssignments,
     associatedAccountants: section.accountantAssignments,
     recentDemands: section.demands,
+    totalAmountSpent: sectionPOs._sum.totalAmount || 0
   };
 
   res.json({

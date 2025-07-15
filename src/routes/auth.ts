@@ -11,19 +11,23 @@ import {
   deactivateUser,
   requestPasswordReset,
   resetPasswordWithOTP,
+  saveDeviceToken,
+  removeDeviceToken,
 } from "../controllers/auth.controller";
 import protect from "../middlewares/auth.middleware";
 
 const router = express.Router();
 
 // Authentication routes (no protection needed)
-router.post("/register", protect,registerUser);
+router.post("/register", protect, registerUser);
 router.post("/login", loginUser);
 router.post("/request-password-reset", requestPasswordReset);
 router.post("/reset-password-with-otp", resetPasswordWithOTP);
 
 // Protected routes (require authentication)
 router.post("/change-password", protect, changePassword);
+router.post("/device-token", protect, saveDeviceToken);
+router.delete("/device-token", protect, removeDeviceToken);
 router.get("/users", protect, getUsers);
 router.get("/users/:id", protect, getUserById);
 router.put("/users/:id", protect, updateUser);
