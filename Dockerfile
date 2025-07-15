@@ -17,6 +17,9 @@ RUN npm install
 # Build the project (TypeScript, etc.)
 RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 
+# Copy fe-dist to the container
+COPY fe-dist ./fe-dist
+
 # (Optional for production: prune devDependencies or use multi-stage build)
 # RUN npm prune --production
 

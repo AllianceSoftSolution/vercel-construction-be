@@ -22,7 +22,7 @@ setupSwagger(app);
 console.log("hi");
 
 // Serve static files from Vite React build (dist)
-const distPath = path.join(__dirname, "../fe-dist");
+const distPath = path.resolve(process.cwd(), "fe-dist");
 app.use(express.static(distPath));
 
 app.use("/api", routes);
