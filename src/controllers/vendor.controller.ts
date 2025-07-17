@@ -1,18 +1,17 @@
 import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
-import { buildQueryOptions, extractQueryParams, buildPaginationMeta } from "../utils/buildQueryOptions";
+import {
+  buildQueryOptions,
+  extractQueryParams,
+  buildPaginationMeta,
+} from "../utils/buildQueryOptions";
+import { sendNotificationToUserSafe } from "../utils/notification";
 
 const prisma = new PrismaClient();
 
 const createVendor = catchAsync(async (req, res, next) => {
-  const {
-    name,
-    contactPerson,
-    email,
-    phone,
-    address,
-  } = req.body;
+  const { name, contactPerson, email, phone, address } = req.body;
   const userId = req.user.id;
 
   if (!name || !userId) {
@@ -43,29 +42,44 @@ const createVendor = catchAsync(async (req, res, next) => {
     message: "Vendor created successfully",
     vendor,
   });
+  await sendNotificationToUserSafe({
+    userId: req.user.id,
+    title: "Vendor Created",
+    body: `Vendor ${vendor.name} was created successfully.`,
+  });
 });
 
 const getVendors = catchAsync(async (req, res) => {
   // Extract query parameters
   const filterOptions = extractQueryParams(req);
-  
+
   // Define searchable fields for vendors
-  const searchableFields = ['name', 'contactPerson', 'email', 'phone', 'address'];
-  
+  const searchableFields = [
+    "name",
+    "contactPerson",
+    "email",
+    "phone",
+    "address",
+  ];
+
   // Build default filters
   const defaultFilters = { isDeleted: false };
 
   // Build query options
-  const queryOptions = buildQueryOptions(filterOptions, defaultFilters, searchableFields);
+  const queryOptions = buildQueryOptions(
+    filterOptions,
+    defaultFilters,
+    searchableFields
+  );
 
   // Get total count for pagination
   const total = await prisma.vendor.count({
-    where: queryOptions.where
+    where: queryOptions.where,
   });
 
   // Get vendors with pagination
   const vendors = await prisma.vendor.findMany({
-    ...queryOptions
+    ...queryOptions,
   });
 
   // Build pagination metadata
@@ -78,7 +92,7 @@ const getVendors = catchAsync(async (req, res) => {
   res.json({
     message: "Vendors retrieved successfully",
     vendors,
-    ...paginationMeta
+    ...paginationMeta,
   });
 });
 
@@ -129,6 +143,11 @@ const updateVendor = catchAsync(async (req, res, next) => {
     message: "Vendor updated successfully",
     vendor: updatedVendor,
   });
+  await sendNotificationToUserSafe({
+    userId: req.user.id,
+    title: "Vendor Updated",
+    body: `Vendor ${updatedVendor.name} was updated successfully.`,
+  });
 });
 
 const deleteVendor = catchAsync(async (req, res, next) => {
@@ -138,10 +157,15 @@ const deleteVendor = catchAsync(async (req, res, next) => {
     return next(new AppError("Vendor not found", 404));
   }
   await prisma.vendor.delete({
-    where: { id }
+    where: { id },
   });
   res.json({
     message: "Vendor deleted successfully",
+  });
+  await sendNotificationToUserSafe({
+    userId: req.user.id,
+    title: "Vendor Deleted",
+    body: `Vendor was deleted successfully.`,
   });
 });
 
@@ -164,6 +188,11 @@ const activateVendor = catchAsync(async (req, res, next) => {
     message: "Vendor activated successfully",
     vendor: updatedVendor,
   });
+  await sendNotificationToUserSafe({
+    userId: req.user.id,
+    title: "Vendor Activated",
+    body: `Vendor ${updatedVendor.name} was activated successfully.`,
+  });
 });
 
 const deactivateVendor = catchAsync(async (req, res, next) => {
@@ -185,20 +214,28 @@ const deactivateVendor = catchAsync(async (req, res, next) => {
     message: "Vendor deactivated successfully",
     vendor: updatedVendor,
   });
+  await sendNotificationToUserSafe({
+    userId: req.user.id,
+    title: "Vendor Deactivated",
+    body: `Vendor ${updatedVendor.name} was deactivated successfully.`,
+  });
 });
 
 // Get all vendors with their account information
 const getVendorsWithAccounts = catchAsync(async (req, res) => {
   const vendors = await prisma.vendor.findMany({
-    orderBy: { createdAt: 'desc' },
+    orderBy: { createdAt: "desc" },
     include: {
-      vendorAccounts: true
-    }
+      vendorAccounts: true,
+    },
   });
 
   // Map to include account info or zeros if no account
-  const result = vendors.map(vendor => {
-    const account = vendor.vendorAccounts && vendor.vendorAccounts.length > 0 ? vendor.vendorAccounts[0] : null;
+  const result = vendors.map((vendor) => {
+    const account =
+      vendor.vendorAccounts && vendor.vendorAccounts.length > 0
+        ? vendor.vendorAccounts[0]
+        : null;
     return {
       id: vendor.id,
       name: vendor.name,
@@ -210,13 +247,13 @@ const getVendorsWithAccounts = catchAsync(async (req, res) => {
       createdAt: vendor.createdAt,
       totalCredited: account ? account.totalCredited : 0,
       totalDebited: account ? account.totalDebited : 0,
-      balance: account ? account.balance : 0
+      balance: account ? account.balance : 0,
     };
   });
 
   res.json({
     message: "Vendors with account info retrieved successfully",
-    vendors: result
+    vendors: result,
   });
 });
 
@@ -229,4 +266,4 @@ export {
   activateVendor,
   deactivateVendor,
   getVendorsWithAccounts,
-}; 
+};

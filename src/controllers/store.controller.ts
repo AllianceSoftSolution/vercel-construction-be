@@ -7,6 +7,7 @@ import {
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
 import { TRANSACTION_REFERENCES } from "../constants";
+import { sendNotificationToUserSafe } from "../utils/notification";
 
 const prisma = new PrismaClient();
 
@@ -177,6 +178,11 @@ const createStore = catchAsync(async (req, res, next) => {
   res.status(201).json({
     message: "Store created successfully",
     store: result,
+  });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Store Created",
+    body: `Store ${result.name} was created successfully.`,
   });
 });
 
@@ -423,6 +429,11 @@ const updateStore = catchAsync(async (req, res, next) => {
     message: "Store updated successfully",
     store: updatedStore,
   });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Store Updated",
+    body: `Store ${updatedStore.name} was updated successfully.`,
+  });
 });
 
 const deleteStore = catchAsync(async (req, res, next) => {
@@ -446,6 +457,11 @@ const deleteStore = catchAsync(async (req, res, next) => {
 
   res.json({
     message: "Store deleted successfully",
+  });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Store Deleted",
+    body: `Store ${existing.name} was deleted successfully.`,
   });
 });
 
@@ -500,6 +516,11 @@ const activateStore = catchAsync(async (req, res, next) => {
     message: "Store activated successfully",
     store: updatedStore,
   });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Store Activated",
+    body: `Store ${updatedStore.name} was activated successfully.`,
+  });
 });
 
 const deactivateStore = catchAsync(async (req, res, next) => {
@@ -552,6 +573,11 @@ const deactivateStore = catchAsync(async (req, res, next) => {
   res.json({
     message: "Store deactivated successfully",
     store: updatedStore,
+  });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Store Deactivated",
+    body: `Store ${updatedStore.name} was deactivated successfully.`,
   });
 });
 

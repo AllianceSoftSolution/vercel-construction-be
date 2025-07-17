@@ -11,6 +11,7 @@ import {
   buildQueryOptions,
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
+import { sendNotificationToUserSafe } from "../utils/notification";
 
 const prisma = new Prisma.PrismaClient();
 
@@ -106,6 +107,11 @@ const registerUser = catchAsync(async (req, res, next) => {
   res.status(201).json({
     message: "User registered successfully",
     user,
+  });
+  await sendNotificationToUserSafe({
+    userId: user.id,
+    title: "Welcome!",
+    body: `Your account has been created. Employee ID: ${user.employeeId}`,
   });
 });
 
@@ -347,6 +353,11 @@ const updateUser = catchAsync(async (req, res, next) => {
     message: "User updated successfully",
     user: updatedUser,
   });
+  await sendNotificationToUserSafe({
+    userId: updatedUser.id,
+    title: "Profile Updated",
+    body: `Your profile was updated successfully.`,
+  });
 });
 
 const deleteUser = catchAsync(async (req, res, next) => {
@@ -370,6 +381,11 @@ const deleteUser = catchAsync(async (req, res, next) => {
 
   res.json({
     message: "User deleted successfully",
+  });
+  await sendNotificationToUserSafe({
+    userId: id,
+    title: "Account Deleted",
+    body: `Your account has been deleted.`,
   });
 });
 
@@ -405,6 +421,11 @@ const activateUser = catchAsync(async (req, res, next) => {
     message: "User activated successfully",
     user: updatedUser,
   });
+  await sendNotificationToUserSafe({
+    userId: updatedUser.id,
+    title: "Account Activated",
+    body: `Your account has been activated.`,
+  });
 });
 
 const deactivateUser = catchAsync(async (req, res, next) => {
@@ -438,6 +459,11 @@ const deactivateUser = catchAsync(async (req, res, next) => {
   res.json({
     message: "User deactivated successfully",
     user: updatedUser,
+  });
+  await sendNotificationToUserSafe({
+    userId: updatedUser.id,
+    title: "Account Deactivated",
+    body: `Your account has been deactivated.`,
   });
 });
 

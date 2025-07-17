@@ -7,6 +7,7 @@ import {
   extractQueryParams,
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
+import { sendNotificationToUserSafe } from "../utils/notification";
 
 const prisma = new PrismaClient();
 
@@ -110,6 +111,11 @@ const createSection = catchAsync(async (req, res, next) => {
       ...section,
       headStore,
     },
+  });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Section Created",
+    body: `Section ${section.name} was created successfully.`,
   });
 });
 
@@ -509,6 +515,11 @@ const updateSection = catchAsync(async (req, res, next) => {
     message: "Section updated successfully",
     section: updatedSection,
   });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Section Updated",
+    body: `Section ${updatedSection.name} was updated successfully.`,
+  });
 });
 
 const deleteSection = catchAsync(async (req, res, next) => {
@@ -532,6 +543,11 @@ const deleteSection = catchAsync(async (req, res, next) => {
 
   res.json({
     message: "Section deleted successfully",
+  });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Section Deleted",
+    body: `Section ${existing.name} was deleted successfully.`,
   });
 });
 
@@ -592,6 +608,11 @@ const activateSection = catchAsync(async (req, res, next) => {
     message: "Section activated successfully",
     section: updatedSection,
   });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Section Activated",
+    body: `Section ${updatedSection.name} was activated successfully.`,
+  });
 });
 
 const deactivateSection = catchAsync(async (req, res, next) => {
@@ -650,6 +671,11 @@ const deactivateSection = catchAsync(async (req, res, next) => {
   res.json({
     message: "Section deactivated successfully",
     section: updatedSection,
+  });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Section Deactivated",
+    body: `Section ${updatedSection.name} was deactivated successfully.`,
   });
 });
 

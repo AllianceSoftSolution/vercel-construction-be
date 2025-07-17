@@ -7,6 +7,7 @@ import {
   extractQueryParams,
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
+import { sendNotificationToUserSafe } from "../utils/notification";
 
 const prisma = new PrismaClient();
 
@@ -46,6 +47,11 @@ const createProject = catchAsync(async (req, res, next) => {
   res.status(201).json({
     message: "Project created successfully",
     project,
+  });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Project Created",
+    body: `Project ${project.name} was created successfully.`,
   });
 });
 
@@ -553,6 +559,13 @@ const updateProject = catchAsync(async (req, res, next) => {
     message: "Project updated successfully",
     project: updatedProject,
   });
+
+  // Send notification to the user who updated the project
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Project Updated",
+    body: `Project ${updatedProject.name} was updated successfully.`,
+  });
 });
 
 const deleteProject = catchAsync(async (req, res, next) => {
@@ -576,6 +589,11 @@ const deleteProject = catchAsync(async (req, res, next) => {
 
   res.json({
     message: "Project deleted successfully",
+  });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Project Deleted",
+    body: `Project ${existing.name} was deleted successfully.`,
   });
 });
 
@@ -612,6 +630,11 @@ const activateProject = catchAsync(async (req, res, next) => {
     message: "Project activated successfully",
     project: updatedProject,
   });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Project Activated",
+    body: `Project ${updatedProject.name} was activated successfully.`,
+  });
 });
 
 const deactivateProject = catchAsync(async (req, res, next) => {
@@ -646,6 +669,11 @@ const deactivateProject = catchAsync(async (req, res, next) => {
   res.json({
     message: "Project deactivated successfully",
     project: updatedProject,
+  });
+  await sendNotificationToUserSafe({
+    userId,
+    title: "Project Deactivated",
+    body: `Project ${updatedProject.name} was deactivated successfully.`,
   });
 });
 

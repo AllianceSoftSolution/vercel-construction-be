@@ -3,13 +3,17 @@ import path from "path";
 
 // Initialize Firebase Admin SDK if not already initialized
 if (!admin.apps.length) {
+  // Use absolute path for Docker compatibility
+  const serviceAccountPath = path.isAbsolute(
+    "../config/radc-a6ce0-firebase-adminsdk-fbsvc-c5f458f8f6.json"
+  )
+    ? "../config/radc-a6ce0-firebase-adminsdk-fbsvc-c5f458f8f6.json"
+    : path.join(
+        process.cwd(),
+        "src/config/radc-a6ce0-firebase-adminsdk-fbsvc-c5f458f8f6.json"
+      );
   admin.initializeApp({
-    credential: admin.credential.cert(
-      path.join(
-        __dirname,
-        "../config/diet30-f2904-firebase-adminsdk-fbsvc-6e9db8ee5f.json"
-      )
-    ),
+    credential: admin.credential.cert(serviceAccountPath),
   });
 }
 

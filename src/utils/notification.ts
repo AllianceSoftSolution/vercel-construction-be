@@ -26,3 +26,23 @@ export async function sendNotificationToUser({
   // Send notification
   return sendFirebaseNotification({ tokens: tokenList, title, body, data });
 }
+
+// Utility: Safe notification sending (does not throw)
+export async function sendNotificationToUserSafe({
+  userId,
+  title,
+  body,
+  data = {},
+}: {
+  userId: string;
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+}) {
+  try {
+    return await sendNotificationToUser({ userId, title, body, data });
+  } catch (err) {
+    console.error("Notification error for user", userId, err);
+    return null;
+  }
+}

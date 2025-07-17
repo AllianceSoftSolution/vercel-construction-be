@@ -1,6 +1,6 @@
-import nodemailer from 'nodemailer';
-import ejs from 'ejs';
-import path from 'path';
+import nodemailer from "nodemailer";
+import ejs from "ejs";
+import path from "path";
 
 interface EmailOptions {
   to: string;
@@ -14,26 +14,30 @@ export class Email {
 
   constructor() {
     this.transporter = nodemailer.createTransport({
-      service: 'gmail',
+      service: "gmail",
       auth: {
-        user: process.env.GMAIL_USER || 'your_gmail@gmail.com',
-        pass: process.env.GMAIL_PASS || 'your_gmail_app_password',
+        user: process.env.GMAIL_USER || "your_gmail@gmail.com",
+        pass: process.env.GMAIL_PASS || "your_gmail_app_password",
       },
     });
   }
 
   async send({ to, subject, template, data }: EmailOptions) {
-    // Path to the template file
-    const templatePath = path.join(__dirname, '../templates', `${template}.ejs`);
+    // Path to the template file (absolute path for Docker compatibility)
+    const templatePath = path.join(
+      process.cwd(),
+      "src/templates",
+      `${template}.ejs`
+    );
     // Render the template
     const html = await ejs.renderFile(templatePath, data);
     // Send the email
     const info = await this.transporter.sendMail({
-      from: process.env.GMAIL_USER || 'your_gmail@gmail.com',
+      from: process.env.GMAIL_USER || "your_gmail@gmail.com",
       to,
       subject,
       html,
     });
     return info;
   }
-} 
+}

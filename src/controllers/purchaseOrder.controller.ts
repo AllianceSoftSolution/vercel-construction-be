@@ -3,6 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
+import { sendNotificationToUserSafe } from "../utils/notification";
 
 const prisma = new PrismaClient();
 
@@ -195,6 +196,11 @@ export const createPurchaseOrder = catchAsync(
       status: "success",
       message: "Purchase Order created successfully",
       data: purchaseOrder,
+    });
+    await sendNotificationToUserSafe({
+      userId: req.user.id,
+      title: "Purchase Order Created",
+      body: `Purchase Order ${purchaseOrder.referenceNumber} was created successfully.`,
     });
   }
 );
@@ -452,6 +458,11 @@ export const updatePurchaseOrder = catchAsync(
       status: "success",
       data: updatedPO,
     });
+    await sendNotificationToUserSafe({
+      userId: req.user.id,
+      title: "Purchase Order Updated",
+      body: `Purchase Order ${updatedPO.referenceNumber} was updated successfully.`,
+    });
   }
 );
 
@@ -473,7 +484,9 @@ export const deletePurchaseOrder = catchAsync(
 
     // Only allow deletion if PO is in CREATED or CONFIRMED status
     if (!["CREATED", "CONFIRMED"].includes(purchaseOrder.status)) {
-      return next(new AppError("Can only delete PO in CREATED or CONFIRMED status", 400));
+      return next(
+        new AppError("Can only delete PO in CREATED or CONFIRMED status", 400)
+      );
     }
 
     await prisma.purchaseOrder.update({
@@ -490,6 +503,11 @@ export const deletePurchaseOrder = catchAsync(
     res.status(204).json({
       status: "success",
       data: null,
+    });
+    await sendNotificationToUserSafe({
+      userId: req.user.id,
+      title: "Purchase Order Deleted",
+      body: `Purchase Order was deleted successfully.`,
     });
   }
 );
@@ -706,6 +724,11 @@ export const updatePOStatus = catchAsync(
       status: "success",
       message: `Purchase Order status updated to ${status}`,
       data: updatedPO,
+    });
+    await sendNotificationToUserSafe({
+      userId: req.user.id,
+      title: "Purchase Order Status Updated",
+      body: `Purchase Order ${updatedPO.referenceNumber} status changed to ${status}.`,
     });
   }
 );

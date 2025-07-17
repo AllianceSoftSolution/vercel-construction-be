@@ -2,22 +2,26 @@ import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { generateDemandCode } from "../utils/generateCode";
-import { buildQueryOptions, extractQueryParams, buildPaginationMeta } from "../utils/buildQueryOptions";
+import {
+  buildQueryOptions,
+  extractQueryParams,
+  buildPaginationMeta,
+} from "../utils/buildQueryOptions";
+import { sendNotificationToUserSafe } from "../utils/notification";
 
 const prisma = new PrismaClient();
 
 const createDemand = catchAsync(async (req, res, next) => {
-  const {
-    materialId,
-    quantity,
-    unit,
-    sectionId,
-    notes,
-  } = req.body;
+  const { materialId, quantity, unit, sectionId, notes } = req.body;
   const userId = req.user.id;
 
   if (!sectionId || !materialId || !quantity || !unit) {
-    return next(new AppError("sectionId, materialId, quantity, and unit are required", 400));
+    return next(
+      new AppError(
+        "sectionId, materialId, quantity, and unit are required",
+        400
+      )
+    );
   }
 
   // Check if user is a Construction Manager
@@ -29,8 +33,10 @@ const createDemand = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  if (user.role !== 'CONSTRUCTION_MANAGER') {
-    return next(new AppError("Only Construction Managers can create demands", 403));
+  if (user.role !== "CONSTRUCTION_MANAGER") {
+    return next(
+      new AppError("Only Construction Managers can create demands", 403)
+    );
   }
 
   // Check if section exists
@@ -42,11 +48,11 @@ const createDemand = catchAsync(async (req, res, next) => {
           id: true,
           name: true,
           code: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
-  
+
   if (!section) {
     return next(new AppError("Section not found", 404));
   }
@@ -55,7 +61,7 @@ const createDemand = catchAsync(async (req, res, next) => {
   const material = await prisma.material.findUnique({
     where: { id: materialId },
   });
-  
+
   if (!material) {
     return next(new AppError("Material not found", 404));
   }
@@ -70,7 +76,7 @@ const createDemand = catchAsync(async (req, res, next) => {
       unit,
       sectionId,
       notes,
-      status: 'REQUEST_SENT',
+      status: "REQUEST_SENT",
       createdBy: userId,
       referenceNumber,
       quantityRemaining: quantity,
@@ -83,9 +89,9 @@ const createDemand = catchAsync(async (req, res, next) => {
               id: true,
               name: true,
               code: true,
-            }
-          }
-        }
+            },
+          },
+        },
       },
       material: true,
       creator: {
@@ -94,14 +100,19 @@ const createDemand = catchAsync(async (req, res, next) => {
           name: true,
           email: true,
           role: true,
-        }
-      }
-    }
+        },
+      },
+    },
   });
 
   res.status(201).json({
     message: "Demand created successfully",
     demand,
+  });
+  await sendNotificationToUserSafe({
+    userId: demand.createdBy,
+    title: "Demand Created",
+    body: `Your demand (${demand.referenceNumber}) was created successfully.`,
   });
 });
 
@@ -110,59 +121,63 @@ const getDemands = catchAsync(async (req, res) => {
 
   // Extract query parameters
   const filterOptions = extractQueryParams(req);
-  
+
   // Define searchable fields for demands
-  const searchableFields = ['referenceNumber', 'notes', 'activity'];
-  
+  const searchableFields = ["referenceNumber", "notes", "activity"];
+
   // Build default filters
   let defaultFilters: any = { isDeleted: false };
 
   // Role-based filtering for demands
-  if (user.role === 'ADMIN') {
+  if (user.role === "ADMIN") {
     // No filter, see all
-  } else if (user.role === 'SITE_INCHARGE') {
+  } else if (user.role === "SITE_INCHARGE") {
     const assignments = await prisma.siteInchargeAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { sectionId: true }
+      select: { sectionId: true },
     });
-    const sectionIds = assignments.map(a => a.sectionId);
+    const sectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.sectionId = { in: sectionIds };
-  } else if (user.role === 'PROJECT_MANAGER') {
+  } else if (user.role === "PROJECT_MANAGER") {
     const assignments = await prisma.projectManagerAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { sectionId: true }
+      select: { sectionId: true },
     });
-    const sectionIds = assignments.map(a => a.sectionId);
+    const sectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.sectionId = { in: sectionIds };
-  } else if (user.role === 'CONSTRUCTION_MANAGER') {
+  } else if (user.role === "CONSTRUCTION_MANAGER") {
     const assignments = await prisma.constructionManagerAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { sectionId: true }
+      select: { sectionId: true },
     });
-    const sectionIds = assignments.map(a => a.sectionId);
+    const sectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.sectionId = { in: sectionIds };
-  } else if (user.role === 'STORE_INCHARGE') {
+  } else if (user.role === "STORE_INCHARGE") {
     const assignments = await prisma.storeInchargeAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { store: { select: { sectionId: true } } }
+      select: { store: { select: { sectionId: true } } },
     });
-    const sectionIds = assignments.map(a => a.store.sectionId);
+    const sectionIds = assignments.map((a) => a.store.sectionId);
     defaultFilters.sectionId = { in: sectionIds };
-  } else if (user.role === 'ACCOUNTANT') {
+  } else if (user.role === "ACCOUNTANT") {
     const assignments = await prisma.accountantAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { sectionId: true }
+      select: { sectionId: true },
     });
-    const sectionIds = assignments.map(a => a.sectionId);
+    const sectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.sectionId = { in: sectionIds };
   }
 
   // Build query options
-  const queryOptions = buildQueryOptions(filterOptions, defaultFilters, searchableFields);
+  const queryOptions = buildQueryOptions(
+    filterOptions,
+    defaultFilters,
+    searchableFields
+  );
 
   // Get total count for pagination
   const total = await prisma.demand.count({
-    where: queryOptions.where
+    where: queryOptions.where,
   });
 
   // Get demands with pagination
@@ -172,22 +187,29 @@ const getDemands = catchAsync(async (req, res) => {
       section: {
         include: {
           project: {
-            select: { name: true }
-          }
-        }
+            select: { name: true },
+          },
+        },
       },
       material: true,
       creator: true,
       updater: true,
       approvals: true,
       fulfillments: true,
-      purchaseOrders: true
-    }
+      purchaseOrders: true,
+    },
   });
 
   // Add projectName to each demand's section and remove the full project object
-  const demandsWithProjectName = demands.map(demand => {
-    if (demand.section && typeof demand.section === 'object' && 'project' in demand.section && demand.section.project && typeof demand.section.project === 'object' && 'name' in demand.section.project) {
+  const demandsWithProjectName = demands.map((demand) => {
+    if (
+      demand.section &&
+      typeof demand.section === "object" &&
+      "project" in demand.section &&
+      demand.section.project &&
+      typeof demand.section.project === "object" &&
+      "name" in demand.section.project
+    ) {
       (demand.section as any).projectName = demand.section.project.name;
       delete (demand.section as any).project;
     }
@@ -204,7 +226,7 @@ const getDemands = catchAsync(async (req, res) => {
   res.json({
     message: "Demands retrieved successfully",
     demands: demandsWithProjectName,
-    ...paginationMeta
+    ...paginationMeta,
   });
 });
 
@@ -216,27 +238,34 @@ const getDemandById = catchAsync(async (req, res, next) => {
       section: {
         include: {
           project: {
-            select: { name: true }
-          }
-        }
+            select: { name: true },
+          },
+        },
       },
       material: true,
       creator: true,
       updater: true,
       approvals: {
         include: {
-          user: { select: { name: true } }
-        }
+          user: { select: { name: true } },
+        },
       },
       fulfillments: true,
-      purchaseOrders: true
-    }
+      purchaseOrders: true,
+    },
   });
   if (!demand) {
     return next(new AppError("Demand not found", 404));
   }
   // Add projectName to section and remove the full project object
-  if (demand.section && typeof demand.section === 'object' && 'project' in demand.section && demand.section.project && typeof demand.section.project === 'object' && 'name' in demand.section.project) {
+  if (
+    demand.section &&
+    typeof demand.section === "object" &&
+    "project" in demand.section &&
+    demand.section.project &&
+    typeof demand.section.project === "object" &&
+    "name" in demand.section.project
+  ) {
     (demand.section as any).projectName = demand.section.project.name;
     delete (demand.section as any).project;
   }
@@ -251,7 +280,7 @@ const getDemandById = catchAsync(async (req, res, next) => {
       prisma.store.findFirst({
         where: {
           sectionId: demand.sectionId,
-          type: 'CM_STORE',
+          type: "CM_STORE",
           isActive: true,
           isDeleted: false,
         },
@@ -259,11 +288,11 @@ const getDemandById = catchAsync(async (req, res, next) => {
       prisma.store.findFirst({
         where: {
           sectionId: demand.sectionId,
-          type: 'HEAD_STORE',
+          type: "HEAD_STORE",
           isActive: true,
           isDeleted: false,
         },
-      })
+      }),
     ]);
 
     if (cmStore) {
@@ -273,8 +302,8 @@ const getDemandById = catchAsync(async (req, res, next) => {
           storeId_materialId: {
             storeId: cmStore.id,
             materialId: demand.materialId,
-          }
-        }
+          },
+        },
       });
       cmStoreQty = cmInv ? Number(cmInv.available) : 0;
     }
@@ -285,8 +314,8 @@ const getDemandById = catchAsync(async (req, res, next) => {
           storeId_materialId: {
             storeId: headStore.id,
             materialId: demand.materialId,
-          }
-        }
+          },
+        },
       });
       headStoreQty = headInv ? Number(headInv.available) : 0;
     }
@@ -304,11 +333,11 @@ const getDemandById = catchAsync(async (req, res, next) => {
       cmStoreId,
       headStoreId,
       approvals: Array.isArray(demand.approvals)
-        ? demand.approvals.map(a => ({
+        ? demand.approvals.map((a) => ({
             ...a,
-            userName: a.user && a.user.name ? a.user.name : null
+            userName: a.user && a.user.name ? a.user.name : null,
           }))
-        : demand.approvals
+        : demand.approvals,
     },
   });
 });
@@ -341,12 +370,17 @@ const updateDemand = catchAsync(async (req, res, next) => {
       updater: true,
       approvals: true,
       fulfillments: true,
-      purchaseOrders: true
-    }
+      purchaseOrders: true,
+    },
   });
   res.json({
     message: "Demand updated successfully",
     demand: updatedDemand,
+  });
+  await sendNotificationToUserSafe({
+    userId: updatedDemand.updatedBy ?? userId,
+    title: "Demand Updated",
+    body: `Demand (${updatedDemand.referenceNumber}) was updated successfully.`,
   });
 });
 
@@ -357,10 +391,15 @@ const deleteDemand = catchAsync(async (req, res, next) => {
     return next(new AppError("Demand not found", 404));
   }
   await prisma.demand.delete({
-    where: { id }
+    where: { id },
   });
   res.json({
     message: "Demand deleted successfully",
+  });
+  await sendNotificationToUserSafe({
+    userId: existing.createdBy,
+    title: "Demand Deleted",
+    body: `Your demand (${existing.referenceNumber}) was deleted.`,
   });
 });
 
@@ -389,12 +428,17 @@ const updateDemandStatus = catchAsync(async (req, res, next) => {
       updater: true,
       approvals: true,
       fulfillments: true,
-      purchaseOrders: true
-    }
+      purchaseOrders: true,
+    },
   });
   res.json({
     message: "Demand status updated successfully",
     demand: updatedDemand,
+  });
+  await sendNotificationToUserSafe({
+    userId: updatedDemand.updatedBy ?? userId,
+    title: "Demand Status Updated",
+    body: `Demand (${updatedDemand.referenceNumber}) status changed to ${updatedDemand.status}.`,
   });
 });
 
@@ -412,9 +456,14 @@ const approveDemand = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  const allowedRoles = ['PROJECT_MANAGER', 'SITE_INCHARGE', 'ADMIN'];
+  const allowedRoles = ["PROJECT_MANAGER", "SITE_INCHARGE", "ADMIN"];
   if (!allowedRoles.includes(user.role)) {
-    return next(new AppError("Only Project Managers, Site Incharges, or Admins can approve demands", 403));
+    return next(
+      new AppError(
+        "Only Project Managers, Site Incharges, or Admins can approve demands",
+        403
+      )
+    );
   }
 
   // Check if demand exists
@@ -428,11 +477,11 @@ const approveDemand = catchAsync(async (req, res, next) => {
               id: true,
               name: true,
               role: true,
-            }
-          }
-        }
-      }
-    }
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!demand) {
@@ -444,19 +493,27 @@ const approveDemand = catchAsync(async (req, res, next) => {
   }
 
   // Check if user has already approved/rejected this demand
-  const existingApproval = demand.approvals.find(approval => approval.userId === userId);
+  const existingApproval = demand.approvals.find(
+    (approval) => approval.userId === userId
+  );
   if (existingApproval) {
-    return next(new AppError("You have already provided feedback for this demand", 400));
+    return next(
+      new AppError("You have already provided feedback for this demand", 400)
+    );
   }
 
   // Check if demand is already rejected
-  const hasRejection = demand.approvals.some(approval => approval.status === 'REJECTED');
+  const hasRejection = demand.approvals.some(
+    (approval) => approval.status === "REJECTED"
+  );
   if (hasRejection) {
     return next(new AppError("Demand is already rejected", 400));
   }
 
   // Check if demand is already fully approved
-  const approvalCount = demand.approvals.filter(approval => approval.status === 'APPROVED').length;
+  const approvalCount = demand.approvals.filter(
+    (approval) => approval.status === "APPROVED"
+  ).length;
   if (approvalCount >= 2) {
     return next(new AppError("Demand is already fully approved", 400));
   }
@@ -468,8 +525,8 @@ const approveDemand = catchAsync(async (req, res, next) => {
       data: {
         demandId: id,
         userId,
-        status: 'APPROVED',
-        remarks: remarks || 'Approved',
+        status: "APPROVED",
+        remarks: remarks || "Approved",
       },
       include: {
         user: {
@@ -477,9 +534,9 @@ const approveDemand = catchAsync(async (req, res, next) => {
             id: true,
             name: true,
             role: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     // Get updated demand with all approvals
@@ -493,24 +550,28 @@ const approveDemand = catchAsync(async (req, res, next) => {
                 id: true,
                 name: true,
                 role: true,
-              }
-            }
-          }
-        }
-      }
+              },
+            },
+          },
+        },
+      },
     });
 
     // Determine new status based on approval count
-    const newApprovalCount = updatedDemand!.approvals.filter(a => a.status === 'APPROVED').length;
-    const hasRejection = updatedDemand!.approvals.some(a => a.status === 'REJECTED');
+    const newApprovalCount = updatedDemand!.approvals.filter(
+      (a) => a.status === "APPROVED"
+    ).length;
+    const hasRejection = updatedDemand!.approvals.some(
+      (a) => a.status === "REJECTED"
+    );
 
-    let newStatus = 'REQUEST_SENT';
+    let newStatus = "REQUEST_SENT";
     if (hasRejection) {
-      newStatus = 'REJECTED';
+      newStatus = "REJECTED";
     } else if (newApprovalCount >= 2) {
-      newStatus = 'APPROVED';
+      newStatus = "APPROVED";
     } else if (newApprovalCount === 1) {
-      newStatus = 'PARTIALLY_APPROVED';
+      newStatus = "PARTIALLY_APPROVED";
     }
 
     // Update demand status
@@ -529,9 +590,9 @@ const approveDemand = catchAsync(async (req, res, next) => {
                 id: true,
                 name: true,
                 code: true,
-              }
-            }
-          }
+              },
+            },
+          },
         },
         material: true,
         creator: {
@@ -540,7 +601,7 @@ const approveDemand = catchAsync(async (req, res, next) => {
             name: true,
             email: true,
             role: true,
-          }
+          },
         },
         approvals: {
           include: {
@@ -549,12 +610,12 @@ const approveDemand = catchAsync(async (req, res, next) => {
                 id: true,
                 name: true,
                 role: true,
-              }
-            }
+              },
+            },
           },
-          orderBy: { createdAt: 'asc' }
-        }
-      }
+          orderBy: { createdAt: "asc" },
+        },
+      },
     });
 
     return { approval, demand: finalDemand };
@@ -566,7 +627,12 @@ const approveDemand = catchAsync(async (req, res, next) => {
       approval: result.approval,
       demand: result.demand,
       newStatus: result.demand.status,
-    }
+    },
+  });
+  await sendNotificationToUserSafe({
+    userId: result.demand.updatedBy ?? userId,
+    title: "Demand Approved",
+    body: `Demand (${result.demand.referenceNumber}) was approved.`,
   });
 });
 
@@ -588,9 +654,14 @@ const rejectDemand = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  const allowedRoles = ['PROJECT_MANAGER', 'SITE_INCHARGE', 'ADMIN'];
+  const allowedRoles = ["PROJECT_MANAGER", "SITE_INCHARGE", "ADMIN"];
   if (!allowedRoles.includes(user.role)) {
-    return next(new AppError("Only Project Managers, Site Incharges, or Admins can reject demands", 403));
+    return next(
+      new AppError(
+        "Only Project Managers, Site Incharges, or Admins can reject demands",
+        403
+      )
+    );
   }
 
   // Check if demand exists
@@ -604,11 +675,11 @@ const rejectDemand = catchAsync(async (req, res, next) => {
               id: true,
               name: true,
               role: true,
-            }
-          }
-        }
-      }
-    }
+            },
+          },
+        },
+      },
+    },
   });
 
   if (!demand) {
@@ -620,13 +691,19 @@ const rejectDemand = catchAsync(async (req, res, next) => {
   }
 
   // Check if user has already approved/rejected this demand
-  const existingApproval = demand.approvals.find(approval => approval.userId === userId);
+  const existingApproval = demand.approvals.find(
+    (approval) => approval.userId === userId
+  );
   if (existingApproval) {
-    return next(new AppError("You have already provided feedback for this demand", 400));
+    return next(
+      new AppError("You have already provided feedback for this demand", 400)
+    );
   }
 
   // Check if demand is already rejected
-  const hasRejection = demand.approvals.some(approval => approval.status === 'REJECTED');
+  const hasRejection = demand.approvals.some(
+    (approval) => approval.status === "REJECTED"
+  );
   if (hasRejection) {
     return next(new AppError("Demand is already rejected", 400));
   }
@@ -638,7 +715,7 @@ const rejectDemand = catchAsync(async (req, res, next) => {
       data: {
         demandId: id,
         userId,
-        status: 'REJECTED',
+        status: "REJECTED",
         remarks,
       },
       include: {
@@ -647,16 +724,16 @@ const rejectDemand = catchAsync(async (req, res, next) => {
             id: true,
             name: true,
             role: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     // Update demand status to rejected
     const updatedDemand = await tx.demand.update({
       where: { id },
       data: {
-        status: 'REJECTED',
+        status: "REJECTED",
         updatedBy: userId,
         updatedAt: new Date(),
       },
@@ -668,9 +745,9 @@ const rejectDemand = catchAsync(async (req, res, next) => {
                 id: true,
                 name: true,
                 code: true,
-              }
-            }
-          }
+              },
+            },
+          },
         },
         material: true,
         creator: {
@@ -679,7 +756,7 @@ const rejectDemand = catchAsync(async (req, res, next) => {
             name: true,
             email: true,
             role: true,
-          }
+          },
         },
         approvals: {
           include: {
@@ -688,12 +765,12 @@ const rejectDemand = catchAsync(async (req, res, next) => {
                 id: true,
                 name: true,
                 role: true,
-              }
-            }
+              },
+            },
           },
-          orderBy: { createdAt: 'asc' }
-        }
-      }
+          orderBy: { createdAt: "asc" },
+        },
+      },
     });
 
     return { approval, demand: updatedDemand };
@@ -704,7 +781,7 @@ const rejectDemand = catchAsync(async (req, res, next) => {
     data: {
       approval: result.approval,
       demand: result.demand,
-    }
+    },
   });
 });
 
@@ -712,14 +789,16 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const {
     fromStoreId, // Head store ID
-    toStoreId,   // CM store ID
+    toStoreId, // CM store ID
     quantity,
     notes,
   } = req.body;
   const userId = req.user.id;
 
   if (!fromStoreId || !toStoreId || !quantity) {
-    return next(new AppError("fromStoreId, toStoreId, and quantity are required", 400));
+    return next(
+      new AppError("fromStoreId, toStoreId, and quantity are required", 400)
+    );
   }
 
   if (quantity <= 0) {
@@ -735,9 +814,14 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  const allowedRoles = ['PROJECT_MANAGER', 'SITE_INCHARGE'];
+  const allowedRoles = ["PROJECT_MANAGER", "SITE_INCHARGE"];
   if (!allowedRoles.includes(user.role)) {
-    return next(new AppError("Only Project Managers or Site Incharges can fulfill demands", 403));
+    return next(
+      new AppError(
+        "Only Project Managers or Site Incharges can fulfill demands",
+        403
+      )
+    );
   }
 
   // Check if demand exists and is approved
@@ -751,13 +835,13 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
               id: true,
               name: true,
               code: true,
-            }
-          }
-        }
+            },
+          },
+        },
       },
       material: true,
       fulfillments: true,
-    }
+    },
   });
 
   if (!demand) {
@@ -768,43 +852,53 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
     return next(new AppError("Demand is deleted", 400));
   }
 
-  if (demand.status !== 'APPROVED') {
+  if (demand.status !== "APPROVED") {
     return next(new AppError("Only approved demands can be fulfilled", 400));
   }
 
   // Check if quantity exceeds remaining demand
   const remainingQuantity = demand.quantityRemaining || demand.quantity;
   if (quantity > remainingQuantity) {
-    return next(new AppError(`Quantity exceeds remaining demand. Remaining: ${remainingQuantity}, Requested: ${quantity}`, 400));
+    return next(
+      new AppError(
+        `Quantity exceeds remaining demand. Remaining: ${remainingQuantity}, Requested: ${quantity}`,
+        400
+      )
+    );
   }
 
   // Validate stores
   const [fromStore, toStore] = await Promise.all([
     prisma.store.findUnique({
       where: { id: fromStoreId },
-      include: { section: true }
+      include: { section: true },
     }),
     prisma.store.findUnique({
       where: { id: toStoreId },
-      include: { section: true }
-    })
+      include: { section: true },
+    }),
   ]);
 
   if (!fromStore || !toStore) {
     return next(new AppError("One or both stores not found", 404));
   }
 
-  if (fromStore.type !== 'HEAD_STORE') {
+  if (fromStore.type !== "HEAD_STORE") {
     return next(new AppError("From store must be a head store", 400));
   }
 
-  if (toStore.type !== 'CM_STORE') {
+  if (toStore.type !== "CM_STORE") {
     return next(new AppError("To store must be a CM store", 400));
   }
 
   // Check if stores belong to the same section as the demand
-  if (fromStore.sectionId !== demand.sectionId || toStore.sectionId !== demand.sectionId) {
-    return next(new AppError("Stores must belong to the same section as the demand", 400));
+  if (
+    fromStore.sectionId !== demand.sectionId ||
+    toStore.sectionId !== demand.sectionId
+  ) {
+    return next(
+      new AppError("Stores must belong to the same section as the demand", 400)
+    );
   }
 
   // Check if head store has sufficient stock
@@ -813,12 +907,19 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
       storeId_materialId: {
         storeId: fromStoreId,
         materialId: demand.materialId,
-      }
-    }
+      },
+    },
   });
 
   if (!headStoreInventory || headStoreInventory.available < quantity) {
-    return next(new AppError(`Insufficient stock in head store. Available: ${headStoreInventory?.available || 0}, Requested: ${quantity}`, 400));
+    return next(
+      new AppError(
+        `Insufficient stock in head store. Available: ${
+          headStoreInventory?.available || 0
+        }, Requested: ${quantity}`,
+        400
+      )
+    );
   }
 
   // Perform fulfillment in transaction
@@ -838,16 +939,16 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
             id: true,
             name: true,
             type: true,
-          }
+          },
         },
         toStore: {
           select: {
             id: true,
             name: true,
             type: true,
-          }
-        }
-      }
+          },
+        },
+      },
     });
 
     // Update head store inventory (decrease)
@@ -856,16 +957,16 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
         storeId_materialId: {
           storeId: fromStoreId,
           materialId: demand.materialId,
-        }
+        },
       },
       data: {
         stock: {
-          decrement: quantity
+          decrement: quantity,
         },
         available: {
-          decrement: quantity
-        }
-      }
+          decrement: quantity,
+        },
+      },
     });
 
     // Update CM store inventory (increase)
@@ -874,15 +975,15 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
         storeId_materialId: {
           storeId: toStoreId,
           materialId: demand.materialId,
-        }
+        },
       },
       update: {
         stock: {
-          increment: quantity
+          increment: quantity,
         },
         available: {
-          increment: quantity
-        }
+          increment: quantity,
+        },
       },
       create: {
         storeId: toStoreId,
@@ -890,7 +991,7 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
         stock: quantity,
         available: quantity,
         reserved: 0,
-      }
+      },
     });
 
     // Create store transactions
@@ -900,37 +1001,41 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
         data: {
           storeId: fromStoreId,
           materialId: demand.materialId,
-          type: 'OUT',
+          type: "OUT",
           quantity,
           reference: demand.referenceNumber,
           notes: notes || `Fulfilled demand ${demand.referenceNumber}`,
           createdBy: userId,
-        }
+        },
       }),
       // CM store transaction (IN)
       tx.storeTransaction.create({
         data: {
           storeId: toStoreId,
           materialId: demand.materialId,
-          type: 'IN',
+          type: "IN",
           quantity,
           reference: demand.referenceNumber,
-          notes: notes || `Received from demand fulfillment ${demand.referenceNumber}`,
+          notes:
+            notes ||
+            `Received from demand fulfillment ${demand.referenceNumber}`,
           createdBy: userId,
-        }
-      })
+        },
+      }),
     ]);
 
     // Update demand status
     const newRemainingQuantity = Number(remainingQuantity) - Number(quantity);
-    const newFulfilledQuantity = Number(demand.quantityFulfilled || 0) + Number(quantity);
-    
+    const newFulfilledQuantity =
+      Number(demand.quantityFulfilled || 0) + Number(quantity);
+
     const updatedDemand = await tx.demand.update({
       where: { id },
       data: {
         quantityRemaining: newRemainingQuantity,
         quantityFulfilled: newFulfilledQuantity,
-        status: newRemainingQuantity <= 0 ? 'COMPLETED' : 'FULFILLED_FROM_STORE',
+        status:
+          newRemainingQuantity <= 0 ? "COMPLETED" : "FULFILLED_FROM_STORE",
         updatedBy: userId,
         updatedAt: new Date(),
       },
@@ -942,9 +1047,9 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
                 id: true,
                 name: true,
                 code: true,
-              }
-            }
-          }
+              },
+            },
+          },
         },
         material: true,
         creator: {
@@ -953,7 +1058,7 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
             name: true,
             email: true,
             role: true,
-          }
+          },
         },
         fulfillments: {
           include: {
@@ -962,19 +1067,19 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
                 id: true,
                 name: true,
                 type: true,
-              }
+              },
             },
             toStore: {
               select: {
                 id: true,
                 name: true,
                 type: true,
-              }
-            }
+              },
+            },
           },
-          orderBy: { fulfilledAt: 'asc' }
-        }
-      }
+          orderBy: { fulfilledAt: "asc" },
+        },
+      },
     });
 
     return { fulfillment, demand: updatedDemand };
@@ -986,7 +1091,7 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
       fulfillment: result.fulfillment,
       demand: result.demand,
       remainingQuantity: result.demand.quantityRemaining,
-    }
+    },
   });
 });
 
@@ -1000,4 +1105,4 @@ export {
   approveDemand,
   rejectDemand,
   fulfillDemand,
-}; 
+};

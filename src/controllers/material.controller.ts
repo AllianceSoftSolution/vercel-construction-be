@@ -1,17 +1,17 @@
 import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
-import { buildQueryOptions, extractQueryParams, buildPaginationMeta } from "../utils/buildQueryOptions";
+import {
+  buildQueryOptions,
+  extractQueryParams,
+  buildPaginationMeta,
+} from "../utils/buildQueryOptions";
+import { sendNotificationToUserSafe } from "../utils/notification";
 
 const prisma = new PrismaClient();
 
 const createMaterial = catchAsync(async (req, res, next) => {
-  const {
-    name,
-    description,
-    unit,
-    category,
-  } = req.body;
+  const { name, description, unit, category } = req.body;
   const userId = req.user.id;
 
   if (!name || !unit || !userId) {
@@ -41,29 +41,38 @@ const createMaterial = catchAsync(async (req, res, next) => {
     message: "Material created successfully",
     material,
   });
+  await sendNotificationToUserSafe({
+    userId: req.user.id,
+    title: "Material Created",
+    body: `Material ${material.name} was created successfully.`,
+  });
 });
 
 const getMaterials = catchAsync(async (req, res) => {
   // Extract query parameters
   const filterOptions = extractQueryParams(req);
-  
+
   // Define searchable fields for materials
-  const searchableFields = ['name', 'description', 'category'];
-  
+  const searchableFields = ["name", "description", "category"];
+
   // Build default filters
   const defaultFilters = { isDeleted: false };
 
   // Build query options
-  const queryOptions = buildQueryOptions(filterOptions, defaultFilters, searchableFields);
+  const queryOptions = buildQueryOptions(
+    filterOptions,
+    defaultFilters,
+    searchableFields
+  );
 
   // Get total count for pagination
   const total = await prisma.material.count({
-    where: queryOptions.where
+    where: queryOptions.where,
   });
 
   // Get materials with pagination
   const materials = await prisma.material.findMany({
-    ...queryOptions
+    ...queryOptions,
   });
 
   // Build pagination metadata
@@ -76,7 +85,7 @@ const getMaterials = catchAsync(async (req, res) => {
   res.json({
     message: "Materials retrieved successfully",
     materials,
-    ...paginationMeta
+    ...paginationMeta,
   });
 });
 
@@ -87,7 +96,7 @@ const getMaterialById = catchAsync(async (req, res, next) => {
     include: {
       demands: true,
       storeInventory: true,
-    }
+    },
   });
   if (!material) {
     return next(new AppError("Material not found", 404));
@@ -131,6 +140,11 @@ const updateMaterial = catchAsync(async (req, res, next) => {
     message: "Material updated successfully",
     material: updatedMaterial,
   });
+  await sendNotificationToUserSafe({
+    userId: req.user.id,
+    title: "Material Updated",
+    body: `Material ${updatedMaterial.name} was updated successfully.`,
+  });
 });
 
 const deleteMaterial = catchAsync(async (req, res, next) => {
@@ -140,10 +154,15 @@ const deleteMaterial = catchAsync(async (req, res, next) => {
     return next(new AppError("Material not found", 404));
   }
   await prisma.material.delete({
-    where: { id }
+    where: { id },
   });
   res.json({
     message: "Material deleted successfully",
+  });
+  await sendNotificationToUserSafe({
+    userId: req.user.id,
+    title: "Material Deleted",
+    body: `Material was deleted successfully.`,
   });
 });
 
@@ -166,6 +185,11 @@ const activateMaterial = catchAsync(async (req, res, next) => {
     message: "Material activated successfully",
     material: updatedMaterial,
   });
+  await sendNotificationToUserSafe({
+    userId: req.user.id,
+    title: "Material Activated",
+    body: `Material ${updatedMaterial.name} was activated successfully.`,
+  });
 });
 
 const deactivateMaterial = catchAsync(async (req, res, next) => {
@@ -187,6 +211,11 @@ const deactivateMaterial = catchAsync(async (req, res, next) => {
     message: "Material deactivated successfully",
     material: updatedMaterial,
   });
+  await sendNotificationToUserSafe({
+    userId: req.user.id,
+    title: "Material Deactivated",
+    body: `Material ${updatedMaterial.name} was deactivated successfully.`,
+  });
 });
 
 export {
@@ -197,4 +226,4 @@ export {
   deleteMaterial,
   activateMaterial,
   deactivateMaterial,
-}; 
+};
