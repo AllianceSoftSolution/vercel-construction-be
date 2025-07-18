@@ -236,16 +236,16 @@ const getSections = catchAsync(async (req, res) => {
         where: {
           sectionId: section.id,
           isDeleted: false,
-          totalAmount: { not: null }
+          totalAmount: { not: null },
         },
         _sum: {
-          totalAmount: true
-        }
+          totalAmount: true,
+        },
       });
 
       return {
         ...section,
-        totalAmountSpent: sectionPOs._sum.totalAmount || 0
+        totalAmountSpent: sectionPOs._sum.totalAmount || 0,
       };
     })
   );
@@ -266,6 +266,43 @@ const getSections = catchAsync(async (req, res) => {
 
 const getSectionById = catchAsync(async (req, res, next) => {
   const { id } = req.params;
+  const user = req.user;
+
+  // Role-based access check
+  if (user.role !== "ADMIN") {
+    let assigned = false;
+    if (user.role === "SITE_INCHARGE") {
+      const assignment = await prisma.siteInchargeAssignment.findFirst({
+        where: { userId: user.id, sectionId: id, isActive: true },
+      });
+      assigned = !!assignment;
+    } else if (user.role === "PROJECT_MANAGER") {
+      const assignment = await prisma.projectManagerAssignment.findFirst({
+        where: { userId: user.id, sectionId: id, isActive: true },
+      });
+      assigned = !!assignment;
+    } else if (user.role === "CONSTRUCTION_MANAGER") {
+      const assignment = await prisma.constructionManagerAssignment.findFirst({
+        where: { userId: user.id, sectionId: id, isActive: true },
+      });
+      assigned = !!assignment;
+    } else if (user.role === "STORE_INCHARGE") {
+      const assignment = await prisma.storeInchargeAssignment.findFirst({
+        where: { userId: user.id, isActive: true, store: { sectionId: id } },
+      });
+      assigned = !!assignment;
+    } else if (user.role === "ACCOUNTANT") {
+      const assignment = await prisma.accountantAssignment.findFirst({
+        where: { userId: user.id, sectionId: id, isActive: true },
+      });
+      assigned = !!assignment;
+    }
+    if (!assigned) {
+      return next(
+        new AppError("Access denied: not assigned to this section", 403)
+      );
+    }
+  }
 
   const section = await prisma.section.findUnique({
     where: { id },
@@ -382,11 +419,11 @@ const getSectionById = catchAsync(async (req, res, next) => {
     where: {
       sectionId: section.id,
       isDeleted: false,
-      totalAmount: { not: null }
+      totalAmount: { not: null },
     },
     _sum: {
-      totalAmount: true
-    }
+      totalAmount: true,
+    },
   });
 
   // Find the head store (should be only one)
@@ -441,7 +478,7 @@ const getSectionById = catchAsync(async (req, res, next) => {
     associatedSiteIncharges: section.siteInchargeAssignments,
     associatedAccountants: section.accountantAssignments,
     recentDemands: section.demands,
-    totalAmountSpent: sectionPOs._sum.totalAmount || 0
+    totalAmountSpent: sectionPOs._sum.totalAmount || 0,
   };
 
   res.json({

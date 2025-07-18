@@ -316,6 +316,7 @@ export const getPurchaseOrders = catchAsync(
 export const getPurchaseOrder = catchAsync(
   async (req: Request, res: Response, next) => {
     const { id } = req.params;
+    const user = req.user;
 
     const purchaseOrder = await prisma.purchaseOrder.findFirst({
       where: { id, isDeleted: false },
@@ -340,6 +341,48 @@ export const getPurchaseOrder = catchAsync(
 
     if (!purchaseOrder) {
       return next(new AppError("Purchase Order not found", 404));
+    }
+
+    // Role-based access check
+    if (user.role !== "ADMIN") {
+      let assigned = false;
+      const sectionId = purchaseOrder.sectionId;
+      if (user.role === "SITE_INCHARGE") {
+        const assignment = await prisma.siteInchargeAssignment.findFirst({
+          where: { userId: user.id, sectionId, isActive: true },
+        });
+        assigned = !!assignment;
+      } else if (user.role === "PROJECT_MANAGER") {
+        const assignment = await prisma.projectManagerAssignment.findFirst({
+          where: { userId: user.id, sectionId, isActive: true },
+        });
+        assigned = !!assignment;
+      } else if (user.role === "CONSTRUCTION_MANAGER") {
+        const assignment = await prisma.constructionManagerAssignment.findFirst(
+          {
+            where: { userId: user.id, sectionId, isActive: true },
+          }
+        );
+        assigned = !!assignment;
+      } else if (user.role === "STORE_INCHARGE") {
+        const assignment = await prisma.storeInchargeAssignment.findFirst({
+          where: { userId: user.id, isActive: true, store: { sectionId } },
+        });
+        assigned = !!assignment;
+      } else if (user.role === "ACCOUNTANT") {
+        const assignment = await prisma.accountantAssignment.findFirst({
+          where: { userId: user.id, sectionId, isActive: true },
+        });
+        assigned = !!assignment;
+      }
+      if (!assigned) {
+        return next(
+          new AppError(
+            "Access denied: not assigned to this purchase order's section",
+            403
+          )
+        );
+      }
     }
 
     res.status(200).json({

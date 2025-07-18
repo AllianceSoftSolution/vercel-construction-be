@@ -233,6 +233,51 @@ const getProjects = catchAsync(async (req, res) => {
 
 const getProjectById = catchAsync(async (req, res, next) => {
   const { id } = req.params;
+  const user = req.user;
+
+  // Determine assignedSectionIds for the user (same logic as getProjects)
+  let assignedSectionIds: string[] = [];
+  if (user.role === "ADMIN") {
+    // No filter, see all
+  } else if (user.role === "SITE_INCHARGE") {
+    const assignments = await prisma.siteInchargeAssignment.findMany({
+      where: { userId: user.id, isActive: true, projectId: id },
+      select: { sectionId: true },
+    });
+    assignedSectionIds = assignments.map((a) => a.sectionId);
+  } else if (user.role === "PROJECT_MANAGER") {
+    const assignments = await prisma.projectManagerAssignment.findMany({
+      where: { userId: user.id, isActive: true, projectId: id },
+      select: { sectionId: true },
+    });
+    assignedSectionIds = assignments.map((a) => a.sectionId);
+  } else if (user.role === "CONSTRUCTION_MANAGER") {
+    const assignments = await prisma.constructionManagerAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { section: { select: { projectId: true, id: true } } },
+    });
+    assignedSectionIds = assignments
+      .filter((a) => a.section.projectId === id)
+      .map((a) => a.section.id);
+  } else if (user.role === "STORE_INCHARGE") {
+    const assignments = await prisma.storeInchargeAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: {
+        store: {
+          select: { section: { select: { projectId: true, id: true } } },
+        },
+      },
+    });
+    assignedSectionIds = assignments
+      .filter((a) => a.store.section.projectId === id)
+      .map((a) => a.store.section.id);
+  } else if (user.role === "ACCOUNTANT") {
+    const assignments = await prisma.accountantAssignment.findMany({
+      where: { userId: user.id, isActive: true, projectId: id },
+      select: { sectionId: true },
+    });
+    assignedSectionIds = assignments.map((a) => a.sectionId);
+  }
 
   const project = await prisma.project.findUnique({
     where: { id },
@@ -371,7 +416,7 @@ const getProjectById = catchAsync(async (req, res, next) => {
   });
 
   // Calculate amounts for each section
-  const sectionsWithAmounts = await Promise.all(
+  let sectionsWithAmounts = await Promise.all(
     project.sections.map(async (section) => {
       const sectionPOs = await prisma.purchaseOrder.aggregate({
         where: {
@@ -390,6 +435,13 @@ const getProjectById = catchAsync(async (req, res, next) => {
       };
     })
   );
+
+  // Filter sections for non-admins to only assigned sections
+  if (user.role !== "ADMIN" && Array.isArray(sectionsWithAmounts)) {
+    sectionsWithAmounts = sectionsWithAmounts.filter((section) =>
+      assignedSectionIds.includes(section.id)
+    );
+  }
 
   // Create a single list of all associated members with their roles
   const allMembers = new Map();

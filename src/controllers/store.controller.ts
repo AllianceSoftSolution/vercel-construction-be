@@ -293,6 +293,86 @@ const getStores = catchAsync(async (req, res) => {
 
 const getStoreById = catchAsync(async (req, res, next) => {
   const { id } = req.params;
+  const user = req.user;
+
+  // Role-based access check
+  if (user.role !== "ADMIN") {
+    let assigned = false;
+    if (user.role === "STORE_INCHARGE") {
+      const assignment = await prisma.storeInchargeAssignment.findFirst({
+        where: { userId: user.id, storeId: id, isActive: true },
+      });
+      assigned = !!assignment;
+    } else if (user.role === "SITE_INCHARGE") {
+      // Site incharge can access if assigned to the section of this store
+      const store = await prisma.store.findUnique({
+        where: { id },
+        select: { sectionId: true },
+      });
+      if (store) {
+        const assignment = await prisma.siteInchargeAssignment.findFirst({
+          where: {
+            userId: user.id,
+            sectionId: store.sectionId,
+            isActive: true,
+          },
+        });
+        assigned = !!assignment;
+      }
+    } else if (user.role === "PROJECT_MANAGER") {
+      const store = await prisma.store.findUnique({
+        where: { id },
+        select: { sectionId: true },
+      });
+      if (store) {
+        const assignment = await prisma.projectManagerAssignment.findFirst({
+          where: {
+            userId: user.id,
+            sectionId: store.sectionId,
+            isActive: true,
+          },
+        });
+        assigned = !!assignment;
+      }
+    } else if (user.role === "CONSTRUCTION_MANAGER") {
+      const store = await prisma.store.findUnique({
+        where: { id },
+        select: { sectionId: true },
+      });
+      if (store) {
+        const assignment = await prisma.constructionManagerAssignment.findFirst(
+          {
+            where: {
+              userId: user.id,
+              sectionId: store.sectionId,
+              isActive: true,
+            },
+          }
+        );
+        assigned = !!assignment;
+      }
+    } else if (user.role === "ACCOUNTANT") {
+      const store = await prisma.store.findUnique({
+        where: { id },
+        select: { sectionId: true },
+      });
+      if (store) {
+        const assignment = await prisma.accountantAssignment.findFirst({
+          where: {
+            userId: user.id,
+            sectionId: store.sectionId,
+            isActive: true,
+          },
+        });
+        assigned = !!assignment;
+      }
+    }
+    if (!assigned) {
+      return next(
+        new AppError("Access denied: not assigned to this store", 403)
+      );
+    }
+  }
 
   const store = await prisma.store.findUnique({
     where: { id },

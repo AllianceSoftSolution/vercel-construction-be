@@ -232,6 +232,8 @@ const getDemands = catchAsync(async (req, res) => {
 
 const getDemandById = catchAsync(async (req, res, next) => {
   const { id } = req.params;
+  const user = req.user;
+
   const demand = await prisma.demand.findUnique({
     where: { id },
     include: {
@@ -256,6 +258,46 @@ const getDemandById = catchAsync(async (req, res, next) => {
   });
   if (!demand) {
     return next(new AppError("Demand not found", 404));
+  }
+
+  // Role-based access check
+  if (user.role !== "ADMIN") {
+    let assigned = false;
+    const sectionId = demand.sectionId;
+    if (user.role === "SITE_INCHARGE") {
+      const assignment = await prisma.siteInchargeAssignment.findFirst({
+        where: { userId: user.id, sectionId, isActive: true },
+      });
+      assigned = !!assignment;
+    } else if (user.role === "PROJECT_MANAGER") {
+      const assignment = await prisma.projectManagerAssignment.findFirst({
+        where: { userId: user.id, sectionId, isActive: true },
+      });
+      assigned = !!assignment;
+    } else if (user.role === "CONSTRUCTION_MANAGER") {
+      const assignment = await prisma.constructionManagerAssignment.findFirst({
+        where: { userId: user.id, sectionId, isActive: true },
+      });
+      assigned = !!assignment;
+    } else if (user.role === "STORE_INCHARGE") {
+      const assignment = await prisma.storeInchargeAssignment.findFirst({
+        where: { userId: user.id, isActive: true, store: { sectionId } },
+      });
+      assigned = !!assignment;
+    } else if (user.role === "ACCOUNTANT") {
+      const assignment = await prisma.accountantAssignment.findFirst({
+        where: { userId: user.id, sectionId, isActive: true },
+      });
+      assigned = !!assignment;
+    }
+    if (!assigned) {
+      return next(
+        new AppError(
+          "Access denied: not assigned to this demand's section",
+          403
+        )
+      );
+    }
   }
   // Add projectName to section and remove the full project object
   if (
