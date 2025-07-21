@@ -780,7 +780,11 @@ export const updatePOStatus = catchAsync(
 export const addPOAmount = catchAsync(
   async (req: Request, res: Response, next) => {
     const { id } = req.params;
-    const { unitPrice, proofOfBill, notes } = req.body;
+    const { unitPrice, notes } = req.body;
+
+    // Get uploaded file from middleware
+    const filesFromS3 = (req as any).filesFromS3;
+    const proofOfBill = filesFromS3?.proofOfBill;
 
     const purchaseOrder = await prisma.purchaseOrder.findFirst({
       where: { id, isDeleted: false },
@@ -807,7 +811,7 @@ export const addPOAmount = catchAsync(
     }
 
     if (!proofOfBill) {
-      return next(new AppError("Proof of bill/invoice is required", 400));
+      return next(new AppError("Proof of bill/invoice file is required", 400));
     }
 
     const totalAmount = Number(purchaseOrder.quantity) * Number(unitPrice);

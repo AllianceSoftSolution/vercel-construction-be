@@ -35,13 +35,21 @@ export const getVendorAccountStatement = catchAsync(
 export const addVendorPayment = catchAsync(
   async (req: Request, res: Response, next) => {
     const { vendorId } = req.params;
-    const { amount, proofOfPayment, note } = req.body;
+    const { amount, note } = req.body;
     const userId = req.user.id;
+
+    // Get uploaded file from middleware
+    const filesFromS3 = (req as any).filesFromS3;
+    const proofOfPayment = filesFromS3?.proofOfPayment;
 
     // Validate vendor exists
     const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
     if (!vendor) {
       return next(new AppError("Vendor not found", 404));
+    }
+
+    if (!proofOfPayment) {
+      return next(new AppError("Proof of payment file is required", 400));
     }
 
     // Find or create vendor account

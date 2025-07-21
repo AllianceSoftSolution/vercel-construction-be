@@ -12,6 +12,7 @@ import {
   addPOAmount,
 } from "../controllers/purchaseOrder.controller";
 import protect from "../middlewares/auth.middleware";
+import { s3UploadMiddleware } from "../middlewares/s3UploadMiddleware";
 
 const router = express.Router();
 
@@ -24,7 +25,12 @@ router.get("/demand/:demandId/statistics", protect, getDemandPOStatistics);
 router.get("/:id", protect, getPurchaseOrder);
 router.put("/:id", protect, updatePurchaseOrder);
 router.patch("/:id/status", protect, updatePOStatus);
-router.patch("/:id/amount", protect, addPOAmount);
+router.patch(
+  "/:id/amount",
+  protect,
+  s3UploadMiddleware([{ name: "proofOfBill", maxCount: 1 }]),
+  addPOAmount
+);
 router.delete("/:id", protect, deletePurchaseOrder);
 
 export default router;

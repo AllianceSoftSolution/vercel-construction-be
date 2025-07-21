@@ -1,6 +1,7 @@
 import express from "express";
 import * as vendorAccountController from "../controllers/vendorAccount.controller";
 import protect from "../middlewares/auth.middleware";
+import { s3UploadMiddleware } from "../middlewares/s3UploadMiddleware";
 
 const router = express.Router();
 
@@ -18,6 +19,7 @@ router.get(
 router.post(
   "/vendors/:vendorId/payments",
   protect,
+  s3UploadMiddleware([{ name: "proofOfPayment", maxCount: 1 }]),
   vendorAccountController.addVendorPayment
 );
 

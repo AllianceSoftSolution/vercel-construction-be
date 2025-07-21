@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "cockroachdb"
+  provider = "postgres"
   url      = env("DATABASE_URL")
 }
 
@@ -63,6 +63,20 @@ enum POStatus {
   IN_STORE
   COMPLETED
   CANCELLED
+}
+
+// OTP Model for Password Reset
+model OTP {
+  id        String   @id @default(cuid())
+  email     String
+  otp       String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  @@unique([email])
+  @@map("otps")
 }
 
 // Core Models

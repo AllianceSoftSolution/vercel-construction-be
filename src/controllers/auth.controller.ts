@@ -12,8 +12,22 @@ import {
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
+import {
+  generateOTP,
+  validateOTPFormat,
+  isOTPValid,
+  incrementOTPAttempts,
+  removeOTP,
+  setupOTPCleanup,
+  storeOTP,
+  markOTPAsUsed,
+} from "../utils/otpUtils";
+import { validatePasswordStrength } from "../utils/passwordUtils";
 
 const prisma = new Prisma.PrismaClient();
+
+// Set up OTP cleanup on module load
+setupOTPCleanup();
 
 const registerUser = catchAsync(async (req, res, next) => {
   const { email, name, role, isHead = false } = req.body;
@@ -195,13 +209,27 @@ const changePassword = catchAsync(async (req, res, next) => {
     return res.status(401).json({ error: "Incorrect current password" });
   }
 
+  // Validate new password strength
+  const passwordValidation = validatePasswordStrength(newPassword);
+  if (!passwordValidation.isValid) {
+    return next(
+      new AppError(
+        `Password validation failed: ${passwordValidation.errors.join(", ")}`,
+        400
+      )
+    );
+  }
+
   // Hash the new password
-  const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+  const hashedNewPassword = await bcrypt.hash(newPassword, 12);
 
   // Update the user's password in the database
   await prisma.user.update({
     where: { id: userId },
-    data: { password: hashedNewPassword },
+    data: {
+      password: hashedNewPassword,
+      updatedAt: new Date(),
+    },
   });
 
   // Respond with a success message
@@ -473,15 +501,27 @@ const requestPasswordReset = catchAsync(async (req, res, next) => {
   if (!email) {
     return next(new AppError("Email is required", 400));
   }
+
   // Find user by email
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
     return next(new AppError("User not found", 404));
   }
+
+  if (user.isDeleted) {
+    return next(new AppError("User account has been deleted", 404));
+  }
+
+  if (!user.isActive) {
+    return next(new AppError("User account is inactive", 400));
+  }
+
   // Generate OTP (6 digits)
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  // TODO: Store OTP in DB or cache with expiry (for now, just log it)
-  console.log(`Generated OTP for ${email}:`, otp);
+  const otp = generateOTP();
+
+  // Store OTP in database with 15 minutes expiry
+  await storeOTP(email, otp, 15);
+
   // Send OTP email
   try {
     const emailer = new Email();
@@ -493,37 +533,98 @@ const requestPasswordReset = catchAsync(async (req, res, next) => {
     });
   } catch (err) {
     console.error("Failed to send OTP email:", err);
+    return next(new AppError("Failed to send OTP email", 500));
   }
+
   res.status(200).json({
-    message: `OTP sent to ${email} (stub, implement email sending and OTP storage)`,
+    status: "success",
+    message: `OTP sent to ${email}. Valid for 15 minutes.`,
   });
 });
 
 // Controller: Reset password with OTP
 const resetPasswordWithOTP = catchAsync(async (req, res, next) => {
   const { email, otp, newPassword } = req.body;
+
   if (!email || !otp || !newPassword) {
     return next(new AppError("Email, OTP, and new password are required", 400));
   }
-  // TODO: Validate OTP for the email, then update password if valid
-  // For now, just return a stub response and send success email
+
+  // Validate password strength
+  const passwordValidation = validatePasswordStrength(newPassword);
+  if (!passwordValidation.isValid) {
+    return next(
+      new AppError(
+        `Password validation failed: ${passwordValidation.errors.join(", ")}`,
+        400
+      )
+    );
+  }
+
+  // Validate OTP format
+  if (!validateOTPFormat(otp)) {
+    return next(new AppError("Invalid OTP format. OTP must be 6 digits.", 400));
+  }
+
   // Find user by email
   const user = await prisma.user.findUnique({ where: { email } });
-  if (user) {
-    try {
-      const emailer = new Email();
-      await emailer.send({
-        to: email,
-        subject: "Password Reset Successful",
-        template: "password-reset-success",
-        data: { name: user.name },
-      });
-    } catch (err) {
-      console.error("Failed to send password reset success email:", err);
-    }
+  if (!user) {
+    return next(new AppError("User not found", 404));
   }
+
+  if (user.isDeleted) {
+    return next(new AppError("User account has been deleted", 404));
+  }
+
+  if (!user.isActive) {
+    return next(new AppError("User account is inactive", 400));
+  }
+
+  // Validate OTP using database
+  const isOTPValidResult = await isOTPValid(email, otp);
+  if (!isOTPValidResult) {
+    await incrementOTPAttempts(email);
+    return next(
+      new AppError(
+        "Invalid OTP or OTP expired. Please try again or request a new OTP.",
+        400
+      )
+    );
+  }
+
+  // Hash the new password
+  const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+  // Update user password
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: hashedPassword,
+      updatedAt: new Date(),
+    },
+  });
+
+  // Mark OTP as used
+  await markOTPAsUsed(email);
+
+  // Send success email
+  try {
+    const emailer = new Email();
+    await emailer.send({
+      to: email,
+      subject: "Password Reset Successful",
+      template: "password-reset-success",
+      data: { name: user.name },
+    });
+  } catch (err) {
+    console.error("Failed to send password reset success email:", err);
+    // Don't fail the request if email fails
+  }
+
   res.status(200).json({
-    message: `Password reset for ${email} (stub, implement OTP validation and password update)`,
+    status: "success",
+    message:
+      "Password reset successfully. You can now login with your new password.",
   });
 });
 
