@@ -17,7 +17,6 @@ import {
   validateOTPFormat,
   isOTPValid,
   incrementOTPAttempts,
-  removeOTP,
   setupOTPCleanup,
   storeOTP,
   markOTPAsUsed,
@@ -30,7 +29,7 @@ const prisma = new Prisma.PrismaClient();
 setupOTPCleanup();
 
 const registerUser = catchAsync(async (req, res, next) => {
-  const { email, name, role, isHead = false } = req.body;
+  const { email, name, role, isHead = false, notes } = req.body;
 
   // Check if user already exists
   const userCount = await prisma.user.count();
@@ -92,6 +91,7 @@ const registerUser = catchAsync(async (req, res, next) => {
       role,
       isHead,
       createdBy,
+      ...(notes && { notes }),
     },
     select: {
       id: true,
@@ -102,6 +102,7 @@ const registerUser = catchAsync(async (req, res, next) => {
       isHead: true,
       isActive: true,
       createdAt: true,
+      notes: true,
     },
   });
 
@@ -358,10 +359,16 @@ const updateUser = catchAsync(async (req, res, next) => {
     updates.password = await bcrypt.hash(updates.password, 12);
   }
 
+  // Only allow notes if provided
+  const updateData = { ...updates };
+  if (typeof updates.notes === "undefined") {
+    delete updateData.notes;
+  }
+
   const updatedUser = await prisma.user.update({
     where: { id },
     data: {
-      ...updates,
+      ...updateData,
       updatedBy: userId,
       updatedAt: new Date(),
     },
@@ -374,6 +381,7 @@ const updateUser = catchAsync(async (req, res, next) => {
       isHead: true,
       isActive: true,
       updatedAt: true,
+      notes: true,
     },
   });
 

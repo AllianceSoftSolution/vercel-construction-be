@@ -94,6 +94,7 @@ model User {
   updatedAt   DateTime @updatedAt
   createdBy   String?
   updatedBy   String?
+  notes       String?
 
   // User who created this user
   creator     User? @relation("UserCreator", fields: [createdBy], references: [id])
@@ -390,7 +391,7 @@ model PurchaseOrder {
   demandId        String
   projectId       String   // Added for project tracking
   sectionId       String   // Added for section tracking
-  referenceNumber String
+  referenceNumber String   @unique
   materialId      String   // NEW: direct reference
   vendorId        String   // NEW: direct reference
   quantity        Decimal  // Renamed from totalQuantity

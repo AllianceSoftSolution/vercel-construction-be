@@ -904,3 +904,82 @@ export const getDashboardAnalytics = catchAsync(
     }
   }
 );
+
+// Payments grouped by project and section for charting
+export const getPaymentsByProjectAndSection = catchAsync(async (req, res) => {
+  // Get accessible projects and sections for the user
+  const user = req.user;
+  const accessibleSectionIds = await getUserAccessibleSections(
+    user.id,
+    user.role
+  );
+  const accessibleProjectIds = await getUserAccessibleProjects(
+    user.id,
+    user.role
+  );
+
+  // Get all projects and their sections
+  const projects = await prisma.project.findMany({
+    where: { isDeleted: false, id: { in: accessibleProjectIds } },
+    select: {
+      id: true,
+      name: true,
+      code: true,
+      sections: {
+        where: { isDeleted: false, id: { in: accessibleSectionIds } },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
+    },
+  });
+
+  // Get PO sums grouped by project and section
+  const poSums = await prisma.purchaseOrder.groupBy({
+    by: ["projectId", "sectionId"],
+    where: {
+      isDeleted: false,
+      totalAmount: { not: null },
+      projectId: { in: accessibleProjectIds },
+      sectionId: { in: accessibleSectionIds },
+    },
+    _sum: {
+      totalAmount: true,
+    },
+  });
+
+  // Build chart data structure
+  const chartData: any[] = [];
+  for (const project of projects) {
+    const projectEntry = {
+      projectId: project.id,
+      projectName: project.name,
+      projectCode: project.code,
+      sections: [] as any[],
+      totalAmount: 0,
+    };
+    for (const section of project.sections) {
+      const poSum = poSums.find(
+        (p) => p.projectId === project.id && p.sectionId === section.id
+      );
+      const amount = poSum?._sum.totalAmount
+        ? Number(poSum._sum.totalAmount)
+        : 0;
+      projectEntry.sections.push({
+        sectionId: section.id,
+        sectionName: section.name,
+        sectionCode: section.code,
+        amount,
+      });
+      projectEntry.totalAmount += amount;
+    }
+    chartData.push(projectEntry);
+  }
+
+  res.json({
+    message: "Payments grouped by project and section",
+    data: chartData,
+  });
+});

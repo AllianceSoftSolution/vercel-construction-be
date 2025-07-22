@@ -4,25 +4,9 @@ import { Decimal } from "@prisma/client/runtime/library";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { sendNotificationToUserSafe } from "../utils/notification";
+import { generatePOReferenceNumber } from "../utils/generateCode";
 
 const prisma = new PrismaClient();
-
-// Helper to generate PO reference number
-async function generatePOReferenceNumber(sectionId: string) {
-  // Fetch section and project
-  const section = await prisma.section.findUnique({
-    where: { id: sectionId },
-    include: { project: true },
-  });
-  if (!section || !section.project) {
-    throw new AppError(
-      "Section or project not found for reference number generation",
-      400
-    );
-  }
-  // Example: PO-PROJCODE-SECTIONCODE-<timestamp>
-  return `PO-${section.project.code}-${section.code}-${Date.now()}`;
-}
 
 // Helper to calculate total PO quantity for a demand
 async function getTotalPOQuantityForDemand(demandId: string) {
@@ -159,7 +143,7 @@ export const createPurchaseOrder = catchAsync(
     }
 
     // Generate reference number
-    const referenceNumber = await generatePOReferenceNumber(sectionId);
+    const referenceNumber = await generatePOReferenceNumber(demandId);
 
     // Create PO
     const purchaseOrder = await prisma.purchaseOrder.create({
@@ -290,7 +274,8 @@ export const getPurchaseOrders = catchAsync(
           },
         },
         section: true,
-        material: true, // <-- Add this line to include material details
+        material: true, // already included
+        vendor: true, // <-- add this line to include vendor details
       },
       skip,
       take: Number(limit),
@@ -336,6 +321,8 @@ export const getPurchaseOrder = catchAsync(
           },
         },
         section: true,
+        material: true, // <-- add this line to include material details
+        vendor: true, // <-- add this line to include vendor details
       },
     });
 

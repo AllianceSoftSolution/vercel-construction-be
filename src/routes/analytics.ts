@@ -30,4 +30,10 @@ router.get(
 );
 router.get("/accountant/dashboard", analyticsController.getAccountantDashboard);
 
+// Payments by project and section for charting
+router.get(
+  "/payments-by-project-section",
+  analyticsController.getPaymentsByProjectAndSection
+);
+
 export default router;

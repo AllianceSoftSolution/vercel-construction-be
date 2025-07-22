@@ -443,64 +443,92 @@ const getProjectById = catchAsync(async (req, res, next) => {
     );
   }
 
-  // Create a single list of all associated members with their roles
+  // --- Build associatedMembers with all roles and RBAC filtering ---
   const allMembers = new Map();
 
-  // Add site incharges
+  // Helper to add member if not present, and push assignment
+  function addMember(user, assignment) {
+    if (!allMembers.has(user.id)) {
+      allMembers.set(user.id, {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        assignments: [],
+      });
+    }
+    allMembers.get(user.id).assignments.push(assignment);
+  }
+
+  // Site Incharges
   project.siteInchargeAssignments.forEach((assignment) => {
-    const userId = assignment.user.id;
-    if (!allMembers.has(userId)) {
-      allMembers.set(userId, {
-        id: assignment.user.id,
-        name: assignment.user.name,
-        email: assignment.user.email,
-        role: assignment.user.role,
-        assignments: [],
+    if (
+      user.role === "ADMIN" ||
+      assignedSectionIds.includes(assignment.section.id)
+    ) {
+      addMember(assignment.user, {
+        type: "Site Incharge",
+        section: assignment.section,
       });
     }
-    allMembers.get(userId).assignments.push({
-      type: "Site Incharge",
-      section: assignment.section,
-    });
   });
 
-  // Add project managers
+  // Project Managers
   project.projectManagerAssignments.forEach((assignment) => {
-    const userId = assignment.user.id;
-    if (!allMembers.has(userId)) {
-      allMembers.set(userId, {
-        id: assignment.user.id,
-        name: assignment.user.name,
-        email: assignment.user.email,
-        role: assignment.user.role,
-        assignments: [],
+    if (
+      user.role === "ADMIN" ||
+      assignedSectionIds.includes(assignment.section.id)
+    ) {
+      addMember(assignment.user, {
+        type: "Project Manager",
+        section: assignment.section,
       });
     }
-    allMembers.get(userId).assignments.push({
-      type: "Project Manager",
-      section: assignment.section,
-    });
   });
 
-  // Add accountants
+  // Accountants
   project.accountantAssignments.forEach((assignment) => {
-    const userId = assignment.user.id;
-    if (!allMembers.has(userId)) {
-      allMembers.set(userId, {
-        id: assignment.user.id,
-        name: assignment.user.name,
-        email: assignment.user.email,
-        role: assignment.user.role,
-        assignments: [],
+    if (
+      user.role === "ADMIN" ||
+      assignedSectionIds.includes(assignment.section.id)
+    ) {
+      addMember(assignment.user, {
+        type: "Accountant",
+        section: assignment.section,
       });
     }
-    allMembers.get(userId).assignments.push({
-      type: "Accountant",
-      section: assignment.section,
-    });
+  });
+
+  // Construction Managers (from each section)
+  project.sections.forEach((section) => {
+    if (user.role === "ADMIN" || assignedSectionIds.includes(section.id)) {
+      section.constructionManagerAssignments.forEach((cmAssignment) => {
+        addMember(cmAssignment.user, {
+          type: "Construction Manager",
+          section: { id: section.id, name: section.name, code: section.code },
+        });
+      });
+    }
+  });
+
+  // Store Incharges (from each store in each section)
+  project.sections.forEach((section) => {
+    if (user.role === "ADMIN" || assignedSectionIds.includes(section.id)) {
+      section.stores.forEach((store) => {
+        store.storeInchargeAssignments.forEach((siAssignment) => {
+          addMember(siAssignment.user, {
+            type: "Store Incharge",
+            store: { id: store.id, name: store.name, type: store.type },
+            section: { id: section.id, name: section.name, code: section.code },
+          });
+        });
+      });
+    }
   });
 
   const associatedMembers = Array.from(allMembers.values());
+
+  // --- End associatedMembers build ---
 
   // Group site incharges by user
   const siteInchargeMap = new Map();
@@ -624,9 +652,37 @@ const deleteProject = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user.id;
 
-  const existing = await prisma.project.findUnique({ where: { id } });
+  const existing = await prisma.project.findUnique({
+    where: { id },
+    include: { sections: true },
+  });
   if (!existing) {
     return next(new AppError("Project not found", 404));
+  }
+
+  // For each section in the project, delete all assignments and store incharge assignments
+  for (const section of existing.sections) {
+    await prisma.siteInchargeAssignment.deleteMany({
+      where: { sectionId: section.id },
+    });
+    await prisma.projectManagerAssignment.deleteMany({
+      where: { sectionId: section.id },
+    });
+    await prisma.constructionManagerAssignment.deleteMany({
+      where: { sectionId: section.id },
+    });
+    await prisma.accountantAssignment.deleteMany({
+      where: { sectionId: section.id },
+    });
+    // For all stores in this section, delete their store incharge assignments
+    const stores = await prisma.store.findMany({
+      where: { sectionId: section.id },
+    });
+    for (const store of stores) {
+      await prisma.storeInchargeAssignment.deleteMany({
+        where: { storeId: store.id },
+      });
+    }
   }
 
   await prisma.project.update({

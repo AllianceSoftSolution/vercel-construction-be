@@ -67,7 +67,7 @@ const createDemand = catchAsync(async (req, res, next) => {
   }
 
   // Generate automatic demand reference number
-  const referenceNumber = await generateDemandCode(sectionId);
+  const referenceNumber = await generateDemandCode(section.projectId);
 
   const demand = await prisma.demand.create({
     data: {

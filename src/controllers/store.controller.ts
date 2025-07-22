@@ -251,6 +251,13 @@ const getStores = catchAsync(async (req, res) => {
         select: {
           id: true,
           name: true,
+          project: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
         },
       },
       cmUser: {
@@ -381,6 +388,13 @@ const getStoreById = catchAsync(async (req, res, next) => {
         select: {
           id: true,
           name: true,
+          project: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
         },
       },
       cmUser: {
@@ -524,6 +538,9 @@ const deleteStore = catchAsync(async (req, res, next) => {
   if (!existing) {
     return next(new AppError("Store not found", 404));
   }
+
+  // Delete all store incharge assignments for this store
+  await prisma.storeInchargeAssignment.deleteMany({ where: { storeId: id } });
 
   await prisma.store.update({
     where: { id },

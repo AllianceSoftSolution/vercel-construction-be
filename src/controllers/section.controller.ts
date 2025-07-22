@@ -29,7 +29,7 @@ const createSection = catchAsync(async (req, res, next) => {
   }
 
   // Generate automatic section code
-  const code = await generateSectionCode();
+  const code = await generateSectionCode(projectId);
 
   // Create section and head store in a transaction
   const result = await prisma.$transaction(async (tx) => {
@@ -566,6 +566,23 @@ const deleteSection = catchAsync(async (req, res, next) => {
   const existing = await prisma.section.findUnique({ where: { id } });
   if (!existing) {
     return next(new AppError("Section not found", 404));
+  }
+
+  // Delete all assignments for this section
+  await prisma.siteInchargeAssignment.deleteMany({ where: { sectionId: id } });
+  await prisma.projectManagerAssignment.deleteMany({
+    where: { sectionId: id },
+  });
+  await prisma.constructionManagerAssignment.deleteMany({
+    where: { sectionId: id },
+  });
+  await prisma.accountantAssignment.deleteMany({ where: { sectionId: id } });
+  // For all stores in this section, delete their store incharge assignments
+  const stores = await prisma.store.findMany({ where: { sectionId: id } });
+  for (const store of stores) {
+    await prisma.storeInchargeAssignment.deleteMany({
+      where: { storeId: store.id },
+    });
   }
 
   await prisma.section.update({
