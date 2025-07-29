@@ -116,7 +116,7 @@
                                 }
                             ]
                         },
-                        "description": "Get users with filtering, searching, and pagination. Supports search in name, email, employeeId fields."
+                        "description": "Get users with filtering, searching, and pagination. Supports search in name, email, employeeId fields. Now includes userAnalytics object with role-based access control (RBAC) - Admin sees all users, Site Incharge/Project Manager see only users in their sections, CM/Store Incharge/Accountant see no other users."
                     }
                 },
                 {
@@ -396,7 +396,8 @@
                                 "projects",
                                 ":id"
                             ]
-                        }
+                        },
+                        "description": "Get project details by ID. Now includes materialCapAnalytics array with aggregated cap tracking across all sections, demand vs cap tracking, usage percentages, and status indicators."
                     }
                 },
                 {
@@ -578,7 +579,8 @@
                                 "sections",
                                 ":id"
                             ]
-                        }
+                        },
+                        "description": "Get section details by ID. Now includes materialCapAnalytics array with demand vs cap tracking, usage percentages, and status indicators."
                     }
                 },
                 {
@@ -2459,6 +2461,151 @@
                             ]
                         },
                         "description": "Get accountant dashboard analytics. Includes: total vendors, amounts spent/pending/paid, and top vendor accounts with balances."
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Material Caps",
+            "item": [
+                {
+                    "name": "Create/Update Section Caps",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"caps\": [\n    {\n      \"materialId\": \"<materialId>\",\n      \"quantity\": 100,\n      \"unit\": \"kg\"\n    },\n    {\n      \"materialId\": \"<materialId2>\",\n      \"quantity\": 50,\n      \"unit\": \"pieces\"\n    }\n  ]\n}"
+                        },
+                        "url": {
+                            "raw": "/api/material-caps/section/:sectionId",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "material-caps",
+                                "section",
+                                ":sectionId"
+                            ]
+                        },
+                        "description": "Create or update material caps for a specific section. Uses upsert logic - creates new caps or updates existing ones. Each section can have only one cap per material."
+                    }
+                },
+                {
+                    "name": "Get Section Caps",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/material-caps/section/:sectionId",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "material-caps",
+                                "section",
+                                ":sectionId"
+                            ]
+                        },
+                        "description": "Retrieve all material caps for a specific section. Returns caps with material details including name, unit, and category."
+                    }
+                },
+                {
+                    "name": "Update Section Caps (with deletion)",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"caps\": [\n    {\n      \"materialId\": \"<materialId>\",\n      \"quantity\": 150,\n      \"unit\": \"kg\"\n    }\n  ]\n}"
+                        },
+                        "url": {
+                            "raw": "/api/material-caps/section/:sectionId",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "material-caps",
+                                "section",
+                                ":sectionId"
+                            ]
+                        },
+                        "description": "Update caps and remove caps not in the array. If a material is not in the array, its cap will be deleted. Returns both updated caps and deleted caps."
+                    }
+                },
+                {
+                    "name": "Get Project Caps (Aggregated)",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/material-caps/project/:projectId",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "material-caps",
+                                "project",
+                                ":projectId"
+                            ]
+                        },
+                        "description": "Get accumulated caps across all sections in a project. Returns aggregated caps by material and detailed caps for each section."
+                    }
+                },
+                {
+                    "name": "Get All Material Caps (Admin)",
+                    "request": {
+                        "method": "GET",
+                        "url": {
+                            "raw": "/api/material-caps?search=cement&sortBy=createdAt&sortOrder=desc&page=1&limit=10",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "material-caps"
+                            ],
+                            "query": [
+                                {
+                                    "key": "search",
+                                    "value": "cement",
+                                    "description": "Search in material name, section name, project name"
+                                },
+                                {
+                                    "key": "sortBy",
+                                    "value": "createdAt",
+                                    "description": "Sort field (createdAt, updatedAt, etc.)"
+                                },
+                                {
+                                    "key": "sortOrder",
+                                    "value": "desc",
+                                    "description": "Sort order (asc/desc)"
+                                },
+                                {
+                                    "key": "page",
+                                    "value": "1",
+                                    "description": "Page number"
+                                },
+                                {
+                                    "key": "limit",
+                                    "value": "10",
+                                    "description": "Items per page"
+                                }
+                            ]
+                        },
+                        "description": "Get all material caps with pagination (admin view). Includes material, section, and project details."
                     }
                 }
             ]

@@ -118,6 +118,8 @@ model User {
   auditLogs                  AuditLog[]
   cmStore                    Store[] @relation("UserCMStore")
   deviceTokens               DeviceToken[]
+  materialCaps               MaterialCap[] @relation("MaterialCapCreator")
+  materialCapsUpdated        MaterialCap[] @relation("MaterialCapUpdater")
 
   @@map("users")
 }
@@ -141,6 +143,7 @@ model Project {
   projectManagerAssignments ProjectManagerAssignment[]
   accountantAssignments      AccountantAssignment[]
   purchaseOrders            PurchaseOrder[]
+  materialCaps              MaterialCap[]
 
   @@map("projects")
 }
@@ -169,6 +172,7 @@ model Section {
   accountantAssignments      AccountantAssignment[]
   demands                    Demand[]
   purchaseOrders            PurchaseOrder[]
+  materialCaps              MaterialCap[]
 
   @@unique([projectId, code])
   @@map("sections")
@@ -298,8 +302,33 @@ model Material {
   demands           Demand[]
   storeInventory    StoreInventory[]
   purchaseOrders    PurchaseOrder[]
+  materialCaps      MaterialCap[]
 
   @@map("materials")
+}
+
+model MaterialCap {
+  id          String   @id @default(cuid())
+  materialId  String
+  sectionId   String
+  projectId   String
+  quantity    Decimal
+  unit        String
+  isActive    Boolean  @default(true)
+  isDeleted   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   String
+  updatedBy   String?
+
+  material    Material @relation(fields: [materialId], references: [id])
+  section     Section  @relation(fields: [sectionId], references: [id])
+  project     Project  @relation(fields: [projectId], references: [id])
+  creator     User     @relation("MaterialCapCreator", fields: [createdBy], references: [id])
+  updater     User?    @relation("MaterialCapUpdater", fields: [updatedBy], references: [id])
+
+  @@unique([materialId, sectionId])
+  @@map("material_caps")
 }
 
 model Vendor {

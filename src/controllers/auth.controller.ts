@@ -238,6 +238,8 @@ const changePassword = catchAsync(async (req, res, next) => {
 });
 
 const getUsers = catchAsync(async (req, res) => {
+  const user = req.user;
+
   // Extract query parameters
   const filterOptions = extractQueryParams(req);
 
@@ -247,10 +249,118 @@ const getUsers = catchAsync(async (req, res) => {
   // Build default filters
   const defaultFilters = { isDeleted: false };
 
+  // Role-based filtering for users
+  let userFilter: { isDeleted: boolean; id?: { in: string[] } } = {
+    ...defaultFilters,
+  };
+
+  if (user.role === "ADMIN") {
+    // Admin can see all users
+  } else if (user.role === "SITE_INCHARGE") {
+    // Site Incharge can only see users assigned to their sections
+    const assignments = await prisma.siteInchargeAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { sectionId: true },
+    });
+    const sectionIds = assignments.map((a) => a.sectionId);
+
+    // Get users assigned to these sections
+    const sectionUsers = await prisma.user.findMany({
+      where: {
+        OR: [
+          {
+            siteInchargeAssignments: {
+              some: { sectionId: { in: sectionIds } },
+            },
+          },
+          {
+            projectManagerAssignments: {
+              some: { sectionId: { in: sectionIds } },
+            },
+          },
+          {
+            constructionManagerAssignments: {
+              some: { sectionId: { in: sectionIds } },
+            },
+          },
+          {
+            accountantAssignments: { some: { sectionId: { in: sectionIds } } },
+          },
+          {
+            storeInchargeAssignments: {
+              some: { store: { sectionId: { in: sectionIds } } },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+
+    userFilter.id = { in: sectionUsers.map((u) => u.id) };
+  } else if (user.role === "PROJECT_MANAGER") {
+    // Project Manager can only see users assigned to their sections
+    const assignments = await prisma.projectManagerAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { sectionId: true },
+    });
+    const sectionIds = assignments.map((a) => a.sectionId);
+
+    // Get users assigned to these sections
+    const sectionUsers = await prisma.user.findMany({
+      where: {
+        OR: [
+          {
+            siteInchargeAssignments: {
+              some: { sectionId: { in: sectionIds } },
+            },
+          },
+          {
+            projectManagerAssignments: {
+              some: { sectionId: { in: sectionIds } },
+            },
+          },
+          {
+            constructionManagerAssignments: {
+              some: { sectionId: { in: sectionIds } },
+            },
+          },
+          {
+            accountantAssignments: { some: { sectionId: { in: sectionIds } } },
+          },
+          {
+            storeInchargeAssignments: {
+              some: { store: { sectionId: { in: sectionIds } } },
+            },
+          },
+        ],
+      },
+      select: { id: true },
+    });
+
+    userFilter.id = { in: sectionUsers.map((u) => u.id) };
+  } else {
+    // CM, Store Incharge, Accountant cannot see other users
+    return res.json({
+      message: "Users retrieved successfully",
+      users: [],
+      userAnalytics: {
+        totalUsers: 0,
+        usersByRole: {},
+        roleBreakdown: {},
+      },
+      total: 0,
+      page: 1,
+      limit: 50,
+      totalPages: 0,
+      hasNextPage: false,
+      hasPrevPage: false,
+    });
+  }
+
   // Build query options
   const queryOptions = buildQueryOptions(
     filterOptions,
-    defaultFilters,
+    userFilter,
     searchableFields
   );
 
@@ -282,6 +392,24 @@ const getUsers = catchAsync(async (req, res) => {
     },
   });
 
+  // Calculate user analytics by role using a simpler approach
+  const usersByRole: { [key: string]: any[] } = {};
+  const roleBreakdown: { [key: string]: number } = {};
+
+  users.forEach((user) => {
+    const role = user.role;
+    const roleKey = typeof role === "string" ? role : String(role);
+    if (!usersByRole[roleKey]) {
+      usersByRole[roleKey] = [];
+    }
+    usersByRole[roleKey].push(user);
+  });
+
+  // Calculate role breakdown
+  Object.keys(usersByRole).forEach((role) => {
+    roleBreakdown[role] = usersByRole[role].length;
+  });
+
   // Build pagination metadata
   const paginationMeta = buildPaginationMeta(
     total,
@@ -289,9 +417,14 @@ const getUsers = catchAsync(async (req, res) => {
     filterOptions.limit || 50
   );
 
-  res.json({
+  return res.json({
     message: "Users retrieved successfully",
     users,
+    userAnalytics: {
+      totalUsers: total,
+      usersByRole,
+      roleBreakdown,
+    },
     ...paginationMeta,
   });
 });

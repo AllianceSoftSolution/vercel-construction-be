@@ -426,6 +426,107 @@ const getSectionById = catchAsync(async (req, res, next) => {
     },
   });
 
+  // Get material caps for this section
+  const materialCaps = await prisma.materialCap.findMany({
+    where: {
+      sectionId: section.id,
+      isDeleted: false,
+    },
+    include: {
+      material: {
+        select: {
+          id: true,
+          name: true,
+          unit: true,
+          category: true,
+        },
+      },
+    },
+  });
+
+  // Get demands for this section to calculate demand amounts
+  const sectionDemands = await prisma.demand.findMany({
+    where: {
+      sectionId: section.id,
+      isDeleted: false,
+    },
+    select: {
+      materialId: true,
+      quantity: true,
+      unit: true,
+      status: true,
+    },
+  });
+
+  // Get purchase orders for this section to calculate PO amounts
+  const sectionPurchaseOrders = await prisma.purchaseOrder.findMany({
+    where: {
+      sectionId: section.id,
+      isDeleted: false,
+    },
+    select: {
+      materialId: true,
+      quantity: true,
+      status: true,
+    },
+  });
+
+  // Calculate material cap analytics
+  const materialCapAnalytics = materialCaps.map((cap) => {
+    // Calculate total demand quantity for this material
+    const materialDemands = sectionDemands.filter(
+      (d) => d.materialId === cap.materialId
+    );
+    const totalDemandQuantity = materialDemands.reduce(
+      (sum, demand) => sum + Number(demand.quantity),
+      0
+    );
+
+    // Calculate total PO quantity for this material
+    const materialPOs = sectionPurchaseOrders.filter(
+      (po) => po.materialId === cap.materialId
+    );
+    const totalPOQuantity = materialPOs.reduce(
+      (sum, po) => sum + Number(po.quantity),
+      0
+    );
+
+    // Calculate if cap is exceeded
+    const capQuantity = Number(cap.quantity);
+    const isCapExceeded = totalDemandQuantity > capQuantity;
+    const isPOExceeded = totalPOQuantity > capQuantity;
+    const isInLimit = !isCapExceeded && !isPOExceeded;
+
+    // Calculate usage percentage
+    const demandUsagePercentage =
+      capQuantity > 0 ? (totalDemandQuantity / capQuantity) * 100 : 0;
+    const poUsagePercentage =
+      capQuantity > 0 ? (totalPOQuantity / capQuantity) * 100 : 0;
+
+    return {
+      materialId: cap.materialId,
+      materialName: cap.material.name,
+      materialUnit: cap.material.unit,
+      materialCategory: cap.material.category,
+      capQuantity: capQuantity,
+      capUnit: cap.unit,
+      totalDemandQuantity: totalDemandQuantity,
+      totalPurchaseOrderQuantity: totalPOQuantity,
+      isDemandCapExceeded: isCapExceeded,
+      isPurchaseOrderCapExceeded: isPOExceeded,
+      isWithinLimit: isInLimit,
+      demandUsagePercentage: Math.round(demandUsagePercentage * 100) / 100,
+      purchaseOrderUsagePercentage: Math.round(poUsagePercentage * 100) / 100,
+      remainingQuantity:
+        capQuantity - Math.max(totalDemandQuantity, totalPOQuantity),
+      status: isCapExceeded
+        ? "EXCEEDED"
+        : isPOExceeded
+        ? "PO_EXCEEDED"
+        : "WITHIN_LIMIT",
+    };
+  });
+
   // Find the head store (should be only one)
   const headStore = section.stores.find((s) => s.type === "HEAD_STORE");
 
@@ -479,6 +580,7 @@ const getSectionById = catchAsync(async (req, res, next) => {
     associatedAccountants: section.accountantAssignments,
     recentDemands: section.demands,
     totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+    materialCapAnalytics: materialCapAnalytics,
   };
 
   res.json({

@@ -443,6 +443,159 @@ const getProjectById = catchAsync(async (req, res, next) => {
     );
   }
 
+  // Get material caps for all sections in this project
+  const projectMaterialCaps = await prisma.materialCap.findMany({
+    where: {
+      projectId: project.id,
+      isDeleted: false,
+    },
+    include: {
+      material: {
+        select: {
+          id: true,
+          name: true,
+          unit: true,
+          category: true,
+        },
+      },
+      section: {
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+      },
+    },
+  });
+
+  // Get all demands for this project
+  const projectDemands = await prisma.demand.findMany({
+    where: {
+      section: {
+        projectId: project.id,
+      },
+      isDeleted: false,
+    },
+    select: {
+      materialId: true,
+      quantity: true,
+      unit: true,
+      status: true,
+      sectionId: true,
+    },
+  });
+
+  // Get all purchase orders for this project
+  const projectPurchaseOrders = await prisma.purchaseOrder.findMany({
+    where: {
+      projectId: project.id,
+      isDeleted: false,
+    },
+    select: {
+      materialId: true,
+      quantity: true,
+      status: true,
+      sectionId: true,
+    },
+  });
+
+  // Aggregate material caps by material across all sections
+  const aggregatedMaterialCaps = projectMaterialCaps.reduce(
+    (acc: any[], cap) => {
+      const materialId = cap.materialId;
+      const existingCap = acc.find((c) => c.materialId === materialId);
+
+      if (existingCap) {
+        existingCap.totalCapQuantity += Number(cap.quantity);
+        existingCap.sections.push({
+          sectionId: cap.section.id,
+          sectionName: cap.section.name,
+          sectionCode: cap.section.code,
+          capQuantity: Number(cap.quantity),
+        });
+      } else {
+        acc.push({
+          materialId: cap.materialId,
+          materialName: cap.material.name,
+          materialUnit: cap.material.unit,
+          materialCategory: cap.material.category,
+          totalCapQuantity: Number(cap.quantity),
+          sections: [
+            {
+              sectionId: cap.section.id,
+              sectionName: cap.section.name,
+              sectionCode: cap.section.code,
+              capQuantity: Number(cap.quantity),
+            },
+          ],
+        });
+      }
+
+      return acc;
+    },
+    []
+  );
+
+  // Calculate analytics for each aggregated material cap
+  const materialCapAnalytics = aggregatedMaterialCaps.map((cap) => {
+    // Calculate total demand quantity for this material across all sections
+    const materialDemands = projectDemands.filter(
+      (d) => d.materialId === cap.materialId
+    );
+    const totalDemandQuantity = materialDemands.reduce(
+      (sum, demand) => sum + Number(demand.quantity),
+      0
+    );
+
+    // Calculate total PO quantity for this material across all sections
+    const materialPOs = projectPurchaseOrders.filter(
+      (po) => po.materialId === cap.materialId
+    );
+    const totalPOQuantity = materialPOs.reduce(
+      (sum, po) => sum + Number(po.quantity),
+      0
+    );
+
+    // Calculate if cap is exceeded
+    const isCapExceeded = totalDemandQuantity > cap.totalCapQuantity;
+    const isPOExceeded = totalPOQuantity > cap.totalCapQuantity;
+    const isInLimit = !isCapExceeded && !isPOExceeded;
+
+    // Calculate usage percentage
+    const demandUsagePercentage =
+      cap.totalCapQuantity > 0
+        ? (totalDemandQuantity / cap.totalCapQuantity) * 100
+        : 0;
+    const poUsagePercentage =
+      cap.totalCapQuantity > 0
+        ? (totalPOQuantity / cap.totalCapQuantity) * 100
+        : 0;
+
+    return {
+      materialId: cap.materialId,
+      materialName: cap.materialName,
+      materialUnit: cap.materialUnit,
+      materialCategory: cap.materialCategory,
+      totalCapQuantity: cap.totalCapQuantity,
+      capUnit: cap.materialUnit,
+      totalDemandQuantity: totalDemandQuantity,
+      totalPurchaseOrderQuantity: totalPOQuantity,
+      isDemandCapExceeded: isCapExceeded,
+      isPurchaseOrderCapExceeded: isPOExceeded,
+      isWithinLimit: isInLimit,
+      demandUsagePercentage: Math.round(demandUsagePercentage * 100) / 100,
+      purchaseOrderUsagePercentage: Math.round(poUsagePercentage * 100) / 100,
+      remainingQuantity:
+        cap.totalCapQuantity - Math.max(totalDemandQuantity, totalPOQuantity),
+      status: isCapExceeded
+        ? "EXCEEDED"
+        : isPOExceeded
+        ? "PO_EXCEEDED"
+        : "WITHIN_LIMIT",
+      sections: cap.sections,
+    };
+  });
+
   // --- Build associatedMembers with all roles and RBAC filtering ---
   const allMembers = new Map();
 
@@ -583,6 +736,7 @@ const getProjectById = catchAsync(async (req, res, next) => {
     assignedAccountants: assignedAccountants,
     associatedMembers: associatedMembers,
     totalAmountSpent: projectPOs._sum.totalAmount || 0,
+    materialCapAnalytics: materialCapAnalytics,
   };
 
   res.json({
