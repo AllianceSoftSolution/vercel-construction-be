@@ -10,7 +10,8 @@ import {
   activateUser,
   deactivateUser,
   requestPasswordReset,
-  resetPasswordWithOTP,
+  verifyOTPAndGenerateToken,
+  resetPasswordWithToken,
   saveDeviceToken,
   removeDeviceToken,
 } from "../controllers/auth.controller";
@@ -22,7 +23,8 @@ const router = express.Router();
 router.post("/register", protect, registerUser);
 router.post("/login", loginUser);
 router.post("/request-password-reset", requestPasswordReset);
-router.post("/reset-password-with-otp", resetPasswordWithOTP);
+router.post("/verify-otp", verifyOTPAndGenerateToken);
+router.post("/reset-password/:resetToken", resetPasswordWithToken);
 
 // Protected routes (require authentication)
 router.post("/change-password", protect, changePassword);

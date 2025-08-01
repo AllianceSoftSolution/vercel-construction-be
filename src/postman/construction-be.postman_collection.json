@@ -249,7 +249,7 @@
                     }
                 },
                 {
-                    "name": "Reset Password With OTP",
+                    "name": "Verify OTP",
                     "request": {
                         "method": "POST",
                         "header": [
@@ -260,17 +260,45 @@
                         ],
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"123456\",\n  \"newPassword\": \"NewPassword123!\"\n}"
+                            "raw": "{\n  \"email\": \"user@example.com\",\n  \"otp\": \"123456\"\n}"
                         },
                         "url": {
-                            "raw": "/api/auth/reset-password-with-otp",
+                            "raw": "/api/auth/verify-otp",
                             "host": [
                                 "{{baseUrl}}"
                             ],
                             "path": [
                                 "api",
                                 "auth",
-                                "reset-password-with-otp"
+                                "verify-otp"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Reset Password With Token",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"newPassword\": \"NewPassword123!\"\n}"
+                        },
+                        "url": {
+                            "raw": "/api/auth/reset-password/{{resetToken}}",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "api",
+                                "auth",
+                                "reset-password",
+                                "{{resetToken}}"
                             ]
                         }
                     }

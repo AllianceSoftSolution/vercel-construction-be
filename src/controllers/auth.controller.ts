@@ -683,23 +683,12 @@ const requestPasswordReset = catchAsync(async (req, res, next) => {
   });
 });
 
-// Controller: Reset password with OTP
-const resetPasswordWithOTP = catchAsync(async (req, res, next) => {
-  const { email, otp, newPassword } = req.body;
+// Controller: Verify OTP and generate reset token
+const verifyOTPAndGenerateToken = catchAsync(async (req, res, next) => {
+  const { email, otp } = req.body;
 
-  if (!email || !otp || !newPassword) {
-    return next(new AppError("Email, OTP, and new password are required", 400));
-  }
-
-  // Validate password strength
-  const passwordValidation = validatePasswordStrength(newPassword);
-  if (!passwordValidation.isValid) {
-    return next(
-      new AppError(
-        `Password validation failed: ${passwordValidation.errors.join(", ")}`,
-        400
-      )
-    );
+  if (!email || !otp) {
+    return next(new AppError("Email and OTP are required", 400));
   }
 
   // Validate OTP format
@@ -733,40 +722,102 @@ const resetPasswordWithOTP = catchAsync(async (req, res, next) => {
     );
   }
 
-  // Hash the new password
-  const hashedPassword = await bcrypt.hash(newPassword, 12);
-
-  // Update user password
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      password: hashedPassword,
-      updatedAt: new Date(),
-    },
-  });
-
   // Mark OTP as used
   await markOTPAsUsed(email);
 
-  // Send success email
-  try {
-    const emailer = new Email();
-    await emailer.send({
-      to: email,
-      subject: "Password Reset Successful",
-      template: "password-reset-success",
-      data: { name: user.name },
-    });
-  } catch (err) {
-    console.error("Failed to send password reset success email:", err);
-    // Don't fail the request if email fails
-  }
+  // Generate reset token (valid for 15 minutes)
+  const resetToken = jwt.sign(
+    { userId: user.id, email: user.email },
+    process.env.JWT_SECRET as string,
+    { expiresIn: "15m" }
+  );
 
   res.status(200).json({
     status: "success",
-    message:
-      "Password reset successfully. You can now login with your new password.",
+    message: "OTP verified successfully. You can now reset your password.",
+    resetToken,
   });
+});
+
+// Controller: Reset password with token
+const resetPasswordWithToken = catchAsync(async (req, res, next) => {
+  const { resetToken } = req.params;
+  const { newPassword } = req.body;
+
+  if (!resetToken || !newPassword) {
+    return next(new AppError("Reset token and new password are required", 400));
+  }
+
+  // Validate password strength
+  const passwordValidation = validatePasswordStrength(newPassword);
+  if (!passwordValidation.isValid) {
+    return next(
+      new AppError(
+        `Password validation failed: ${passwordValidation.errors.join(", ")}`,
+        400
+      )
+    );
+  }
+
+  try {
+    // Verify reset token
+    const decoded = jwt.verify(resetToken, process.env.JWT_SECRET as string) as {
+      userId: string;
+      email: string;
+    };
+
+    // Find user by ID
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    if (!user) {
+      return next(new AppError("User not found", 404));
+    }
+
+    if (user.isDeleted) {
+      return next(new AppError("User account has been deleted", 404));
+    }
+
+    if (!user.isActive) {
+      return next(new AppError("User account is inactive", 400));
+    }
+
+    // Verify email matches
+    if (user.email !== decoded.email) {
+      return next(new AppError("Invalid reset token", 400));
+    }
+
+    // Hash the new password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+
+    // Update user password
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        updatedAt: new Date(),
+      },
+    });
+
+    // Send success email
+    try {
+      const emailer = new Email();
+      await emailer.send({
+        to: user.email,
+        subject: "Password Reset Successful",
+        template: "password-reset-success",
+        data: { name: user.name },
+      });
+    } catch (err) {
+      console.error("Failed to send password reset success email:", err);
+      // Don't fail the request if email fails
+    }
+
+    res.status(200).json({
+      status: "success",
+      message: "Password reset successfully. You can now login with your new password.",
+    });
+  } catch (error) {
+    return next(new AppError("Invalid or expired reset token", 400));
+  }
 });
 
 // Save device token for notifications
@@ -807,5 +858,6 @@ export {
   activateUser,
   deactivateUser,
   requestPasswordReset,
-  resetPasswordWithOTP,
+  verifyOTPAndGenerateToken,
+  resetPasswordWithToken,
 };
