@@ -22,6 +22,7 @@ import {
   markOTPAsUsed,
 } from "../utils/otpUtils";
 import { validatePasswordStrength } from "../utils/passwordUtils";
+import { TRANSACTION_REFERENCES } from "../constants";
 
 const prisma = new Prisma.PrismaClient();
 
@@ -761,13 +762,18 @@ const resetPasswordWithToken = catchAsync(async (req, res, next) => {
 
   try {
     // Verify reset token
-    const decoded = jwt.verify(resetToken, process.env.JWT_SECRET as string) as {
+    const decoded = jwt.verify(
+      resetToken,
+      process.env.JWT_SECRET as string
+    ) as {
       userId: string;
       email: string;
     };
 
     // Find user by ID
-    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+    });
     if (!user) {
       return next(new AppError("User not found", 404));
     }
@@ -813,7 +819,8 @@ const resetPasswordWithToken = catchAsync(async (req, res, next) => {
 
     res.status(200).json({
       status: "success",
-      message: "Password reset successfully. You can now login with your new password.",
+      message:
+        "Password reset successfully. You can now login with your new password.",
     });
   } catch (error) {
     return next(new AppError("Invalid or expired reset token", 400));
@@ -847,6 +854,295 @@ export const removeDeviceToken = catchAsync(async (req, res, next) => {
   res.json({ message: "Device token removed" });
 });
 
+// Change user role (Admin only)
+const changeUserRole = catchAsync(async (req, res, next) => {
+  const { id } = req.params;
+  const { newRole, isHead = false } = req.body;
+  const adminId = req.user.id;
+
+  // Check if current user is admin
+  if (req.user.role !== "ADMIN") {
+    return next(new AppError("Only admins can change user roles", 403));
+  }
+
+  if (!newRole) {
+    return next(new AppError("New role is required", 400));
+  }
+
+  // Validate role
+  const validRoles = [
+    "ADMIN",
+    "SITE_INCHARGE",
+    "PROJECT_MANAGER",
+    "CONSTRUCTION_MANAGER",
+    "STORE_INCHARGE",
+    "ACCOUNTANT",
+  ];
+  if (!validRoles.includes(newRole)) {
+    return next(new AppError("Invalid role", 400));
+  }
+
+  // Validate isHead field
+  if (isHead) {
+    // isHead can only be true for ACCOUNTANT and STORE_INCHARGE roles
+    if (newRole !== "ACCOUNTANT" && newRole !== "STORE_INCHARGE") {
+      return next(
+        new AppError(
+          "isHead can only be set for ACCOUNTANT and STORE_INCHARGE roles",
+          400
+        )
+      );
+    }
+  }
+
+  // Find the user to be updated
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      isHead: true,
+      isActive: true,
+      isDeleted: true,
+    },
+  });
+
+  if (!user) {
+    return next(new AppError("User not found", 404));
+  }
+
+  if (user.isDeleted) {
+    return next(new AppError("Cannot change role of deleted user", 400));
+  }
+
+  if (!user.isActive) {
+    return next(new AppError("Cannot change role of inactive user", 400));
+  }
+
+  // Prevent admin from changing their own role
+  if (user.id === adminId) {
+    return next(new AppError("Cannot change your own role", 400));
+  }
+
+  // If role is not changing, just update isHead if needed
+  if (user.role === newRole) {
+    if (user.isHead !== isHead) {
+      const updatedUser = await prisma.user.update({
+        where: { id },
+        data: {
+          isHead,
+          updatedBy: adminId,
+          updatedAt: new Date(),
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          isHead: true,
+          isActive: true,
+          updatedAt: true,
+        },
+      });
+
+      return res.json({
+        message: "User isHead status updated successfully",
+        user: updatedUser,
+      });
+    } else {
+      return res.json({
+        message: "No changes needed",
+        user,
+      });
+    }
+  }
+
+  // If role is changing, remove all existing assignments and update role
+  const result = await prisma.$transaction(async (tx) => {
+    // Remove all existing assignments
+    await tx.siteInchargeAssignment.updateMany({
+      where: { userId: id, isActive: true },
+      data: { isActive: false },
+    });
+
+    await tx.projectManagerAssignment.updateMany({
+      where: { userId: id, isActive: true },
+      data: { isActive: false },
+    });
+
+    await tx.constructionManagerAssignment.updateMany({
+      where: { userId: id, isActive: true },
+      data: { isActive: false },
+    });
+
+    await tx.storeInchargeAssignment.updateMany({
+      where: { userId: id, isActive: true },
+      data: { isActive: false },
+    });
+
+    await tx.accountantAssignment.updateMany({
+      where: { userId: id, isActive: true },
+      data: { isActive: false },
+    });
+
+    // Handle CM store cleanup if user was a Construction Manager
+    let cmStores: any[] = [];
+    if (user.role === "CONSTRUCTION_MANAGER") {
+      cmStores = await tx.store.findMany({
+        where: {
+          cmUserId: id,
+          type: "CM_STORE",
+          isDeleted: false,
+        },
+        include: {
+          inventory: {
+            include: {
+              material: {
+                select: {
+                  id: true,
+                  name: true,
+                  unit: true,
+                },
+              },
+            },
+          },
+        },
+      });
+
+      for (const cmStore of cmStores) {
+        // Find the head store in the same section
+        const headStore = await tx.store.findFirst({
+          where: {
+            type: "HEAD_STORE",
+            sectionId: cmStore.sectionId,
+            isDeleted: false,
+            isActive: true,
+          },
+        });
+
+        // Transfer stock from CM store to head store if there's stock
+        if (cmStore.inventory && cmStore.inventory.length > 0 && headStore) {
+          for (const inventoryItem of cmStore.inventory) {
+            if (Number(inventoryItem.stock) > 0) {
+              // Transfer stock to head store
+              await tx.storeInventory.upsert({
+                where: {
+                  storeId_materialId: {
+                    storeId: headStore.id,
+                    materialId: inventoryItem.materialId,
+                  },
+                },
+                update: {
+                  stock: {
+                    increment: inventoryItem.stock,
+                  },
+                  available: {
+                    increment: inventoryItem.stock,
+                  },
+                },
+                create: {
+                  storeId: headStore.id,
+                  materialId: inventoryItem.materialId,
+                  stock: inventoryItem.stock,
+                  available: inventoryItem.stock,
+                  reserved: 0,
+                },
+              });
+
+              // Create transaction record for the transfer
+              await tx.storeTransaction.create({
+                data: {
+                  storeId: headStore.id,
+                  materialId: inventoryItem.materialId,
+                  type: "IN",
+                  quantity: inventoryItem.stock,
+                  reference: TRANSACTION_REFERENCES.ROLE_CHANGE_TRANSFER,
+                  notes: `Stock transferred from CM store (${cmStore.name}) due to role change`,
+                  createdBy: adminId,
+                },
+              });
+
+              // Clear the CM store inventory
+              await tx.storeInventory.update({
+                where: {
+                  storeId_materialId: {
+                    storeId: cmStore.id,
+                    materialId: inventoryItem.materialId,
+                  },
+                },
+                data: {
+                  stock: 0,
+                  available: 0,
+                  reserved: 0,
+                },
+              });
+            }
+          }
+        }
+
+        // Deactivate the CM store
+        await tx.store.update({
+          where: { id: cmStore.id },
+          data: {
+            isActive: false,
+            isDeleted: true,
+            updatedBy: adminId,
+            updatedAt: new Date(),
+          },
+        });
+      }
+    }
+
+    // Update user role and isHead
+    const updatedUser = await tx.user.update({
+      where: { id },
+      data: {
+        role: newRole as any, // Type assertion for Prisma enum
+        isHead,
+        updatedBy: adminId,
+        updatedAt: new Date(),
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isHead: true,
+        isActive: true,
+        updatedAt: true,
+      },
+    });
+
+    return { updatedUser, cmStores };
+  });
+
+  // Send notification to user about role change
+  await sendNotificationToUserSafe({
+    userId: id,
+    title: "Role Changed",
+    body: `Your role has been changed to ${newRole}${isHead ? " (Head)" : ""}.`,
+  });
+
+  res.json({
+    message:
+      "User role changed successfully. All previous assignments have been removed.",
+    user: result.updatedUser,
+    removedAssignments: {
+      siteIncharge: true,
+      projectManager: true,
+      constructionManager: true,
+      storeIncharge: true,
+      accountant: true,
+    },
+    ...(result.cmStores.length > 0 && {
+      cmStoresDeactivated: result.cmStores.length,
+      stockTransferred: true,
+    }),
+  });
+});
+
 export {
   registerUser,
   loginUser,
@@ -860,4 +1156,5 @@ export {
   requestPasswordReset,
   verifyOTPAndGenerateToken,
   resetPasswordWithToken,
+  changeUserRole,
 };

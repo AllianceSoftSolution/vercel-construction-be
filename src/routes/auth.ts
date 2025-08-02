@@ -14,6 +14,7 @@ import {
   resetPasswordWithToken,
   saveDeviceToken,
   removeDeviceToken,
+  changeUserRole,
 } from "../controllers/auth.controller";
 import protect from "../middlewares/auth.middleware";
 
@@ -36,5 +37,6 @@ router.put("/users/:id", protect, updateUser);
 router.delete("/users/:id", protect, deleteUser);
 router.patch("/users/:id/activate", protect, activateUser);
 router.patch("/users/:id/deactivate", protect, deactivateUser);
+router.patch("/users/:id/change-role", protect, changeUserRole);
 
 export default router;

@@ -12,20 +12,36 @@ import { sendNotificationToUserSafe } from "../utils/notification";
 const prisma = new PrismaClient();
 
 const createProject = catchAsync(async (req, res, next) => {
-  const { name, description, startDate, endDate } = req.body;
+  const { name, description, startDate, endDate, code } = req.body;
   const userId = req.user.id;
 
   if (!name) {
     return next(new AppError("Name is required", 400));
   }
 
-  // Generate automatic project code
-  const code = await generateProjectCode();
+  let projectCode: string;
+
+  // If code is provided, validate it's unique
+  if (code) {
+    // Check if the provided code already exists
+    const existingProject = await prisma.project.findUnique({
+      where: { code },
+    });
+
+    if (existingProject) {
+      return next(new AppError("Project code already exists", 400));
+    }
+
+    projectCode = code;
+  } else {
+    // Generate automatic project code if not provided
+    projectCode = await generateProjectCode();
+  }
 
   const project = await prisma.project.create({
     data: {
       name,
-      code,
+      code: projectCode,
       description,
       startDate: startDate ? new Date(startDate) : null,
       endDate: endDate ? new Date(endDate) : null,
