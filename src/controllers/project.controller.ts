@@ -124,13 +124,19 @@ const getProjects = catchAsync(async (req, res) => {
     assignedSectionIds = assignments.map((a) => a.store.section.id);
     defaultFilters.id = { in: projectIds };
   } else if (user.role === "ACCOUNTANT") {
-    const assignments = await prisma.accountantAssignment.findMany({
-      where: { userId: user.id, isActive: true },
-      select: { projectId: true, sectionId: true },
-    });
-    const projectIds = assignments.map((a) => a.projectId);
-    assignedSectionIds = assignments.map((a) => a.sectionId);
-    defaultFilters.id = { in: projectIds };
+    // If user is head accountant, they can see all projects
+    if (user.isHead) {
+      // No filter, see all projects
+    } else {
+      // Regular accountant - only assigned projects
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { projectId: true, sectionId: true },
+      });
+      const projectIds = assignments.map((a) => a.projectId);
+      assignedSectionIds = assignments.map((a) => a.sectionId);
+      defaultFilters.id = { in: projectIds };
+    }
   }
 
   // Build query options
@@ -288,11 +294,17 @@ const getProjectById = catchAsync(async (req, res, next) => {
       .filter((a) => a.store.section.projectId === id)
       .map((a) => a.store.section.id);
   } else if (user.role === "ACCOUNTANT") {
-    const assignments = await prisma.accountantAssignment.findMany({
-      where: { userId: user.id, isActive: true, projectId: id },
-      select: { sectionId: true },
-    });
-    assignedSectionIds = assignments.map((a) => a.sectionId);
+    // If user is head accountant, they can see all projects and sections
+    if (user.isHead) {
+      // No filter, see all sections
+    } else {
+      // Regular accountant - only assigned sections
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true, projectId: id },
+        select: { sectionId: true },
+      });
+      assignedSectionIds = assignments.map((a) => a.sectionId);
+    }
   }
 
   const project = await prisma.project.findUnique({
