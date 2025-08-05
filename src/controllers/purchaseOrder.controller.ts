@@ -5,6 +5,7 @@ import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { sendNotificationToUserSafe } from "../utils/notification";
 import { generatePOReferenceNumber } from "../utils/generateCode";
+import { NotificationService } from "../utils/notificationService";
 
 const prisma = new PrismaClient();
 
@@ -181,11 +182,9 @@ export const createPurchaseOrder = catchAsync(
       message: "Purchase Order created successfully",
       data: purchaseOrder,
     });
-    await sendNotificationToUserSafe({
-      userId: req.user.id,
-      title: "Purchase Order Created",
-      body: `Purchase Order ${purchaseOrder.referenceNumber} was created successfully.`,
-    });
+
+    // Use the new notification service for comprehensive notifications
+    await NotificationService.notifyPOCreated(purchaseOrder.id);
   }
 );
 

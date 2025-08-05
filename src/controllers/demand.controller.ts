@@ -8,6 +8,7 @@ import {
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
+import { NotificationService } from "../utils/notificationService";
 
 const prisma = new PrismaClient();
 
@@ -109,11 +110,9 @@ const createDemand = catchAsync(async (req, res, next) => {
     message: "Demand created successfully",
     demand,
   });
-  await sendNotificationToUserSafe({
-    userId: demand.createdBy,
-    title: "Demand Created",
-    body: `Your demand (${demand.referenceNumber}) was created successfully.`,
-  });
+
+  // Use the new notification service for comprehensive notifications
+  await NotificationService.notifyDemandCreated(demand.id);
 });
 
 const getDemands = catchAsync(async (req, res) => {
@@ -249,7 +248,12 @@ const getDemandById = catchAsync(async (req, res, next) => {
       updater: true,
       approvals: {
         include: {
-          user: { select: { name: true } },
+          user: {
+            select: {
+              name: true,
+              role: true,
+            },
+          },
         },
       },
       fulfillments: true,
@@ -378,6 +382,8 @@ const getDemandById = catchAsync(async (req, res, next) => {
         ? demand.approvals.map((a) => ({
             ...a,
             userName: a.user && a.user.name ? a.user.name : null,
+            userRole: a.user && a.user.role ? a.user.role : null,
+            timestamp: a.createdAt,
           }))
         : demand.approvals,
     },
@@ -410,14 +416,33 @@ const updateDemand = catchAsync(async (req, res, next) => {
       material: true,
       creator: true,
       updater: true,
-      approvals: true,
+      approvals: {
+        include: {
+          user: {
+            select: {
+              name: true,
+              role: true,
+            },
+          },
+        },
+      },
       fulfillments: true,
       purchaseOrders: true,
     },
   });
   res.json({
     message: "Demand updated successfully",
-    demand: updatedDemand,
+    demand: {
+      ...updatedDemand,
+      approvals: Array.isArray(updatedDemand.approvals)
+        ? updatedDemand.approvals.map((a) => ({
+            ...a,
+            userName: a.user && a.user.name ? a.user.name : null,
+            userRole: a.user && a.user.role ? a.user.role : null,
+            timestamp: a.createdAt,
+          }))
+        : updatedDemand.approvals,
+    },
   });
   await sendNotificationToUserSafe({
     userId: updatedDemand.updatedBy ?? userId,
@@ -468,14 +493,33 @@ const updateDemandStatus = catchAsync(async (req, res, next) => {
       material: true,
       creator: true,
       updater: true,
-      approvals: true,
+      approvals: {
+        include: {
+          user: {
+            select: {
+              name: true,
+              role: true,
+            },
+          },
+        },
+      },
       fulfillments: true,
       purchaseOrders: true,
     },
   });
   res.json({
     message: "Demand status updated successfully",
-    demand: updatedDemand,
+    demand: {
+      ...updatedDemand,
+      approvals: Array.isArray(updatedDemand.approvals)
+        ? updatedDemand.approvals.map((a) => ({
+            ...a,
+            userName: a.user && a.user.name ? a.user.name : null,
+            userRole: a.user && a.user.role ? a.user.role : null,
+            timestamp: a.createdAt,
+          }))
+        : updatedDemand.approvals,
+    },
   });
   await sendNotificationToUserSafe({
     userId: updatedDemand.updatedBy ?? userId,
@@ -666,16 +710,29 @@ const approveDemand = catchAsync(async (req, res, next) => {
   res.json({
     message: "Demand approved successfully",
     data: {
-      approval: result.approval,
-      demand: result.demand,
+      approval: {
+        ...result.approval,
+        userName: result.approval.user?.name || null,
+        userRole: result.approval.user?.role || null,
+        timestamp: result.approval.createdAt,
+      },
+      demand: {
+        ...result.demand,
+        approvals: Array.isArray(result.demand.approvals)
+          ? result.demand.approvals.map((a) => ({
+              ...a,
+              userName: a.user && a.user.name ? a.user.name : null,
+              userRole: a.user && a.user.role ? a.user.role : null,
+              timestamp: a.createdAt,
+            }))
+          : result.demand.approvals,
+      },
       newStatus: result.demand.status,
     },
   });
-  await sendNotificationToUserSafe({
-    userId: result.demand.updatedBy ?? userId,
-    title: "Demand Approved",
-    body: `Demand (${result.demand.referenceNumber}) was approved.`,
-  });
+
+  // Use the new notification service for comprehensive notifications
+  await NotificationService.notifyDemandApproval(id, userId, "APPROVED");
 });
 
 const rejectDemand = catchAsync(async (req, res, next) => {
@@ -821,10 +878,28 @@ const rejectDemand = catchAsync(async (req, res, next) => {
   res.json({
     message: "Demand rejected successfully",
     data: {
-      approval: result.approval,
-      demand: result.demand,
+      approval: {
+        ...result.approval,
+        userName: result.approval.user?.name || null,
+        userRole: result.approval.user?.role || null,
+        timestamp: result.approval.createdAt,
+      },
+      demand: {
+        ...result.demand,
+        approvals: Array.isArray(result.demand.approvals)
+          ? result.demand.approvals.map((a) => ({
+              ...a,
+              userName: a.user && a.user.name ? a.user.name : null,
+              userRole: a.user && a.user.role ? a.user.role : null,
+              timestamp: a.createdAt,
+            }))
+          : result.demand.approvals,
+      },
     },
   });
+
+  // Use the new notification service for comprehensive notifications
+  await NotificationService.notifyDemandApproval(id, userId, "REJECTED");
 });
 
 const fulfillDemand = catchAsync(async (req, res, next) => {

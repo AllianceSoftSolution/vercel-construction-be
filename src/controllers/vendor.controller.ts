@@ -7,6 +7,7 @@ import {
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
+import { NotificationService } from "../utils/notificationService";
 
 const prisma = new PrismaClient();
 
@@ -42,10 +43,15 @@ const createVendor = catchAsync(async (req, res, next) => {
     message: "Vendor created successfully",
     vendor,
   });
-  await sendNotificationToUserSafe({
-    userId: req.user.id,
-    title: "Vendor Created",
-    body: `Vendor ${vendor.name} was created successfully.`,
+
+  // Use the new notification service for accountant events
+  await NotificationService.notifyAccountantEvent({
+    type: "VENDOR_CREATED",
+    description: `Vendor ${vendor.name} was created successfully.`,
+    data: {
+      vendorId: vendor.id,
+      vendorName: vendor.name,
+    },
   });
 });
 

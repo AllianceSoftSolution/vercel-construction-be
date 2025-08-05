@@ -7,6 +7,7 @@ import {
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
+import { NotificationService } from "../utils/notificationService";
 
 const prisma = new PrismaClient();
 
@@ -116,11 +117,10 @@ const createSectionCaps = catchAsync(async (req, res, next) => {
     caps: result,
   });
 
-  await sendNotificationToUserSafe({
-    userId: req.user.id,
-    title: "Material Caps Updated",
-    body: `${result.length} material caps were updated for section ${section.name}.`,
-  });
+  // Use the new notification service for comprehensive notifications
+  for (const cap of result) {
+    await NotificationService.notifyMaterialCap(cap.id);
+  }
 });
 
 // Get caps for a section

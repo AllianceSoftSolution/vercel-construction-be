@@ -8,6 +8,7 @@ import {
 } from "../utils/buildQueryOptions";
 import { TRANSACTION_REFERENCES } from "../constants";
 import { sendNotificationToUserSafe } from "../utils/notification";
+import { NotificationService } from "../utils/notificationService";
 
 const prisma = new PrismaClient();
 
@@ -179,11 +180,9 @@ const createStore = catchAsync(async (req, res, next) => {
     message: "Store created successfully",
     store: result,
   });
-  await sendNotificationToUserSafe({
-    userId,
-    title: "Store Created",
-    body: `Store ${result.name} was created successfully.`,
-  });
+
+  // Use the new notification service for comprehensive notifications
+  await NotificationService.notifyStoreTransaction(result.transactions[0]?.id);
 });
 
 const getStores = catchAsync(async (req, res) => {
@@ -853,6 +852,9 @@ const stockIn = catchAsync(async (req, res, next) => {
       transaction: result.transaction,
     },
   });
+
+  // Use the new notification service for comprehensive notifications
+  await NotificationService.notifyStoreTransaction(result.transaction.id);
 });
 
 const stockOut = catchAsync(async (req, res, next) => {
@@ -1065,6 +1067,9 @@ const stockOut = catchAsync(async (req, res, next) => {
       transaction: result.transaction,
     },
   });
+
+  // Use the new notification service for comprehensive notifications
+  await NotificationService.notifyStoreTransaction(result.transaction.id);
 });
 
 const getStoreInventory = catchAsync(async (req, res, next) => {

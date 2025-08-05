@@ -770,11 +770,23 @@ const updateProject = catchAsync(async (req, res, next) => {
   delete updates.id;
   delete updates.createdAt;
   delete updates.createdBy;
-  delete updates.code; // Prevent manual code updates
+  // Removed the line that deleted updates.code to allow code updates
 
   const existing = await prisma.project.findUnique({ where: { id } });
   if (!existing) {
     return next(new AppError("Project not found", 404));
+  }
+
+  // If code is being updated, validate it's unique
+  if (updates.code && updates.code !== existing.code) {
+    // Check if the new code already exists
+    const existingProjectWithCode = await prisma.project.findUnique({
+      where: { code: updates.code },
+    });
+
+    if (existingProjectWithCode) {
+      return next(new AppError("Project code already exists", 400));
+    }
   }
 
   // Convert date strings to Date objects

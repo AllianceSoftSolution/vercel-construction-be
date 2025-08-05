@@ -4,6 +4,7 @@ import AppError from "../utils/appError";
 import { generateEmployeeId } from "../utils/generateCode";
 import { TRANSACTION_REFERENCES } from "../constants";
 import { sendNotificationToUserSafe } from "../utils/notification";
+import { NotificationService } from "../utils/notificationService";
 const crypto = require("crypto");
 
 const prisma = new PrismaClient();
@@ -587,10 +588,13 @@ const createStoreInchargeAssignment = catchAsync(async (req, res, next) => {
     message: "Store Incharge assignment created successfully",
     assignment,
   });
-  await sendNotificationToUserSafe({
+
+  // Use the new notification service for comprehensive notifications
+  await NotificationService.notifyUserAssignment({
     userId: assignment.userId,
-    title: "Assignment Created",
-    body: `You have been assigned as Store Incharge to store ${assignment.storeId}.`,
+    sectionId: assignment.store.sectionId,
+    role: "STORE_INCHARGE",
+    assignedBy: currentUserId,
   });
 });
 
