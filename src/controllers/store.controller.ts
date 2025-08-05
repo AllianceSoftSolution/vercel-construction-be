@@ -180,9 +180,6 @@ const createStore = catchAsync(async (req, res, next) => {
     message: "Store created successfully",
     store: result,
   });
-
-  // Use the new notification service for comprehensive notifications
-  await NotificationService.notifyStoreTransaction(result.transactions[0]?.id);
 });
 
 const getStores = catchAsync(async (req, res) => {

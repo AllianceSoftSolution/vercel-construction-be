@@ -3,7 +3,6 @@ import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { generateEmployeeId } from "../utils/generateCode";
 import { TRANSACTION_REFERENCES } from "../constants";
-import { sendNotificationToUserSafe } from "../utils/notification";
 import { NotificationService } from "../utils/notificationService";
 const crypto = require("crypto");
 
@@ -592,7 +591,7 @@ const createStoreInchargeAssignment = catchAsync(async (req, res, next) => {
   // Use the new notification service for comprehensive notifications
   await NotificationService.notifyUserAssignment({
     userId: assignment.userId,
-    sectionId: assignment.store.sectionId,
+    sectionId: assignment.store.section.id,
     role: "STORE_INCHARGE",
     assignedBy: currentUserId,
   });

@@ -2,7 +2,6 @@ import { Request, Response } from "express";
 import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
-import { sendNotificationToUserSafe } from "../utils/notification";
 import { NotificationService } from "../utils/notificationService";
 
 const prisma = new PrismaClient();

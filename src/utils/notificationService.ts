@@ -414,16 +414,21 @@ export class NotificationService {
             },
           },
         },
-        material: {
-          select: {
-            id: true,
-            name: true,
-          },
-        },
       },
     });
 
     if (!transaction) return;
+
+    // Get material details separately
+    const material = await prisma.material.findUnique({
+      where: { id: transaction.materialId },
+      select: {
+        id: true,
+        name: true,
+      },
+    });
+
+    if (!material) return;
 
     const { section, users } = await this.getTopLevelSectionUsers(
       transaction.store.sectionId
@@ -437,7 +442,7 @@ export class NotificationService {
     ];
 
     const title = "Store Transaction";
-    const body = `${transaction.type} transaction for ${transaction.quantity} ${transaction.material.name} in ${transaction.store.name}`;
+    const body = `${transaction.type} transaction for ${transaction.quantity} ${material.name} in ${transaction.store.name}`;
 
     await this.sendNotificationsToUsers(usersToNotify, title, body, {
       transactionId: transaction.id,
@@ -602,7 +607,7 @@ export class NotificationService {
     ];
 
     const title = "Material Cap Updated";
-    const body = `Material cap for ${materialCap.material.name} in section ${section?.name} updated to ${materialCap.cap}`;
+    const body = `Material cap for ${materialCap.material.name} in section ${section?.name} updated to ${materialCap.quantity}`;
 
     await this.sendNotificationsToUsers(usersToNotify, title, body, {
       materialCapId: materialCap.id,
