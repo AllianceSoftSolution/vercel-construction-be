@@ -263,7 +263,22 @@ const getDemandById = catchAsync(async (req, res, next) => {
         },
       },
       fulfillments: true,
-      purchaseOrders: true,
+      purchaseOrders: {
+        include: {
+          demand: {
+            include: {
+              section: {
+                include: {
+                  project: true,
+                },
+              },
+            },
+          },
+          section: true,
+          material: true,
+          vendor: true,
+        },
+      },
     },
   });
   if (!demand) {

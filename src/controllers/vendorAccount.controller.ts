@@ -186,7 +186,7 @@ export const getVendorAccountSummary = catchAsync(
 // Get all vendor accounts overview
 export const getAllVendorAccounts = catchAsync(
   async (req: Request, res: Response) => {
-    const { page = 1, limit = 10, search } = req.query;
+    const { page = 1, limit = 10, search, projectId } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
 
     let where: any = {};
@@ -204,6 +204,161 @@ export const getAllVendorAccounts = catchAsync(
       };
     }
 
+    // If projectId is provided, we need to filter by project-specific transactions
+    if (projectId) {
+      // First, get all purchase order IDs for the specified project
+      const projectPurchaseOrderIds = await prisma.purchaseOrder.findMany({
+        where: {
+          projectId: projectId as string,
+          isDeleted: false,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      const purchaseOrderIds = projectPurchaseOrderIds.map((po) => po.id);
+
+      // Get all vendor accounts that have transactions related to the specified project
+      const vendorAccountsWithProjectTransactions =
+        await prisma.vendorAccount.findMany({
+          where: {
+            ...where,
+            transactions: {
+              some: {
+                purchaseOrderId: {
+                  in: purchaseOrderIds,
+                },
+              },
+            },
+          },
+          include: {
+            vendor: {
+              select: {
+                id: true,
+                name: true,
+                contactPerson: true,
+                email: true,
+                phone: true,
+                address: true,
+                isActive: true,
+              },
+            },
+            transactions: {
+              where: {
+                purchaseOrderId: {
+                  in: purchaseOrderIds,
+                },
+              },
+              orderBy: { createdAt: "desc" },
+            },
+          },
+          skip,
+          take: Number(limit),
+          orderBy: { lastUpdated: "desc" },
+        });
+
+      // Calculate project-specific metrics for each vendor account
+      const vendorAccountsWithMetrics =
+        vendorAccountsWithProjectTransactions.map((account) => {
+          // Calculate project-specific totals
+          const projectCredited = account.transactions
+            .filter((t) => t.type === "CREDIT")
+            .reduce((sum, t) => sum + Number(t.amount), 0);
+
+          const projectDebited = account.transactions
+            .filter((t) => t.type === "DEBIT")
+            .reduce((sum, t) => sum + Number(t.amount), 0);
+
+          const projectBalance = projectCredited - projectDebited;
+
+          // Calculate paid amount (total debited for this project)
+          const paidAmount = projectDebited;
+
+          // Calculate remaining amount (balance - if positive, it's what we owe them for this project)
+          const remainingAmount = projectBalance;
+
+          // Calculate overdue amount (if balance is positive, it's overdue for this project)
+          const overdueAmount = projectBalance > 0 ? projectBalance : 0;
+
+          // Calculate advance amount (if balance is negative, it's advance for this project)
+          const advanceAmount =
+            projectBalance < 0 ? Math.abs(projectBalance) : 0;
+
+          return {
+            id: account.id,
+            vendorId: account.vendorId,
+            vendor: account.vendor,
+            totalCredited: projectCredited,
+            totalDebited: projectDebited,
+            balance: projectBalance,
+            paidAmount,
+            remainingAmount,
+            overdueAmount,
+            advanceAmount,
+            lastUpdated: account.lastUpdated,
+            recentTransactions: account.transactions.slice(0, 5), // Get last 5 transactions
+            // Status indicators
+            hasOverdueAmount: overdueAmount > 0,
+            hasAdvanceAmount: advanceAmount > 0,
+            isBalanced: projectBalance === 0,
+          };
+        });
+
+      // Filter out vendors with no project transactions
+      const vendorsWithProjectActivity = vendorAccountsWithMetrics.filter(
+        (account) => account.totalCredited > 0 || account.totalDebited > 0
+      );
+
+      const total = await prisma.vendorAccount.count({
+        where: {
+          ...where,
+          transactions: {
+            some: {
+              purchaseOrderId: {
+                in: purchaseOrderIds,
+              },
+            },
+          },
+        },
+      });
+
+      res.status(200).json({
+        status: "success",
+        data: vendorsWithProjectActivity,
+        pagination: {
+          page: Number(page),
+          limit: Number(limit),
+          total,
+          pages: Math.ceil(total / Number(limit)),
+        },
+        summary: {
+          totalVendors: total,
+          totalCredited: vendorsWithProjectActivity.reduce(
+            (sum, acc) => sum + acc.totalCredited,
+            0
+          ),
+          totalDebited: vendorsWithProjectActivity.reduce(
+            (sum, acc) => sum + acc.totalDebited,
+            0
+          ),
+          totalBalance: vendorsWithProjectActivity.reduce(
+            (sum, acc) => sum + acc.balance,
+            0
+          ),
+          vendorsWithOverdue: vendorsWithProjectActivity.filter(
+            (acc) => acc.hasOverdueAmount
+          ).length,
+          vendorsWithAdvance: vendorsWithProjectActivity.filter(
+            (acc) => acc.hasAdvanceAmount
+          ).length,
+        },
+      });
+
+      return;
+    }
+
+    // Original logic for when no projectId is provided
     const vendorAccounts = await prisma.vendorAccount.findMany({
       where,
       include: {

@@ -43,10 +43,10 @@ async function updateDemandStatus(demandId: string) {
       newStatus = "APPROVED";
     }
   } else if (totalPOQuantity < demandQuantity) {
-    // Partial POs created
-    newStatus = "PO_IN_PROGRESS";
+    // Partial POs created - less than demand quantity
+    newStatus = "PARTIALLY_PO_CREATED";
   } else if (totalPOQuantity >= demandQuantity) {
-    // Full or more POs created
+    // Full or more POs created - equal to or greater than demand quantity
     newStatus = "PO_CREATED";
   }
 
@@ -105,7 +105,11 @@ export const createPurchaseOrder = catchAsync(
     }
 
     // Check if demand is approved
-    if (demand.status !== "APPROVED" && demand.status !== "PO_IN_PROGRESS") {
+    if (
+      demand.status !== "APPROVED" &&
+      demand.status !== "PO_IN_PROGRESS" &&
+      demand.status !== "PARTIALLY_PO_CREATED"
+    ) {
       return next(
         new AppError("Demand must be approved before creating PO", 400)
       );
