@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "DemandStatus" ADD VALUE 'PARTIALLY_PO_CREATED';
