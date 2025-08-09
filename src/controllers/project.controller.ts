@@ -466,9 +466,15 @@ const getProjectById = catchAsync(async (req, res, next) => {
 
   // Filter sections for non-admins to only assigned sections
   if (user.role !== "ADMIN" && Array.isArray(sectionsWithAmounts)) {
-    sectionsWithAmounts = sectionsWithAmounts.filter((section) =>
-      assignedSectionIds.includes(section.id)
-    );
+    // If user is head accountant, they can see all sections
+    if (user.role === "ACCOUNTANT" && user.isHead) {
+      // No filtering needed for head accountants
+    } else {
+      // Filter sections for regular users (including regular accountants)
+      sectionsWithAmounts = sectionsWithAmounts.filter((section) =>
+        assignedSectionIds.includes(section.id)
+      );
+    }
   }
 
   // Get material caps for all sections in this project
@@ -645,6 +651,7 @@ const getProjectById = catchAsync(async (req, res, next) => {
   project.siteInchargeAssignments.forEach((assignment) => {
     if (
       user.role === "ADMIN" ||
+      (user.role === "ACCOUNTANT" && user.isHead) ||
       assignedSectionIds.includes(assignment.section.id)
     ) {
       addMember(assignment.user, {
@@ -658,6 +665,7 @@ const getProjectById = catchAsync(async (req, res, next) => {
   project.projectManagerAssignments.forEach((assignment) => {
     if (
       user.role === "ADMIN" ||
+      (user.role === "ACCOUNTANT" && user.isHead) ||
       assignedSectionIds.includes(assignment.section.id)
     ) {
       addMember(assignment.user, {
@@ -671,6 +679,7 @@ const getProjectById = catchAsync(async (req, res, next) => {
   project.accountantAssignments.forEach((assignment) => {
     if (
       user.role === "ADMIN" ||
+      (user.role === "ACCOUNTANT" && user.isHead) ||
       assignedSectionIds.includes(assignment.section.id)
     ) {
       addMember(assignment.user, {
@@ -682,7 +691,11 @@ const getProjectById = catchAsync(async (req, res, next) => {
 
   // Construction Managers (from each section)
   project.sections.forEach((section) => {
-    if (user.role === "ADMIN" || assignedSectionIds.includes(section.id)) {
+    if (
+      user.role === "ADMIN" ||
+      (user.role === "ACCOUNTANT" && user.isHead) ||
+      assignedSectionIds.includes(section.id)
+    ) {
       section.constructionManagerAssignments.forEach((cmAssignment) => {
         addMember(cmAssignment.user, {
           type: "Construction Manager",
@@ -694,7 +707,11 @@ const getProjectById = catchAsync(async (req, res, next) => {
 
   // Store Incharges (from each store in each section)
   project.sections.forEach((section) => {
-    if (user.role === "ADMIN" || assignedSectionIds.includes(section.id)) {
+    if (
+      user.role === "ADMIN" ||
+      (user.role === "ACCOUNTANT" && user.isHead) ||
+      assignedSectionIds.includes(section.id)
+    ) {
       section.stores.forEach((store) => {
         store.storeInchargeAssignments.forEach((siAssignment) => {
           addMember(siAssignment.user, {
