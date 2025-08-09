@@ -170,6 +170,7 @@ export const createPurchaseOrder = catchAsync(
         materialId,
         vendorId,
         quantity,
+        notes: notes || null, // Store notes if provided
         createdBy: req.user.id,
       },
       include: {
@@ -476,6 +477,7 @@ export const updatePurchaseOrder = catchAsync(
         materialId,
         vendorId,
         quantity,
+        notes: notes !== undefined ? notes || null : undefined, // Update notes if provided
         updatedBy: req.user.id,
       },
       include: {
