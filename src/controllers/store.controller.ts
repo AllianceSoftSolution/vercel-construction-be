@@ -222,6 +222,19 @@ const getStores = catchAsync(async (req, res) => {
       const storeIds = assignments.map((a) => a.storeId);
       defaultFilters.id = { in: storeIds };
     }
+  } else if (user.role === "ACCOUNTANT") {
+    // If user is head accountant, they can see all stores
+    if (user.isHead) {
+      // No filter, see all stores
+    } else {
+      // Regular accountant - only stores in assigned sections
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      const sectionIds = assignments.map((a) => a.sectionId);
+      defaultFilters.sectionId = { in: sectionIds };
+    }
   } else {
     // Other roles: no stores
     defaultFilters.id = { in: [] };
@@ -355,19 +368,25 @@ const getStoreById = catchAsync(async (req, res, next) => {
         assigned = !!assignment;
       }
     } else if (user.role === "ACCOUNTANT") {
-      const store = await prisma.store.findUnique({
-        where: { id },
-        select: { sectionId: true },
-      });
-      if (store) {
-        const assignment = await prisma.accountantAssignment.findFirst({
-          where: {
-            userId: user.id,
-            sectionId: store.sectionId,
-            isActive: true,
-          },
+      // If user is head accountant, they can access all stores
+      if (user.isHead) {
+        assigned = true;
+      } else {
+        // Regular accountant - only stores in assigned sections
+        const store = await prisma.store.findUnique({
+          where: { id },
+          select: { sectionId: true },
         });
-        assigned = !!assignment;
+        if (store) {
+          const assignment = await prisma.accountantAssignment.findFirst({
+            where: {
+              userId: user.id,
+              sectionId: store.sectionId,
+              isActive: true,
+            },
+          });
+          assigned = !!assignment;
+        }
       }
     }
     if (!assigned) {

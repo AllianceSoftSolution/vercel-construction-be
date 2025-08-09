@@ -430,6 +430,7 @@ model PurchaseOrder {
   proofOfBill     String?  // NEW: URL to vendor's bill/invoice
   amountAddedBy   String?  // NEW: who added the amount
   amountAddedAt   DateTime? // NEW: when amount was added
+  notes           String?  // Optional notes, required when quantity exceeds demand
   status          POStatus @default(CREATED)
   isDeleted       Boolean  @default(false)
   createdAt       DateTime @default(now())

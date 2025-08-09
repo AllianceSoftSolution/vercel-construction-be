@@ -50,12 +50,22 @@ async function updateDemandStatus(demandId: string) {
     newStatus = "PO_CREATED";
   }
 
-  // Update demand status if changed
-  if (newStatus !== demand.status) {
+  // Calculate new fulfilled and remaining quantities
+  const newFulfilledQuantity = totalPOQuantity;
+  const newRemainingQuantity = demandQuantity - totalPOQuantity;
+
+  // Update demand status and quantities if changed
+  if (
+    newStatus !== demand.status ||
+    newFulfilledQuantity !== Number(demand.quantityFulfilled || 0) ||
+    newRemainingQuantity !== Number(demand.quantityRemaining || demandQuantity)
+  ) {
     await prisma.demand.update({
       where: { id: demandId },
       data: {
         status: newStatus,
+        quantityFulfilled: newFulfilledQuantity,
+        quantityRemaining: newRemainingQuantity,
         updatedBy: demand.createdBy, // Keep the original creator
       },
     });
@@ -160,6 +170,7 @@ export const createPurchaseOrder = catchAsync(
         materialId,
         vendorId,
         quantity,
+        notes: notes || null, // Store notes if provided
         createdBy: req.user.id,
       },
       include: {
@@ -256,6 +267,8 @@ export const getPurchaseOrders = catchAsync(
       const sectionIds = assignments.map((a) => a.store.sectionId);
       where.sectionId = { in: sectionIds };
     } else if (user.role === "ACCOUNTANT") {
+      // If user is head accountant, they can see all POs (handled above)
+      // Regular accountant - only assigned sections
       const assignments = await prisma.accountantAssignment.findMany({
         where: { userId: user.id, isActive: true },
         select: { sectionId: true },
@@ -464,6 +477,7 @@ export const updatePurchaseOrder = catchAsync(
         materialId,
         vendorId,
         quantity,
+        notes: notes !== undefined ? notes || null : undefined, // Update notes if provided
         updatedBy: req.user.id,
       },
       include: {
