@@ -1,7 +1,6 @@
-import { PrismaClient, UserRole, StoreType, DemandStatus, Section, Project, User } from '@prisma/client';
+import { UserRole, StoreType, DemandStatus, Section, Project, User } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
+import prisma from '../utils/prisma';
 
 async function main() {
   // 1. Create Admin

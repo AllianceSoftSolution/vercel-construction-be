@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client";
 import { sendFirebaseNotification } from "./firebase";
-
-const prisma = new PrismaClient();
+import prisma from "./prisma";
 
 export async function sendNotificationToUser({
   userId,

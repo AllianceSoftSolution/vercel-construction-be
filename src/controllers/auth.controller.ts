@@ -1,4 +1,3 @@
-import * as Prisma from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import bcrypt from "bcryptjs";
@@ -24,7 +23,7 @@ import {
 import { validatePasswordStrength } from "../utils/passwordUtils";
 import { TRANSACTION_REFERENCES } from "../constants";
 
-const prisma = new Prisma.PrismaClient();
+import prisma from "../utils/prisma";
 
 // Set up OTP cleanup on module load
 setupOTPCleanup();

@@ -1,7 +1,6 @@
-import { PrismaClient, UserRole } from '@prisma/client';
+import { UserRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
-
-const prisma = new PrismaClient();
+import prisma from '../utils/prisma';
 
 async function main() {
   // 1. Delete all data in the correct order to avoid FK errors

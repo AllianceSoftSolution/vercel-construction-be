@@ -1,0 +1,27 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.STOCK_OPERATION_TYPES = exports.TRANSACTION_TYPES = exports.TRANSACTION_REFERENCES = exports.SAUDI_TZ = void 0;
+exports.SAUDI_TZ = "Asia/Riyadh";
+exports.TRANSACTION_REFERENCES = {
+    INITIAL_STOCK: "INITIAL_STOCK",
+    CM_DEACTIVATION_TRANSFER: "CM_DEACTIVATION_TRANSFER",
+    ROLE_CHANGE_TRANSFER: "ROLE_CHANGE_TRANSFER",
+    PO_TRANSFER: "PO_TRANSFER",
+    DEMAND_FULFILLMENT: "DEMAND_FULFILLMENT",
+    MANUAL_ADJUSTMENT: "MANUAL_ADJUSTMENT",
+    LOSS_ADJUSTMENT: "LOSS_ADJUSTMENT",
+};
+exports.TRANSACTION_TYPES = {
+    IN: "IN",
+    OUT: "OUT",
+    TRANSFER: "TRANSFER",
+};
+exports.STOCK_OPERATION_TYPES = {
+    PO: "PO",
+    INITIAL: "INITIAL",
+    TRANSFER: "TRANSFER",
+    MANUAL: "MANUAL",
+    DEMAND: "DEMAND",
+    LOSS: "LOSS",
+};
+//# sourceMappingURL=index.js.map

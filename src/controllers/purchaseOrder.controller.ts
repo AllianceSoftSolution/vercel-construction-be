@@ -1,13 +1,11 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
 import { Decimal } from "@prisma/client/runtime/library";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { sendNotificationToUserSafe } from "../utils/notification";
 import { generatePOReferenceNumber } from "../utils/generateCode";
 import { NotificationService } from "../utils/notificationService";
-
-const prisma = new PrismaClient();
+import prisma from "../utils/prisma";
 
 // Helper to calculate total PO quantity for a demand
 async function getTotalPOQuantityForDemand(demandId: string) {

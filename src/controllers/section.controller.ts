@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { generateSectionCode } from "../utils/generateCode";
@@ -8,8 +7,7 @@ import {
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
-
-const prisma = new PrismaClient();
+import prisma from "../utils/prisma";
 
 const createSection = catchAsync(async (req, res, next) => {
   const { name, description, projectId } = req.body;

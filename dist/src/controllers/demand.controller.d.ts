@@ -1,0 +1,10 @@
+declare const createDemand: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getDemands: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getDemandById: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const updateDemand: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const deleteDemand: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const updateDemandStatus: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const approveDemand: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const rejectDemand: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const fulfillDemand: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+export { createDemand, getDemands, getDemandById, updateDemand, deleteDemand, updateDemandStatus, approveDemand, rejectDemand, fulfillDemand, };

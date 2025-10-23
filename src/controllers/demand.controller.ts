@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { generateDemandCode } from "../utils/generateCode";
@@ -9,8 +8,7 @@ import {
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
 import { NotificationService } from "../utils/notificationService";
-
-const prisma = new PrismaClient();
+import prisma from "../utils/prisma";
 
 const createDemand = catchAsync(async (req, res, next) => {
   const { materialId, quantity, unit, sectionId, notes } = req.body;

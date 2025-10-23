@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import {
@@ -9,8 +8,7 @@ import {
 import { TRANSACTION_REFERENCES } from "../constants";
 import { sendNotificationToUserSafe } from "../utils/notification";
 import { NotificationService } from "../utils/notificationService";
-
-const prisma = new PrismaClient();
+import prisma from "../utils/prisma";
 
 const createStore = catchAsync(async (req, res, next) => {
   const {

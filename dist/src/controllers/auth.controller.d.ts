@@ -1,0 +1,16 @@
+declare const registerUser: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const loginUser: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const changePassword: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getUsers: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getUserById: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const updateUser: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const deleteUser: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const activateUser: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const deactivateUser: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const requestPasswordReset: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const verifyOTPAndGenerateToken: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const resetPasswordWithToken: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+export declare const saveDeviceToken: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+export declare const removeDeviceToken: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const changeUserRole: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+export { registerUser, loginUser, changePassword, getUsers, getUserById, updateUser, deleteUser, activateUser, deactivateUser, requestPasswordReset, verifyOTPAndGenerateToken, resetPasswordWithToken, changeUserRole, };

@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import {
@@ -8,8 +7,7 @@ import {
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
 import { NotificationService } from "../utils/notificationService";
-
-const prisma = new PrismaClient();
+import prisma from "../utils/prisma";
 
 const createVendor = catchAsync(async (req, res, next) => {
   const { name, contactPerson, email, phone, address } = req.body;

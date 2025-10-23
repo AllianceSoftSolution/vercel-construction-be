@@ -1,10 +1,8 @@
 import { Request, Response } from "express";
-import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { NotificationService } from "../utils/notificationService";
-
-const prisma = new PrismaClient();
+import prisma from "../utils/prisma";
 
 // Get vendor account statement (summary + all transactions)
 export const getVendorAccountStatement = catchAsync(

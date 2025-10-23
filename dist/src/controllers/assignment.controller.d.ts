@@ -1,0 +1,16 @@
+declare const createSiteInchargeAssignment: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getSiteInchargeAssignments: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const createProjectManagerAssignment: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getProjectManagerAssignments: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const createConstructionManagerAssignment: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getConstructionManagerAssignments: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const createStoreInchargeAssignment: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getStoreInchargeAssignments: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const createAccountantAssignment: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getAccountantAssignments: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const deactivateAssignment: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const createAndAssignProjectManager: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getUsersByRoleForAssignment: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getSectionsWithSiteInchargeAssignmentStatus: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getSectionsWithAccountantAssignmentStatus: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+export { createSiteInchargeAssignment, getSiteInchargeAssignments, createProjectManagerAssignment, getProjectManagerAssignments, createConstructionManagerAssignment, getConstructionManagerAssignments, createStoreInchargeAssignment, getStoreInchargeAssignments, createAccountantAssignment, getAccountantAssignments, deactivateAssignment, createAndAssignProjectManager, getUsersByRoleForAssignment, getSectionsWithSiteInchargeAssignmentStatus, getSectionsWithAccountantAssignmentStatus, };

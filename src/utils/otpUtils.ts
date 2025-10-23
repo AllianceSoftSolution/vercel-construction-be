@@ -1,7 +1,5 @@
 // utils/otpUtils.ts
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import prisma from "./prisma";
 
 // Clean up expired OTPs from the database
 export const cleanupExpiredOTPs = async () => {

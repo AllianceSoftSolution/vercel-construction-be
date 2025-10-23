@@ -1,0 +1,9 @@
+declare const createVendor: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getVendors: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getVendorById: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const updateVendor: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const deleteVendor: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const activateVendor: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const deactivateVendor: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getVendorsWithAccounts: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+export { createVendor, getVendors, getVendorById, updateVendor, deleteVendor, activateVendor, deactivateVendor, getVendorsWithAccounts, };

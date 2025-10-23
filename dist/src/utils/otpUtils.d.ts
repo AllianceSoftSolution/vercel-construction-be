@@ -1,0 +1,9 @@
+export declare const cleanupExpiredOTPs: () => Promise<void>;
+export declare const validateOTPFormat: (otp: string) => boolean;
+export declare const generateOTP: () => string;
+export declare const storeOTP: (email: string, otp: string, expiryMinutes?: number) => Promise<void>;
+export declare const isOTPValid: (email: string, otp: string) => Promise<boolean>;
+export declare const incrementOTPAttempts: (email: string) => Promise<void>;
+export declare const removeOTP: (email: string) => Promise<void>;
+export declare const markOTPAsUsed: (email: string) => Promise<void>;
+export declare const setupOTPCleanup: () => void;

@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import {
@@ -7,8 +6,7 @@ import {
   buildPaginationMeta,
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
-
-const prisma = new PrismaClient();
+import prisma from "../utils/prisma";
 
 const createMaterial = catchAsync(async (req, res, next) => {
   const { name, description, unit, category } = req.body;

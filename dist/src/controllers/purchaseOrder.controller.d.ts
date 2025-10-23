@@ -1,0 +1,11 @@
+import { Request, Response } from "express";
+export declare const createPurchaseOrder: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getPurchaseOrders: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getPurchaseOrder: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const updatePurchaseOrder: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const deletePurchaseOrder: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getPurchaseOrdersByVendor: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getPurchaseOrderSummary: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getDemandPOStatistics: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const updatePOStatus: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const addPOAmount: (req: Request, res: Response, next: import("express").NextFunction) => void;

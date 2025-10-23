@@ -1,12 +1,11 @@
-import { PrismaClient, UserRole } from "@prisma/client";
+import { UserRole } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { generateEmployeeId } from "../utils/generateCode";
 import { TRANSACTION_REFERENCES } from "../constants";
 import { NotificationService } from "../utils/notificationService";
+import prisma from "../utils/prisma";
 const crypto = require("crypto");
-
-const prisma = new PrismaClient();
 
 // Site Incharge Assignments
 const createSiteInchargeAssignment = catchAsync(async (req, res, next) => {

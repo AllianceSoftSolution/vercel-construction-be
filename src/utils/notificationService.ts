@@ -1,7 +1,5 @@
-import { PrismaClient } from "@prisma/client";
 import { sendNotificationToUserSafe } from "./notification";
-
-const prisma = new PrismaClient();
+import prisma from "./prisma";
 
 // Notification service for hierarchy-based notifications
 export class NotificationService {

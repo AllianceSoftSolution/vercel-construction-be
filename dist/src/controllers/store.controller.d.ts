@@ -1,0 +1,13 @@
+declare const createStore: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getStores: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getStoreById: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const updateStore: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const deleteStore: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const activateStore: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const deactivateStore: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const stockIn: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const stockOut: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getStoreInventory: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getStoreTransactions: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const getProjectInventory: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+export { createStore, getStores, getStoreById, updateStore, deleteStore, activateStore, deactivateStore, stockIn, stockOut, getStoreInventory, getStoreTransactions, getProjectInventory, };

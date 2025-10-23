@@ -1,0 +1,33 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const router = express_1.default.Router();
+const auth_1 = __importDefault(require("./auth"));
+const project_1 = __importDefault(require("./project"));
+const section_1 = __importDefault(require("./section"));
+const store_1 = __importDefault(require("./store"));
+const material_1 = __importDefault(require("./material"));
+const materialCap_1 = __importDefault(require("./materialCap"));
+const vendor_1 = __importDefault(require("./vendor"));
+const demand_1 = __importDefault(require("./demand"));
+const assignment_1 = __importDefault(require("./assignment"));
+const vendorAccount_1 = __importDefault(require("./vendorAccount"));
+const purchaseOrder_1 = __importDefault(require("./purchaseOrder"));
+const analytics_1 = __importDefault(require("./analytics"));
+router.use("/auth", auth_1.default);
+router.use("/projects", project_1.default);
+router.use("/sections", section_1.default);
+router.use("/stores", store_1.default);
+router.use("/materials", material_1.default);
+router.use("/material-caps", materialCap_1.default);
+router.use("/vendors", vendor_1.default);
+router.use("/demands", demand_1.default);
+router.use("/assignments", assignment_1.default);
+router.use("/purchase-orders", purchaseOrder_1.default);
+router.use("/vendor-account", vendorAccount_1.default);
+router.use("/analytics", analytics_1.default);
+exports.default = router;
+//# sourceMappingURL=index.js.map

@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from "express";
-import { PrismaClient } from "@prisma/client";
 import catchAsync from "../utils/catchAsync";
-
-const prisma = new PrismaClient();
+import prisma from "../utils/prisma";
 
 // Helper function to get user's accessible section IDs based on role
 const getUserAccessibleSections = async (userId: string, userRole: string) => {
@@ -826,9 +824,24 @@ export const getAccountantDashboard = catchAsync(
       },
     });
 
+    // Get purchase order IDs for accessible sections to filter vendor accounts
+    const accessiblePurchaseOrderIds = await prisma.purchaseOrder.findMany({
+      where: {
+        isDeleted: false,
+        sectionId: { in: accessibleSectionIds },
+      },
+      select: { id: true },
+    });
+    const poIds = accessiblePurchaseOrderIds.map(po => po.id);
+
     const totalAmountPending = await prisma.vendorAccount.aggregate({
       where: {
         balance: { gt: 0 },
+        transactions: {
+          some: {
+            purchaseOrderId: { in: poIds },
+          },
+        },
       },
       _sum: {
         balance: true,
@@ -836,13 +849,27 @@ export const getAccountantDashboard = catchAsync(
     });
 
     const totalAmountPaid = await prisma.vendorAccount.aggregate({
+      where: {
+        transactions: {
+          some: {
+            purchaseOrderId: { in: poIds },
+          },
+        },
+      },
       _sum: {
         totalDebited: true,
       },
     });
 
-    // Vendor account summary
+    // Vendor account summary - filtered by accessible sections
     const vendorAccounts = await prisma.vendorAccount.findMany({
+      where: {
+        transactions: {
+          some: {
+            purchaseOrderId: { in: poIds },
+          },
+        },
+      },
       include: {
         vendor: {
           select: {
