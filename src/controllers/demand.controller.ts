@@ -149,6 +149,8 @@ const getDemands = catchAsync(async (req, res) => {
     });
     const sectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.sectionId = { in: sectionIds };
+    // CMs should only see demands they created in their assigned sections
+    defaultFilters.createdBy = user.id;
   } else if (user.role === "STORE_INCHARGE") {
     const assignments = await prisma.storeInchargeAssignment.findMany({
       where: { userId: user.id, isActive: true },

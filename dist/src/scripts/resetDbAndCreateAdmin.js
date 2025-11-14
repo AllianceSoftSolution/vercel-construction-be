@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+require("dotenv/config");
 const client_1 = require("@prisma/client");
 const bcryptjs_1 = __importDefault(require("bcryptjs"));
 const prisma_1 = __importDefault(require("../utils/prisma"));
@@ -17,6 +18,7 @@ async function main() {
     await prisma_1.default.demandFulfillment.deleteMany({});
     await prisma_1.default.demandApproval.deleteMany({});
     await prisma_1.default.purchaseOrder.deleteMany({});
+    await prisma_1.default.materialCap.deleteMany({});
     await prisma_1.default.demand.deleteMany({});
     await prisma_1.default.material.deleteMany({});
     await prisma_1.default.storeInchargeAssignment.deleteMany({});

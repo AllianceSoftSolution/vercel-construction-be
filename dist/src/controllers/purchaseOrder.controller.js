@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.addPOAmount = exports.updatePOStatus = exports.getDemandPOStatistics = exports.getPurchaseOrderSummary = exports.getPurchaseOrdersByVendor = exports.deletePurchaseOrder = exports.updatePurchaseOrder = exports.getPurchaseOrder = exports.getPurchaseOrders = exports.createPurchaseOrder = void 0;
+exports.updatePOAmount = exports.addPOAmount = exports.updatePOStatus = exports.getDemandPOStatistics = exports.getPurchaseOrderSummary = exports.getPurchaseOrdersByVendor = exports.deletePurchaseOrder = exports.updatePurchaseOrder = exports.getPurchaseOrder = exports.getPurchaseOrders = exports.createPurchaseOrder = void 0;
 const library_1 = require("@prisma/client/runtime/library");
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
@@ -217,6 +217,13 @@ exports.getPurchaseOrders = (0, catchAsync_1.default)(async (req, res) => {
             section: true,
             material: true,
             vendor: true,
+            amountAdder: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                },
+            },
         },
         skip,
         take: Number(limit),
@@ -676,6 +683,150 @@ exports.addPOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
     res.status(200).json({
         status: "success",
         message: `Amount added to PO, status changed to CONFIRMED, and vendor account credited with ${totalAmount}`,
+        data: result,
+    });
+});
+exports.updatePOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { id } = req.params;
+    const { unitPrice, notes } = req.body;
+    const filesFromS3 = req.filesFromS3;
+    const proofOfBill = filesFromS3?.proofOfBill;
+    const purchaseOrder = await prisma_1.default.purchaseOrder.findFirst({
+        where: { id, isDeleted: false },
+        include: {
+            demand: true,
+            material: true,
+            vendor: true,
+            amountAdder: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                },
+            },
+        },
+    });
+    if (!purchaseOrder) {
+        return next(new appError_1.default("Purchase Order not found", 404));
+    }
+    if (!purchaseOrder.amountAddedAt) {
+        return next(new appError_1.default("No amount has been added to this PO yet", 400));
+    }
+    const now = new Date();
+    const amountAddedAt = new Date(purchaseOrder.amountAddedAt);
+    const hoursDiff = (now.getTime() - amountAddedAt.getTime()) / (1000 * 60 * 60);
+    if (hoursDiff > 24) {
+        return next(new appError_1.default("Cannot edit: 24-hour edit window has expired", 400));
+    }
+    const user = req.user;
+    if (purchaseOrder.amountAddedBy !== user.id &&
+        user.role !== "ADMIN" &&
+        !(user.role === "ACCOUNTANT" && user.isHead)) {
+        return next(new appError_1.default("Only the user who added the amount can edit it (or admin/head accountant)", 403));
+    }
+    if (!unitPrice || unitPrice <= 0) {
+        return next(new appError_1.default("Unit price must be greater than 0", 400));
+    }
+    const oldTotalAmount = Number(purchaseOrder.totalAmount || 0);
+    const newTotalAmount = Number(purchaseOrder.quantity) * Number(unitPrice);
+    const amountDifference = newTotalAmount - oldTotalAmount;
+    const result = await prisma_1.default.$transaction(async (tx) => {
+        const updateData = {
+            unitPrice: new library_1.Decimal(unitPrice),
+            totalAmount: new library_1.Decimal(newTotalAmount),
+            updatedBy: user.id,
+        };
+        if (notes) {
+            updateData.notes = notes;
+        }
+        if (proofOfBill) {
+            updateData.proofOfBill = proofOfBill;
+        }
+        const updatedPO = await tx.purchaseOrder.update({
+            where: { id },
+            data: updateData,
+            include: {
+                demand: {
+                    include: {
+                        section: {
+                            include: {
+                                project: true,
+                            },
+                        },
+                    },
+                },
+                section: true,
+                material: true,
+                vendor: true,
+                amountAdder: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                    },
+                },
+            },
+        });
+        let vendorAccount = await tx.vendorAccount.findUnique({
+            where: { vendorId: purchaseOrder.vendorId },
+        });
+        if (!vendorAccount) {
+            vendorAccount = await tx.vendorAccount.create({
+                data: {
+                    vendorId: purchaseOrder.vendorId,
+                    totalCredited: new library_1.Decimal(0),
+                    totalDebited: new library_1.Decimal(0),
+                    balance: new library_1.Decimal(0),
+                },
+            });
+        }
+        const existingTransaction = await tx.vendorAccountTransaction.findFirst({
+            where: {
+                vendorAccountId: vendorAccount.id,
+                purchaseOrderId: purchaseOrder.id,
+                type: "CREDIT",
+            },
+        });
+        if (existingTransaction) {
+            await tx.vendorAccountTransaction.update({
+                where: { id: existingTransaction.id },
+                data: {
+                    amount: new library_1.Decimal(newTotalAmount),
+                    note: notes || existingTransaction.note || `Credit for PO ${purchaseOrder.referenceNumber}`,
+                    ...(proofOfBill && { proofOfPayment: proofOfBill }),
+                },
+            });
+        }
+        else {
+            await tx.vendorAccountTransaction.create({
+                data: {
+                    vendorAccountId: vendorAccount.id,
+                    type: "CREDIT",
+                    amount: new library_1.Decimal(newTotalAmount),
+                    purchaseOrderId: purchaseOrder.id,
+                    addedBy: user.id,
+                    proofOfPayment: proofOfBill || purchaseOrder.proofOfBill,
+                    note: notes || `Credit for PO ${purchaseOrder.referenceNumber}`,
+                },
+            });
+        }
+        const newTotalCredited = vendorAccount.totalCredited
+            .sub(new library_1.Decimal(oldTotalAmount))
+            .add(new library_1.Decimal(newTotalAmount));
+        await tx.vendorAccount.update({
+            where: { id: vendorAccount.id },
+            data: {
+                totalCredited: newTotalCredited,
+                balance: vendorAccount.balance
+                    .sub(new library_1.Decimal(oldTotalAmount))
+                    .add(new library_1.Decimal(newTotalAmount)),
+            },
+        });
+        return updatedPO;
+    });
+    res.status(200).json({
+        status: "success",
+        message: `PO amount updated successfully. Amount difference: ${amountDifference >= 0 ? '+' : ''}${amountDifference}`,
         data: result,
     });
 });

@@ -23,6 +23,49 @@ export const getVendorAccountStatement = catchAsync(
       return next(new AppError("Vendor account not found", 404));
     }
 
+    // Fetch purchase orders for transactions that have purchaseOrderId
+    if (vendorAccount.transactions && vendorAccount.transactions.length > 0) {
+      const purchaseOrderIds = vendorAccount.transactions
+        .map((t) => t.purchaseOrderId)
+        .filter((id): id is string => id !== null);
+
+      if (purchaseOrderIds.length > 0) {
+        const purchaseOrders = await prisma.purchaseOrder.findMany({
+          where: { id: { in: purchaseOrderIds } },
+          select: {
+            id: true,
+            referenceNumber: true,
+            section: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+                project: {
+                  select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+
+        // Map purchase orders to transactions
+        const purchaseOrderMap = new Map(
+          purchaseOrders.map((po) => [po.id, po])
+        );
+
+        vendorAccount.transactions = vendorAccount.transactions.map((transaction) => ({
+          ...transaction,
+          purchaseOrder: transaction.purchaseOrderId
+            ? purchaseOrderMap.get(transaction.purchaseOrderId) || null
+            : null,
+        })) as any;
+      }
+    }
+
     res.status(200).json({
       status: "success",
       data: vendorAccount,

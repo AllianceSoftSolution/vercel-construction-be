@@ -120,6 +120,7 @@ const getDemands = (0, catchAsync_1.default)(async (req, res) => {
         });
         const sectionIds = assignments.map((a) => a.sectionId);
         defaultFilters.sectionId = { in: sectionIds };
+        defaultFilters.createdBy = user.id;
     }
     else if (user.role === "STORE_INCHARGE") {
         const assignments = await prisma_1.default.storeInchargeAssignment.findMany({

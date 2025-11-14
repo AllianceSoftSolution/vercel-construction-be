@@ -17,6 +17,7 @@ router.get("/:id", auth_middleware_1.default, purchaseOrder_controller_1.getPurc
 router.put("/:id", auth_middleware_1.default, purchaseOrder_controller_1.updatePurchaseOrder);
 router.patch("/:id/status", auth_middleware_1.default, purchaseOrder_controller_1.updatePOStatus);
 router.patch("/:id/amount", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfBill", maxCount: 1 }]), purchaseOrder_controller_1.addPOAmount);
+router.put("/:id/amount", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfBill", maxCount: 1 }]), purchaseOrder_controller_1.updatePOAmount);
 router.delete("/:id", auth_middleware_1.default, purchaseOrder_controller_1.deletePurchaseOrder);
 exports.default = router;
 //# sourceMappingURL=purchaseOrder.js.map

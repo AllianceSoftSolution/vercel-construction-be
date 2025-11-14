@@ -10,6 +10,7 @@ import {
   getDemandPOStatistics,
   updatePOStatus,
   addPOAmount,
+  updatePOAmount,
 } from "../controllers/purchaseOrder.controller";
 import protect from "../middlewares/auth.middleware";
 import { s3UploadMiddleware } from "../middlewares/s3UploadMiddleware";
@@ -30,6 +31,12 @@ router.patch(
   protect,
   s3UploadMiddleware([{ name: "proofOfBill", maxCount: 1 }]),
   addPOAmount
+);
+router.put(
+  "/:id/amount",
+  protect,
+  s3UploadMiddleware([{ name: "proofOfBill", maxCount: 1 }]),
+  updatePOAmount
 );
 router.delete("/:id", protect, deletePurchaseOrder);
 

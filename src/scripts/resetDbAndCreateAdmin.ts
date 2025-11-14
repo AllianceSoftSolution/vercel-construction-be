@@ -1,10 +1,11 @@
+import 'dotenv/config';
 import { UserRole } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import prisma from '../utils/prisma';
 
 async function main() {
   // 1. Delete all data in the correct order to avoid FK errors
-  // Order: DeviceToken, AuditLog, VendorAccountTransaction, VendorPayment, VendorAccount, StoreTransaction, StoreInventory, DemandFulfillment, DemandApproval, PurchaseOrder, Demand, Material, StoreInchargeAssignment, AccountantAssignment, ConstructionManagerAssignment, ProjectManagerAssignment, SiteInchargeAssignment, Store, Section, Project, Vendor, ReferenceCounter, OTP, User
+  // Order: DeviceToken, AuditLog, VendorAccountTransaction, VendorPayment, VendorAccount, StoreTransaction, StoreInventory, DemandFulfillment, DemandApproval, PurchaseOrder, MaterialCap, Demand, Material, StoreInchargeAssignment, AccountantAssignment, ConstructionManagerAssignment, ProjectManagerAssignment, SiteInchargeAssignment, Store, Section, Project, Vendor, ReferenceCounter, OTP, User
   await prisma.deviceToken.deleteMany({});
   await prisma.auditLog.deleteMany({});
   await prisma.vendorAccountTransaction.deleteMany({});
@@ -15,6 +16,7 @@ async function main() {
   await prisma.demandFulfillment.deleteMany({});
   await prisma.demandApproval.deleteMany({});
   await prisma.purchaseOrder.deleteMany({});
+  await prisma.materialCap.deleteMany({}); // Must be deleted before Material, Section, Project, User
   await prisma.demand.deleteMany({});
   await prisma.material.deleteMany({});
   await prisma.storeInchargeAssignment.deleteMany({});
