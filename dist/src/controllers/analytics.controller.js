@@ -347,24 +347,26 @@ exports.getSiteInchargeDashboard = (0, catchAsync_1.default)(async (req, res, ne
             totalAmount: true,
         },
     });
+    const cmDemandWhere = {
+        isDeleted: false,
+        sectionId: { in: accessibleSectionIds },
+        createdBy: user.id,
+    };
     const totalDemands = await prisma_1.default.demand.count({
-        where: {
-            isDeleted: false,
-            sectionId: { in: accessibleSectionIds },
-        },
+        where: cmDemandWhere,
     });
     const totalPOsCreated = await prisma_1.default.purchaseOrder.count({
         where: {
             isDeleted: false,
             sectionId: { in: accessibleSectionIds },
+            demand: {
+                createdBy: user.id,
+            },
         },
     });
     const demandBreakdown = await prisma_1.default.demand.groupBy({
         by: ["status"],
-        where: {
-            isDeleted: false,
-            sectionId: { in: accessibleSectionIds },
-        },
+        where: cmDemandWhere,
         _count: {
             id: true,
         },

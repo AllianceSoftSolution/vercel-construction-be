@@ -185,6 +185,10 @@ exports.getPurchaseOrders = (0, catchAsync_1.default)(async (req, res) => {
         });
         const sectionIds = assignments.map((a) => a.sectionId);
         where.sectionId = { in: sectionIds };
+        where.demand = {
+            ...(where.demand || {}),
+            createdBy: user.id,
+        };
     }
     else if (user.role === "STORE_INCHARGE") {
         const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
@@ -304,6 +308,10 @@ exports.getPurchaseOrder = (0, catchAsync_1.default)(async (req, res, next) => {
         }
         if (!assigned) {
             return next(new appError_1.default("Access denied: not assigned to this purchase order's section", 403));
+        }
+        if (user.role === "CONSTRUCTION_MANAGER" &&
+            purchaseOrder.demand?.createdBy !== user.id) {
+            return next(new appError_1.default("Access denied: purchase order not linked to your demands", 403));
         }
     }
     res.status(200).json({

@@ -257,6 +257,10 @@ export const getPurchaseOrders = catchAsync(
       });
       const sectionIds = assignments.map((a) => a.sectionId);
       where.sectionId = { in: sectionIds };
+      where.demand = {
+        ...(where.demand || {}),
+        createdBy: user.id,
+      };
     } else if (user.role === "STORE_INCHARGE") {
       const assignments = await prisma.storeInchargeAssignment.findMany({
         where: { userId: user.id, isActive: true },
@@ -387,6 +391,18 @@ export const getPurchaseOrder = catchAsync(
         return next(
           new AppError(
             "Access denied: not assigned to this purchase order's section",
+            403
+          )
+        );
+      }
+
+      if (
+        user.role === "CONSTRUCTION_MANAGER" &&
+        purchaseOrder.demand?.createdBy !== user.id
+      ) {
+        return next(
+          new AppError(
+            "Access denied: purchase order not linked to your demands",
             403
           )
         );
