@@ -733,7 +733,7 @@ export const getConstructionManagerDashboard = catchAsync(
           where: {
             sectionId: section.id,
             isDeleted: false,
-            status: { in: ["PO_CREATED", "FULFILLED", "COMPLETED", "PARTIALLY_PO_CREATED"] },
+            status: { in: ["PO_CREATED", "FULFILLED_FROM_STORE", "COMPLETED", "PARTIALLY_PO_CREATED", "ORDER_PLACED", "IN_STORE"] },
           },
         });
         return {
