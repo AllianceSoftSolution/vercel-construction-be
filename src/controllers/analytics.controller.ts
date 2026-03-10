@@ -718,6 +718,31 @@ export const getConstructionManagerDashboard = catchAsync(
       },
     });
 
+    // Fulfillment Progress per section
+    const accessibleSections = await prisma.section.findMany({
+      where: { id: { in: accessibleSectionIds }, isDeleted: false },
+      select: { id: true, name: true },
+    });
+
+    const fulfillmentProgress = await Promise.all(
+      accessibleSections.map(async (section) => {
+        const total = await prisma.demand.count({
+          where: { sectionId: section.id, isDeleted: false },
+        });
+        const fulfilled = await prisma.demand.count({
+          where: {
+            sectionId: section.id,
+            isDeleted: false,
+            status: { in: ["PO_CREATED", "FULFILLED", "COMPLETED", "PARTIALLY_PO_CREATED"] },
+          },
+        });
+        return {
+          sectionName: section.name || "Unknown",
+          progress: total > 0 ? Math.round((fulfilled / total) * 100) : 0,
+        };
+      })
+    );
+
     res.status(200).json({
       status: "success",
       data: {
@@ -731,6 +756,7 @@ export const getConstructionManagerDashboard = catchAsync(
             status: item.status,
             count: item._count.id,
           })),
+          fulfillmentProgress,
         },
       },
     });
@@ -864,6 +890,15 @@ export const getAccountantDashboard = catchAsync(
       },
     });
 
+    const demandBreakdown = await prisma.demand.groupBy({
+      by: ["status"],
+      where: {
+        sectionId: { in: accessibleSectionIds },
+        isDeleted: false,
+      },
+      _count: { status: true },
+    });
+
     // Vendor account summary - filtered by accessible sections
     const vendorAccounts = await prisma.vendorAccount.findMany({
       where: {
@@ -895,6 +930,12 @@ export const getAccountantDashboard = catchAsync(
           totalAmountPending: totalAmountPending._sum.balance || 0,
           totalAmountPaid: totalAmountPaid._sum.totalDebited || 0,
           assignedSections: accessibleSectionIds.length,
+        },
+        charts: {
+          demandBreakdown: demandBreakdown.map((item) => ({
+            status: item.status,
+            count: item._count.status,
+          })),
         },
         topVendorAccounts: vendorAccounts.map((account) => ({
           vendorId: account.vendorId,
