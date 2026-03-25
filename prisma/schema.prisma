@@ -506,6 +506,7 @@ model VendorAccountTransaction {
   amount          Decimal
   purchaseOrderId String?
   vendorPaymentId String?
+  projectId       String?  // project context for payment (DEBIT) transactions
   addedBy         String
   createdAt       DateTime @default(now())
   proofOfPayment  String?
@@ -517,6 +518,7 @@ model VendorAccountTransaction {
 model VendorPayment {
   id             String   @id @default(cuid())
   vendorId       String
+  projectId      String?  // project this payment is attributed to
   amount         Decimal
   addedBy        String
   createdAt      DateTime @default(now())

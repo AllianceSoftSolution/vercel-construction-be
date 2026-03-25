@@ -77,7 +77,7 @@ export const getVendorAccountStatement = catchAsync(
 export const addVendorPayment = catchAsync(
   async (req: Request, res: Response, next) => {
     const { vendorId } = req.params;
-    const { amount, note } = req.body;
+    const { amount, note, projectId } = req.body;
     const userId = req.user.id;
 
     // Get uploaded file from middleware
@@ -90,8 +90,12 @@ export const addVendorPayment = catchAsync(
       return next(new AppError("Vendor not found", 404));
     }
 
-    if (!proofOfPayment) {
-      return next(new AppError("Proof of payment file is required", 400));
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      return next(new AppError("A valid payment amount is required", 400));
+    }
+
+    if (!note || !note.trim()) {
+      return next(new AppError("Payment note is required", 400));
     }
 
     // Find or create vendor account
@@ -108,9 +112,10 @@ export const addVendorPayment = catchAsync(
     const payment = await prisma.vendorPayment.create({
       data: {
         vendorId,
+        projectId: projectId || null,
         amount,
         addedBy: userId,
-        proofOfPayment,
+        proofOfPayment: proofOfPayment || null,
         note,
       },
     });
@@ -122,8 +127,9 @@ export const addVendorPayment = catchAsync(
         type: "DEBIT",
         amount,
         vendorPaymentId: payment.id,
+        projectId: projectId || null,
         addedBy: userId,
-        proofOfPayment,
+        proofOfPayment: proofOfPayment || null,
         note,
       },
     });
@@ -261,15 +267,17 @@ export const getAllVendorAccounts = catchAsync(
       const purchaseOrderIds = projectPurchaseOrderIds.map((po) => po.id);
 
       // Get all vendor accounts that have transactions related to the specified project
+      // This includes: CREDIT transactions linked to project POs, AND DEBIT payment transactions for this project
       const vendorAccountsWithProjectTransactions =
         await prisma.vendorAccount.findMany({
           where: {
             ...where,
             transactions: {
               some: {
-                purchaseOrderId: {
-                  in: purchaseOrderIds,
-                },
+                OR: [
+                  { purchaseOrderId: { in: purchaseOrderIds } },
+                  { projectId: projectId as string },
+                ],
               },
             },
           },
@@ -287,9 +295,10 @@ export const getAllVendorAccounts = catchAsync(
             },
             transactions: {
               where: {
-                purchaseOrderId: {
-                  in: purchaseOrderIds,
-                },
+                OR: [
+                  { purchaseOrderId: { in: purchaseOrderIds } },
+                  { projectId: projectId as string },
+                ],
               },
               orderBy: { createdAt: "desc" },
             },
@@ -356,9 +365,10 @@ export const getAllVendorAccounts = catchAsync(
           ...where,
           transactions: {
             some: {
-              purchaseOrderId: {
-                in: purchaseOrderIds,
-              },
+              OR: [
+                { purchaseOrderId: { in: purchaseOrderIds } },
+                { projectId: projectId as string },
+              ],
             },
           },
         },
