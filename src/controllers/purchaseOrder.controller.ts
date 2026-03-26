@@ -234,8 +234,22 @@ export const getPurchaseOrders = catchAsync(
     }
 
     // Role-based filtering for POs
-    if (user.role === "ADMIN" || (user.role === "ACCOUNTANT" && user.isHead)) {
+    if (user.role === "ADMIN") {
       // No filter, see all
+    } else if (user.role === "ACCOUNTANT") {
+      // Both Head Accountant and Regular Accountant filter by assigned projects
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { projectId: true },
+      });
+      
+      if (assignments.length > 0) {
+        const projectIds = [...new Set(assignments.map((a) => a.projectId))];
+        where.projectId = { in: projectIds };
+      } else {
+        // If no assignments, they shouldn't see any POs
+        where.projectId = { in: [] };
+      }
     } else if (user.role === "SITE_INCHARGE") {
       const assignments = await prisma.siteInchargeAssignment.findMany({
         where: { userId: user.id, isActive: true },
@@ -267,15 +281,6 @@ export const getPurchaseOrders = catchAsync(
         select: { store: { select: { sectionId: true } } },
       });
       const sectionIds = assignments.map((a) => a.store.sectionId);
-      where.sectionId = { in: sectionIds };
-    } else if (user.role === "ACCOUNTANT") {
-      // If user is head accountant, they can see all POs (handled above)
-      // Regular accountant - only assigned sections
-      const assignments = await prisma.accountantAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: { sectionId: true },
-      });
-      const sectionIds = assignments.map((a) => a.sectionId);
       where.sectionId = { in: sectionIds };
     }
 
@@ -584,6 +589,7 @@ export const deletePurchaseOrder = catchAsync(
 export const getPurchaseOrdersByVendor = catchAsync(
   async (req: Request, res: Response) => {
     const { vendorId, projectId, sectionId } = req.query;
+    const user = req.user;
 
     const where: any = {
       isDeleted: false,
@@ -591,6 +597,62 @@ export const getPurchaseOrdersByVendor = catchAsync(
       ...(projectId && { projectId: projectId as string }),
       ...(sectionId && { sectionId: sectionId as string }),
     };
+
+    // Apply role-based filtering
+    if (user.role === "ADMIN") {
+      // No additional filter
+    } else if (user.role === "ACCOUNTANT") {
+      // Filter by assigned projects
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { projectId: true },
+      });
+      
+      if (assignments.length > 0) {
+        const projectIds = [...new Set(assignments.map((a) => a.projectId))];
+        where.projectId = where.projectId 
+          ? { equals: where.projectId, in: projectIds } 
+          : { in: projectIds };
+      } else {
+        where.projectId = { in: [] }; // No assignments = no access
+      }
+    } else if (user.role === "SITE_INCHARGE") {
+      const assignments = await prisma.siteInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      const sectionIds = assignments.map((a) => a.sectionId);
+      where.sectionId = where.sectionId
+        ? { equals: where.sectionId, in: sectionIds }
+        : { in: sectionIds };
+    } else if (user.role === "PROJECT_MANAGER") {
+      const assignments = await prisma.projectManagerAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      const sectionIds = assignments.map((a) => a.sectionId);
+      where.sectionId = where.sectionId
+        ? { equals: where.sectionId, in: sectionIds }
+        : { in: sectionIds };
+    } else if (user.role === "CONSTRUCTION_MANAGER") {
+      const assignments = await prisma.constructionManagerAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      const sectionIds = assignments.map((a) => a.sectionId);
+      where.sectionId = where.sectionId
+        ? { equals: where.sectionId, in: sectionIds }
+        : { in: sectionIds };
+    } else if (user.role === "STORE_INCHARGE") {
+      const assignments = await prisma.storeInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { store: { select: { sectionId: true } } },
+      });
+      const sectionIds = assignments.map((a) => a.store.sectionId);
+      where.sectionId = where.sectionId
+        ? { equals: where.sectionId, in: sectionIds }
+        : { in: sectionIds };
+    }
 
     const purchaseOrders = await prisma.purchaseOrder.findMany({
       where,
@@ -622,6 +684,7 @@ export const getPurchaseOrdersByVendor = catchAsync(
 export const getPurchaseOrderSummary = catchAsync(
   async (req: Request, res: Response) => {
     const { projectId, sectionId } = req.query;
+    const user = req.user;
 
     const where: any = {
       isDeleted: false,
@@ -629,6 +692,70 @@ export const getPurchaseOrderSummary = catchAsync(
 
     if (projectId) where.projectId = projectId as string;
     if (sectionId) where.sectionId = sectionId as string;
+
+    // Apply role-based filtering
+    if (user.role === "ADMIN") {
+      // No additional filter
+    } else if (user.role === "ACCOUNTANT") {
+      // Filter by assigned projects
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { projectId: true },
+      });
+      
+      if (assignments.length > 0) {
+        const projectIds = [...new Set(assignments.map((a) => a.projectId))];
+        where.projectId = where.projectId 
+          ? (projectIds.includes(where.projectId) ? where.projectId : { in: [] })
+          : { in: projectIds };
+      } else {
+        where.projectId = { in: [] }; // No assignments = no access
+      }
+    } else if (user.role === "SITE_INCHARGE") {
+      const assignments = await prisma.siteInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      const sectionIds = assignments.map((a) => a.sectionId);
+      if (!where.sectionId) {
+        where.sectionId = { in: sectionIds };
+      } else if (!sectionIds.includes(where.sectionId as string)) {
+        where.sectionId = { in: [] }; // Requested section not in assignments
+      }
+    } else if (user.role === "PROJECT_MANAGER") {
+      const assignments = await prisma.projectManagerAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      const sectionIds = assignments.map((a) => a.sectionId);
+      if (!where.sectionId) {
+        where.sectionId = { in: sectionIds };
+      } else if (!sectionIds.includes(where.sectionId as string)) {
+        where.sectionId = { in: [] };
+      }
+    } else if (user.role === "CONSTRUCTION_MANAGER") {
+      const assignments = await prisma.constructionManagerAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      const sectionIds = assignments.map((a) => a.sectionId);
+      if (!where.sectionId) {
+        where.sectionId = { in: sectionIds };
+      } else if (!sectionIds.includes(where.sectionId as string)) {
+        where.sectionId = { in: [] };
+      }
+    } else if (user.role === "STORE_INCHARGE") {
+      const assignments = await prisma.storeInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { store: { select: { sectionId: true } } },
+      });
+      const sectionIds = assignments.map((a) => a.store.sectionId);
+      if (!where.sectionId) {
+        where.sectionId = { in: sectionIds };
+      } else if (!sectionIds.includes(where.sectionId as string)) {
+        where.sectionId = { in: [] };
+      }
+    }
 
     const summary = await prisma.purchaseOrder.groupBy({
       by: ["status"],

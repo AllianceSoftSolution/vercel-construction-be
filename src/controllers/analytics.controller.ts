@@ -69,21 +69,18 @@ const getUserAccessibleSections = async (userId: string, userRole: string) => {
       break;
 
     case "ACCOUNTANT":
-      // If user is head accountant, they can see all sections
-      if (user?.isHead) {
-        const allSections = await prisma.section.findMany({
-          where: { isDeleted: false },
-          select: { id: true },
+      // Both Head Accountant and Regular Accountant filter by assigned projects/sections
+      const accountantAssignments =
+        await prisma.accountantAssignment.findMany({
+          where: { userId, isActive: true },
+          select: { sectionId: true, projectId: true },
         });
-        sectionIds = allSections.map((s) => s.id);
-      } else {
-        // Regular accountant - only assigned sections
-        const accountantAssignments =
-          await prisma.accountantAssignment.findMany({
-            where: { userId, isActive: true },
-            select: { sectionId: true },
-          });
+      
+      if (accountantAssignments.length > 0) {
         sectionIds = accountantAssignments.map((a) => a.sectionId);
+      } else {
+        // If no assignments, they can't see any sections
+        sectionIds = [];
       }
       break;
   }
@@ -164,21 +161,21 @@ const getUserAccessibleProjects = async (userId: string, userRole: string) => {
       break;
 
     case "ACCOUNTANT":
-      // If user is head accountant, they can see all projects
-      if (user?.isHead) {
-        const allProjects = await prisma.project.findMany({
-          where: { isDeleted: false },
-          select: { id: true },
+      // Both Head Accountant and Regular Accountant filter by assigned projects
+      const accountantProjectAssignments =
+        await prisma.accountantAssignment.findMany({
+          where: { userId, isActive: true },
+          select: { projectId: true },
         });
-        projectIds = allProjects.map((p) => p.id);
+      
+      if (accountantProjectAssignments.length > 0) {
+        const uniqueProjectIds = new Set(
+          accountantProjectAssignments.map((a) => a.projectId)
+        );
+        projectIds = Array.from(uniqueProjectIds) as string[];
       } else {
-        // Regular accountant - only assigned projects
-        const accountantAssignments =
-          await prisma.accountantAssignment.findMany({
-            where: { userId, isActive: true },
-            select: { projectId: true },
-          });
-        projectIds = accountantAssignments.map((a) => a.projectId);
+        // If no assignments, they can't see any projects
+        projectIds = [];
       }
       break;
   }

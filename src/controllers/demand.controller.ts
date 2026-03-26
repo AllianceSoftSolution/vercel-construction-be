@@ -128,6 +128,26 @@ const getDemands = catchAsync(async (req, res) => {
   // Role-based filtering for demands
   if (user.role === "ADMIN") {
     // No filter, see all
+  } else if (user.role === "ACCOUNTANT") {
+    // Both Head Accountant and Regular Accountant filter by assigned projects
+    const assignments = await prisma.accountantAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { projectId: true, sectionId: true },
+    });
+    
+    if (assignments.length > 0) {
+      const projectIds = [...new Set(assignments.map((a) => a.projectId))];
+      // Filter demands by sections that belong to assigned projects
+      const sections = await prisma.section.findMany({
+        where: { projectId: { in: projectIds } },
+        select: { id: true },
+      });
+      const sectionIds = sections.map((s) => s.id);
+      defaultFilters.sectionId = { in: sectionIds };
+    } else {
+      // If no assignments, they shouldn't see any demands
+      defaultFilters.sectionId = { in: [] };
+    }
   } else if (user.role === "SITE_INCHARGE") {
     const assignments = await prisma.siteInchargeAssignment.findMany({
       where: { userId: user.id, isActive: true },
@@ -158,19 +178,6 @@ const getDemands = catchAsync(async (req, res) => {
     });
     const sectionIds = assignments.map((a) => a.store.sectionId);
     defaultFilters.sectionId = { in: sectionIds };
-  } else if (user.role === "ACCOUNTANT") {
-    // If user is head accountant, they can see all demands
-    if (user.isHead) {
-      // No filter, see all demands
-    } else {
-      // Regular accountant - only assigned sections
-      const assignments = await prisma.accountantAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: { sectionId: true },
-      });
-      const sectionIds = assignments.map((a) => a.sectionId);
-      defaultFilters.sectionId = { in: sectionIds };
-    }
   }
 
   // Build query options
