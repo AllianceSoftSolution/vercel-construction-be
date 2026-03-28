@@ -8,12 +8,33 @@ import prisma from "../utils/prisma";
 export const getVendorAccountStatement = catchAsync(
   async (req: Request, res: Response, next) => {
     const { vendorId } = req.params;
+    const { projectId } = req.query;
+
+    // Build a project-scoped transaction filter when projectId is provided
+    let transactionWhere: any = {};
+    if (projectId) {
+      const projectPOs = await prisma.purchaseOrder.findMany({
+        where: { projectId: projectId as string, isDeleted: false },
+        select: { id: true },
+      });
+      const projectPOIds = projectPOs.map((po) => po.id);
+
+      transactionWhere = {
+        OR: [
+          // DEBIT payment transactions explicitly attributed to this project
+          { projectId: projectId as string },
+          // CREDIT transactions linked to a PO that belongs to this project
+          { purchaseOrderId: { in: projectPOIds } },
+        ],
+      };
+    }
 
     const vendorAccount = await prisma.vendorAccount.findUnique({
       where: { vendorId },
       include: {
         vendor: true,
         transactions: {
+          where: transactionWhere,
           orderBy: { createdAt: "desc" },
         },
       },
