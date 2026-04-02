@@ -110,13 +110,17 @@ const getProjects = (0, catchAsync_1.default)(async (req, res) => {
         defaultFilters.id = { in: projectIds };
     }
     else if (user.role === "ACCOUNTANT") {
-        const assignments = await prisma_1.default.accountantAssignment.findMany({
-            where: { userId: user.id, isActive: true },
-            select: { projectId: true, sectionId: true },
-        });
-        const projectIds = [...new Set(assignments.map((a) => a.projectId))];
-        assignedSectionIds = assignments.map((a) => a.sectionId);
-        defaultFilters.id = { in: projectIds };
+        if (user.isHead) {
+        }
+        else {
+            const assignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId: user.id, isActive: true },
+                select: { projectId: true, sectionId: true },
+            });
+            const projectIds = [...new Set(assignments.map((a) => a.projectId))];
+            assignedSectionIds = assignments.map((a) => a.sectionId);
+            defaultFilters.id = { in: projectIds };
+        }
     }
     const queryOptions = (0, buildQueryOptions_1.buildQueryOptions)(filterOptions, defaultFilters, searchableFields);
     const total = await prisma_1.default.project.count({
