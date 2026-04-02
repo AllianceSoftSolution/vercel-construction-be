@@ -47,5 +47,7 @@ router.post("/vendors/:vendorId/payments", auth_middleware_1.default, (0, s3Uplo
 router.get("/vendors/payments", auth_middleware_1.default, vendorAccountController.getVendorPayments);
 router.get("/transactions", auth_middleware_1.default, vendorAccountController.getVendorAccountTransactions);
 router.get("/vendors/:vendorId/summary", auth_middleware_1.default, vendorAccountController.getVendorAccountSummary);
+router.get("/payables-summary", auth_middleware_1.default, vendorAccountController.getPayablesSummary);
+router.get("/payables-summary/by-project", auth_middleware_1.default, vendorAccountController.getPayablesSummaryByProject);
 exports.default = router;
 //# sourceMappingURL=vendorAccount.js.map

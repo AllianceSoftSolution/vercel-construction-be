@@ -571,3 +571,122 @@ export const getAllVendorAccounts = catchAsync(
     });
   }
 );
+
+// ─── Payables Summary (top-level cards: Total Payables / Total Paid / Balance) ─────────
+// Sums directly from purchase_orders.totalAmount and vendor_payments.amount so that the
+// summary is accurate even when VendorAccount transaction records are incomplete.
+export const getPayablesSummary = catchAsync(
+  async (req: Request, res: Response) => {
+    const user = req.user;
+
+    let poWhere: any = { isDeleted: false, totalAmount: { not: null } };
+    let paymentWhere: any = {};
+
+    // Section accountant: scope to their assigned sections only
+    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      const sectionIds = assignments.map((a) => a.sectionId);
+      poWhere.sectionId = { in: sectionIds };
+      paymentWhere.sectionId = { in: sectionIds };
+    }
+    // Admin and Head Accountant: no filter — see everything
+
+    const [poResult, paymentResult] = await Promise.all([
+      prisma.purchaseOrder.aggregate({
+        where: poWhere,
+        _sum: { totalAmount: true },
+      }),
+      prisma.vendorPayment.aggregate({
+        where: paymentWhere,
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const totalPayables = Number(poResult._sum.totalAmount || 0);
+    const totalPaid = Number(paymentResult._sum.amount || 0);
+    const balance = totalPayables - totalPaid;
+
+    res.status(200).json({
+      status: "success",
+      data: { totalPayables, totalPaid, balance },
+    });
+  }
+);
+
+// ─── Payables Summary by Project ────────────────────────────────────────────────────────
+// Groups purchase order totals and payments by project.  Used for the Projects drill-down
+// section on the Payables page for Admin and Head Accountant.
+export const getPayablesSummaryByProject = catchAsync(
+  async (req: Request, res: Response) => {
+    const user = req.user;
+
+    let poGroupWhere: any = { isDeleted: false, totalAmount: { not: null } };
+    let paymentGroupWhere: any = { projectId: { not: null } };
+    let projectIds: string[] | null = null;
+
+    // Section accountant: scope to sections they are assigned to
+    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      const sectionIds = assignments.map((a) => a.sectionId);
+      poGroupWhere.sectionId = { in: sectionIds };
+      paymentGroupWhere.sectionId = { in: sectionIds };
+
+      const sections = await prisma.section.findMany({
+        where: { id: { in: sectionIds } },
+        select: { projectId: true },
+      });
+      projectIds = [...new Set(sections.map((s) => s.projectId))];
+    }
+    // Admin and Head Accountant: no filter — see all projects
+
+    const [poTotals, paymentTotals, projects] = await Promise.all([
+      prisma.purchaseOrder.groupBy({
+        by: ["projectId"],
+        where: poGroupWhere,
+        _sum: { totalAmount: true },
+      }),
+      prisma.vendorPayment.groupBy({
+        by: ["projectId"],
+        where: paymentGroupWhere,
+        _sum: { amount: true },
+      }),
+      prisma.project.findMany({
+        where: projectIds ? { id: { in: projectIds } } : {},
+        select: { id: true, name: true },
+        orderBy: { name: "asc" },
+      }),
+    ]);
+
+    const poMap = new Map(
+      poTotals.map((p) => [p.projectId, Number(p._sum.totalAmount || 0)])
+    );
+    const payMap = new Map(
+      paymentTotals.map((p) => [p.projectId, Number(p._sum.amount || 0)])
+    );
+
+    const result = projects
+      .map((proj) => {
+        const totalPayable = poMap.get(proj.id) || 0;
+        const totalPaid = payMap.get(proj.id) || 0;
+        return {
+          projectId: proj.id,
+          projectName: proj.name,
+          totalPayable,
+          totalPaid,
+          balance: totalPayable - totalPaid,
+        };
+      })
+      .filter((p) => p.totalPayable > 0 || p.totalPaid > 0);
+
+    res.status(200).json({
+      status: "success",
+      data: result,
+    });
+  }
+);

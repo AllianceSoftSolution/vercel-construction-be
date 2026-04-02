@@ -44,4 +44,18 @@ router.get(
   vendorAccountController.getVendorAccountSummary
 );
 
+// Payables summary cards (Total Payables / Total Paid / Balance) — role-aware
+router.get(
+  "/payables-summary",
+  protect,
+  vendorAccountController.getPayablesSummary
+);
+
+// Per-project payables breakdown for Admin / Head Accountant Payables page
+router.get(
+  "/payables-summary/by-project",
+  protect,
+  vendorAccountController.getPayablesSummaryByProject
+);
+
 export default router;

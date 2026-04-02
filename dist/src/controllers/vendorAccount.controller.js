@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getAllVendorAccounts = exports.getVendorAccountSummary = exports.getVendorAccountTransactions = exports.getVendorPayments = exports.addVendorPayment = exports.getVendorAccountStatement = void 0;
+exports.getPayablesSummaryByProject = exports.getPayablesSummary = exports.getAllVendorAccounts = exports.getVendorAccountSummary = exports.getVendorAccountTransactions = exports.getVendorPayments = exports.addVendorPayment = exports.getVendorAccountStatement = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const notificationService_1 = require("../utils/notificationService");
@@ -416,6 +416,93 @@ exports.getAllVendorAccounts = (0, catchAsync_1.default)(async (req, res) => {
             vendorsWithOverdue: vendorAccountsWithMetrics.filter((acc) => acc.hasOverdueAmount).length,
             vendorsWithAdvance: vendorAccountsWithMetrics.filter((acc) => acc.hasAdvanceAmount).length,
         },
+    });
+});
+exports.getPayablesSummary = (0, catchAsync_1.default)(async (req, res) => {
+    const user = req.user;
+    let poWhere = { isDeleted: false, totalAmount: { not: null } };
+    let paymentWhere = {};
+    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
+        const assignments = await prisma_1.default.accountantAssignment.findMany({
+            where: { userId: user.id, isActive: true },
+            select: { sectionId: true },
+        });
+        const sectionIds = assignments.map((a) => a.sectionId);
+        poWhere.sectionId = { in: sectionIds };
+        paymentWhere.sectionId = { in: sectionIds };
+    }
+    const [poResult, paymentResult] = await Promise.all([
+        prisma_1.default.purchaseOrder.aggregate({
+            where: poWhere,
+            _sum: { totalAmount: true },
+        }),
+        prisma_1.default.vendorPayment.aggregate({
+            where: paymentWhere,
+            _sum: { amount: true },
+        }),
+    ]);
+    const totalPayables = Number(poResult._sum.totalAmount || 0);
+    const totalPaid = Number(paymentResult._sum.amount || 0);
+    const balance = totalPayables - totalPaid;
+    res.status(200).json({
+        status: "success",
+        data: { totalPayables, totalPaid, balance },
+    });
+});
+exports.getPayablesSummaryByProject = (0, catchAsync_1.default)(async (req, res) => {
+    const user = req.user;
+    let poGroupWhere = { isDeleted: false, totalAmount: { not: null } };
+    let paymentGroupWhere = { projectId: { not: null } };
+    let projectIds = null;
+    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
+        const assignments = await prisma_1.default.accountantAssignment.findMany({
+            where: { userId: user.id, isActive: true },
+            select: { sectionId: true },
+        });
+        const sectionIds = assignments.map((a) => a.sectionId);
+        poGroupWhere.sectionId = { in: sectionIds };
+        paymentGroupWhere.sectionId = { in: sectionIds };
+        const sections = await prisma_1.default.section.findMany({
+            where: { id: { in: sectionIds } },
+            select: { projectId: true },
+        });
+        projectIds = [...new Set(sections.map((s) => s.projectId))];
+    }
+    const [poTotals, paymentTotals, projects] = await Promise.all([
+        prisma_1.default.purchaseOrder.groupBy({
+            by: ["projectId"],
+            where: poGroupWhere,
+            _sum: { totalAmount: true },
+        }),
+        prisma_1.default.vendorPayment.groupBy({
+            by: ["projectId"],
+            where: paymentGroupWhere,
+            _sum: { amount: true },
+        }),
+        prisma_1.default.project.findMany({
+            where: projectIds ? { id: { in: projectIds } } : {},
+            select: { id: true, name: true },
+            orderBy: { name: "asc" },
+        }),
+    ]);
+    const poMap = new Map(poTotals.map((p) => [p.projectId, Number(p._sum.totalAmount || 0)]));
+    const payMap = new Map(paymentTotals.map((p) => [p.projectId, Number(p._sum.amount || 0)]));
+    const result = projects
+        .map((proj) => {
+        const totalPayable = poMap.get(proj.id) || 0;
+        const totalPaid = payMap.get(proj.id) || 0;
+        return {
+            projectId: proj.id,
+            projectName: proj.name,
+            totalPayable,
+            totalPaid,
+            balance: totalPayable - totalPaid,
+        };
+    })
+        .filter((p) => p.totalPayable > 0 || p.totalPaid > 0);
+    res.status(200).json({
+        status: "success",
+        data: result,
     });
 });
 //# sourceMappingURL=vendorAccount.controller.js.map

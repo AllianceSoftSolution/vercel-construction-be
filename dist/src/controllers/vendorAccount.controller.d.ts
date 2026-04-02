@@ -5,3 +5,5 @@ export declare const getVendorPayments: (req: Request, res: Response, next: impo
 export declare const getVendorAccountTransactions: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getVendorAccountSummary: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getAllVendorAccounts: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getPayablesSummary: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getPayablesSummaryByProject: (req: Request, res: Response, next: import("express").NextFunction) => void;
