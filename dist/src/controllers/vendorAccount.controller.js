@@ -10,11 +10,27 @@ const notificationService_1 = require("../utils/notificationService");
 const prisma_1 = __importDefault(require("../utils/prisma"));
 exports.getVendorAccountStatement = (0, catchAsync_1.default)(async (req, res, next) => {
     const { vendorId } = req.params;
+    const { projectId } = req.query;
+    let transactionWhere = {};
+    if (projectId) {
+        const projectPOs = await prisma_1.default.purchaseOrder.findMany({
+            where: { projectId: projectId, isDeleted: false },
+            select: { id: true },
+        });
+        const projectPOIds = projectPOs.map((po) => po.id);
+        transactionWhere = {
+            OR: [
+                { projectId: projectId },
+                { purchaseOrderId: { in: projectPOIds } },
+            ],
+        };
+    }
     const vendorAccount = await prisma_1.default.vendorAccount.findUnique({
         where: { vendorId },
         include: {
             vendor: true,
             transactions: {
+                where: transactionWhere,
                 orderBy: { createdAt: "desc" },
             },
         },
@@ -64,7 +80,7 @@ exports.getVendorAccountStatement = (0, catchAsync_1.default)(async (req, res, n
 });
 exports.addVendorPayment = (0, catchAsync_1.default)(async (req, res, next) => {
     const { vendorId } = req.params;
-    const { amount, note } = req.body;
+    const { amount, note, projectId, sectionId } = req.body;
     const userId = req.user.id;
     const filesFromS3 = req.filesFromS3;
     const proofOfPayment = filesFromS3?.proofOfPayment;
@@ -72,8 +88,11 @@ exports.addVendorPayment = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!vendor) {
         return next(new appError_1.default("Vendor not found", 404));
     }
-    if (!proofOfPayment) {
-        return next(new appError_1.default("Proof of payment file is required", 400));
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        return next(new appError_1.default("A valid payment amount is required", 400));
+    }
+    if (!note || !note.trim()) {
+        return next(new appError_1.default("Payment note is required", 400));
     }
     let vendorAccount = await prisma_1.default.vendorAccount.findUnique({
         where: { vendorId },
@@ -86,9 +105,11 @@ exports.addVendorPayment = (0, catchAsync_1.default)(async (req, res, next) => {
     const payment = await prisma_1.default.vendorPayment.create({
         data: {
             vendorId,
+            projectId: projectId || null,
+            sectionId: sectionId || null,
             amount,
             addedBy: userId,
-            proofOfPayment,
+            proofOfPayment: proofOfPayment || null,
             note,
         },
     });
@@ -98,8 +119,10 @@ exports.addVendorPayment = (0, catchAsync_1.default)(async (req, res, next) => {
             type: "DEBIT",
             amount,
             vendorPaymentId: payment.id,
+            projectId: projectId || null,
+            sectionId: sectionId || null,
             addedBy: userId,
-            proofOfPayment,
+            proofOfPayment: proofOfPayment || null,
             note,
         },
     });
@@ -173,6 +196,15 @@ exports.getVendorAccountSummary = (0, catchAsync_1.default)(async (req, res) => 
 exports.getAllVendorAccounts = (0, catchAsync_1.default)(async (req, res) => {
     const { page = 1, limit = 10, search, projectId } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
+    const user = req.user;
+    let userSectionIds = null;
+    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
+        const assignments = await prisma_1.default.accountantAssignment.findMany({
+            where: { userId: user.id, isActive: true },
+            select: { sectionId: true },
+        });
+        userSectionIds = assignments.map((a) => a.sectionId);
+    }
     let where = {};
     if (search) {
         where.vendor = {
@@ -185,27 +217,59 @@ exports.getAllVendorAccounts = (0, catchAsync_1.default)(async (req, res) => {
             ],
         };
     }
-    if (projectId) {
-        const projectPurchaseOrderIds = await prisma_1.default.purchaseOrder.findMany({
-            where: {
-                projectId: projectId,
-                isDeleted: false,
-            },
-            select: {
-                id: true,
-            },
+    const buildScopedTransactionFilter = async (pId, sectionIds) => {
+        const poWhere = { isDeleted: false };
+        if (pId)
+            poWhere.projectId = pId;
+        if (sectionIds)
+            poWhere.sectionId = { in: sectionIds };
+        const scopedPOs = await prisma_1.default.purchaseOrder.findMany({
+            where: poWhere,
+            select: { id: true },
         });
-        const purchaseOrderIds = projectPurchaseOrderIds.map((po) => po.id);
+        const scopedPOIds = scopedPOs.map((po) => po.id);
+        const filter = {
+            OR: [
+                { purchaseOrderId: { in: scopedPOIds } },
+            ],
+        };
+        if (sectionIds) {
+            filter.OR.push({ sectionId: { in: sectionIds } });
+        }
+        else if (pId) {
+            filter.OR.push({ projectId: pId });
+        }
+        return filter;
+    };
+    const isSectionScoped = userSectionIds !== null;
+    const hasProjectFilter = Boolean(projectId);
+    if (hasProjectFilter || isSectionScoped) {
+        const transactionFilter = await buildScopedTransactionFilter(hasProjectFilter ? projectId : null, userSectionIds);
+        const poWhere = { isDeleted: false };
+        if (hasProjectFilter)
+            poWhere.projectId = projectId;
+        if (isSectionScoped)
+            poWhere.sectionId = { in: userSectionIds };
+        const scopedPOs = await prisma_1.default.purchaseOrder.findMany({
+            where: poWhere,
+            select: { id: true },
+        });
+        const scopedPOIds = scopedPOs.map((po) => po.id);
+        const vendorTransactionSome = {
+            OR: [
+                { purchaseOrderId: { in: scopedPOIds } },
+            ],
+        };
+        if (isSectionScoped) {
+            vendorTransactionSome.OR.push({ sectionId: { in: userSectionIds } });
+        }
+        else if (hasProjectFilter) {
+            vendorTransactionSome.OR.push({ projectId: projectId });
+        }
         const vendorAccountsWithProjectTransactions = await prisma_1.default.vendorAccount.findMany({
             where: {
                 ...where,
-                transactions: {
-                    some: {
-                        purchaseOrderId: {
-                            in: purchaseOrderIds,
-                        },
-                    },
-                },
+                transactions: { some: vendorTransactionSome },
             },
             include: {
                 vendor: {
@@ -220,11 +284,7 @@ exports.getAllVendorAccounts = (0, catchAsync_1.default)(async (req, res) => {
                     },
                 },
                 transactions: {
-                    where: {
-                        purchaseOrderId: {
-                            in: purchaseOrderIds,
-                        },
-                    },
+                    where: transactionFilter,
                     orderBy: { createdAt: "desc" },
                 },
             },
@@ -266,13 +326,7 @@ exports.getAllVendorAccounts = (0, catchAsync_1.default)(async (req, res) => {
         const total = await prisma_1.default.vendorAccount.count({
             where: {
                 ...where,
-                transactions: {
-                    some: {
-                        purchaseOrderId: {
-                            in: purchaseOrderIds,
-                        },
-                    },
-                },
+                transactions: { some: vendorTransactionSome },
             },
         });
         res.status(200).json({

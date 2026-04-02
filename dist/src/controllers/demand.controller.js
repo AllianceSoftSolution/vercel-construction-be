@@ -97,6 +97,18 @@ const getDemands = (0, catchAsync_1.default)(async (req, res) => {
     let defaultFilters = { isDeleted: false };
     if (user.role === "ADMIN") {
     }
+    else if (user.role === "ACCOUNTANT") {
+        if (user.isHead) {
+        }
+        else {
+            const assignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId: user.id, isActive: true },
+                select: { sectionId: true },
+            });
+            const sectionIds = assignments.map((a) => a.sectionId);
+            defaultFilters.sectionId = { in: sectionIds };
+        }
+    }
     else if (user.role === "SITE_INCHARGE") {
         const assignments = await prisma_1.default.siteInchargeAssignment.findMany({
             where: { userId: user.id, isActive: true },
@@ -129,18 +141,6 @@ const getDemands = (0, catchAsync_1.default)(async (req, res) => {
         });
         const sectionIds = assignments.map((a) => a.store.sectionId);
         defaultFilters.sectionId = { in: sectionIds };
-    }
-    else if (user.role === "ACCOUNTANT") {
-        if (user.isHead) {
-        }
-        else {
-            const assignments = await prisma_1.default.accountantAssignment.findMany({
-                where: { userId: user.id, isActive: true },
-                select: { sectionId: true },
-            });
-            const sectionIds = assignments.map((a) => a.sectionId);
-            defaultFilters.sectionId = { in: sectionIds };
-        }
     }
     const queryOptions = (0, buildQueryOptions_1.buildQueryOptions)(filterOptions, defaultFilters, searchableFields);
     const total = await prisma_1.default.demand.count({

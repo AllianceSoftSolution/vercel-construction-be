@@ -98,7 +98,7 @@ export const getVendorAccountStatement = catchAsync(
 export const addVendorPayment = catchAsync(
   async (req: Request, res: Response, next) => {
     const { vendorId } = req.params;
-    const { amount, note, projectId } = req.body;
+    const { amount, note, projectId, sectionId } = req.body;
     const userId = req.user.id;
 
     // Get uploaded file from middleware
@@ -134,6 +134,7 @@ export const addVendorPayment = catchAsync(
       data: {
         vendorId,
         projectId: projectId || null,
+        sectionId: sectionId || null,
         amount,
         addedBy: userId,
         proofOfPayment: proofOfPayment || null,
@@ -149,6 +150,7 @@ export const addVendorPayment = catchAsync(
         amount,
         vendorPaymentId: payment.id,
         projectId: projectId || null,
+        sectionId: sectionId || null,
         addedBy: userId,
         proofOfPayment: proofOfPayment || null,
         note,
@@ -256,6 +258,17 @@ export const getAllVendorAccounts = catchAsync(
   async (req: Request, res: Response) => {
     const { page = 1, limit = 10, search, projectId } = req.query;
     const skip = (Number(page) - 1) * Number(limit);
+    const user = req.user;
+
+    // Detect section accountant and pre-load their assigned sections
+    let userSectionIds: string[] | null = null;
+    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      userSectionIds = assignments.map((a) => a.sectionId);
+    }
 
     let where: any = {};
 
@@ -272,35 +285,77 @@ export const getAllVendorAccounts = catchAsync(
       };
     }
 
-    // If projectId is provided, we need to filter by project-specific transactions
-    if (projectId) {
-      // First, get all purchase order IDs for the specified project
-      const projectPurchaseOrderIds = await prisma.purchaseOrder.findMany({
-        where: {
-          projectId: projectId as string,
-          isDeleted: false,
-        },
-        select: {
-          id: true,
-        },
+    // Build scoped transaction filter helper
+    const buildScopedTransactionFilter = async (
+      pId: string | null,
+      sectionIds: string[] | null
+    ) => {
+      // Get PO IDs scoped to project and/or sections
+      const poWhere: any = { isDeleted: false };
+      if (pId) poWhere.projectId = pId;
+      if (sectionIds) poWhere.sectionId = { in: sectionIds };
+
+      const scopedPOs = await prisma.purchaseOrder.findMany({
+        where: poWhere,
+        select: { id: true },
       });
+      const scopedPOIds = scopedPOs.map((po) => po.id);
 
-      const purchaseOrderIds = projectPurchaseOrderIds.map((po) => po.id);
+      const filter: any = {
+        OR: [
+          { purchaseOrderId: { in: scopedPOIds } }, // CREDIT: PO-linked
+        ],
+      };
 
-      // Get all vendor accounts that have transactions related to the specified project
-      // This includes: CREDIT transactions linked to project POs, AND DEBIT payment transactions for this project
+      // DEBIT: payment transactions — filter by sectionId if available, else by projectId
+      if (sectionIds) {
+        filter.OR.push({ sectionId: { in: sectionIds } });
+      } else if (pId) {
+        filter.OR.push({ projectId: pId as string });
+      }
+
+      return filter;
+    };
+
+    // Resolve the transaction filter based on role + query params
+    const isSectionScoped = userSectionIds !== null;
+    const hasProjectFilter = Boolean(projectId);
+
+    if (hasProjectFilter || isSectionScoped) {
+      // Build section/project scoped transaction filter
+      const transactionFilter = await buildScopedTransactionFilter(
+        hasProjectFilter ? (projectId as string) : null,
+        userSectionIds
+      );
+
+      // Get PO IDs again for vendor filtering (same logic, reuse filter)
+      const poWhere: any = { isDeleted: false };
+      if (hasProjectFilter) poWhere.projectId = projectId as string;
+      if (isSectionScoped) poWhere.sectionId = { in: userSectionIds };
+      const scopedPOs = await prisma.purchaseOrder.findMany({
+        where: poWhere,
+        select: { id: true },
+      });
+      const scopedPOIds = scopedPOs.map((po) => po.id);
+
+      // Build the vendor-level filter matching the transaction filter
+      const vendorTransactionSome: any = {
+        OR: [
+          { purchaseOrderId: { in: scopedPOIds } },
+        ],
+      };
+      if (isSectionScoped) {
+        vendorTransactionSome.OR.push({ sectionId: { in: userSectionIds! } });
+      } else if (hasProjectFilter) {
+        vendorTransactionSome.OR.push({ projectId: projectId as string });
+      }
+
+      // Get all vendor accounts that have scoped transactions
       const vendorAccountsWithProjectTransactions =
         await prisma.vendorAccount.findMany({
           where: {
             ...where,
-            transactions: {
-              some: {
-                OR: [
-                  { purchaseOrderId: { in: purchaseOrderIds } },
-                  { projectId: projectId as string },
-                ],
-              },
-            },
+            transactions: { some: vendorTransactionSome },
           },
           include: {
             vendor: {
@@ -315,12 +370,7 @@ export const getAllVendorAccounts = catchAsync(
               },
             },
             transactions: {
-              where: {
-                OR: [
-                  { purchaseOrderId: { in: purchaseOrderIds } },
-                  { projectId: projectId as string },
-                ],
-              },
+              where: transactionFilter,
               orderBy: { createdAt: "desc" },
             },
           },
@@ -384,14 +434,7 @@ export const getAllVendorAccounts = catchAsync(
       const total = await prisma.vendorAccount.count({
         where: {
           ...where,
-          transactions: {
-            some: {
-              OR: [
-                { purchaseOrderId: { in: purchaseOrderIds } },
-                { projectId: projectId as string },
-              ],
-            },
-          },
+          transactions: { some: vendorTransactionSome },
         },
       });
 

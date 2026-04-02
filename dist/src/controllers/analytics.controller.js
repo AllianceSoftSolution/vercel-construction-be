@@ -59,11 +59,11 @@ const getUserAccessibleSections = async (userId, userRole) => {
             break;
         case "ACCOUNTANT":
             if (user?.isHead) {
-                const allSections = await prisma_1.default.section.findMany({
+                const allAccountantSections = await prisma_1.default.section.findMany({
                     where: { isDeleted: false },
                     select: { id: true },
                 });
-                sectionIds = allSections.map((s) => s.id);
+                sectionIds = allAccountantSections.map((s) => s.id);
             }
             else {
                 const accountantAssignments = await prisma_1.default.accountantAssignment.findMany({
@@ -131,18 +131,19 @@ const getUserAccessibleProjects = async (userId, userRole) => {
             break;
         case "ACCOUNTANT":
             if (user?.isHead) {
-                const allProjects = await prisma_1.default.project.findMany({
+                const allAccountantProjects = await prisma_1.default.project.findMany({
                     where: { isDeleted: false },
                     select: { id: true },
                 });
-                projectIds = allProjects.map((p) => p.id);
+                projectIds = allAccountantProjects.map((p) => p.id);
             }
             else {
-                const accountantAssignments = await prisma_1.default.accountantAssignment.findMany({
+                const accountantProjectAssignments = await prisma_1.default.accountantAssignment.findMany({
                     where: { userId, isActive: true },
                     select: { projectId: true },
                 });
-                projectIds = accountantAssignments.map((a) => a.projectId);
+                const uniqueProjectIds = new Set(accountantProjectAssignments.map((a) => a.projectId));
+                projectIds = Array.from(uniqueProjectIds);
             }
             break;
     }
@@ -561,6 +562,26 @@ exports.getConstructionManagerDashboard = (0, catchAsync_1.default)(async (req, 
             id: true,
         },
     });
+    const accessibleSections = await prisma_1.default.section.findMany({
+        where: { id: { in: accessibleSectionIds }, isDeleted: false },
+        select: { id: true, name: true },
+    });
+    const fulfillmentProgress = await Promise.all(accessibleSections.map(async (section) => {
+        const total = await prisma_1.default.demand.count({
+            where: { sectionId: section.id, isDeleted: false },
+        });
+        const fulfilled = await prisma_1.default.demand.count({
+            where: {
+                sectionId: section.id,
+                isDeleted: false,
+                status: { in: ["PO_CREATED", "FULFILLED_FROM_STORE", "COMPLETED", "PARTIALLY_PO_CREATED", "ORDER_PLACED", "IN_STORE"] },
+            },
+        });
+        return {
+            sectionName: section.name || "Unknown",
+            progress: total > 0 ? Math.round((fulfilled / total) * 100) : 0,
+        };
+    }));
     res.status(200).json({
         status: "success",
         data: {
@@ -574,6 +595,7 @@ exports.getConstructionManagerDashboard = (0, catchAsync_1.default)(async (req, 
                     status: item.status,
                     count: item._count.id,
                 })),
+                fulfillmentProgress,
             },
         },
     });
@@ -677,6 +699,14 @@ exports.getAccountantDashboard = (0, catchAsync_1.default)(async (req, res, next
             totalDebited: true,
         },
     });
+    const demandBreakdown = await prisma_1.default.demand.groupBy({
+        by: ["status"],
+        where: {
+            sectionId: { in: accessibleSectionIds },
+            isDeleted: false,
+        },
+        _count: { status: true },
+    });
     const vendorAccounts = await prisma_1.default.vendorAccount.findMany({
         where: {
             transactions: {
@@ -706,6 +736,12 @@ exports.getAccountantDashboard = (0, catchAsync_1.default)(async (req, res, next
                 totalAmountPending: totalAmountPending._sum.balance || 0,
                 totalAmountPaid: totalAmountPaid._sum.totalDebited || 0,
                 assignedSections: accessibleSectionIds.length,
+            },
+            charts: {
+                demandBreakdown: demandBreakdown.map((item) => ({
+                    status: item.status,
+                    count: item._count.status,
+                })),
             },
             topVendorAccounts: vendorAccounts.map((account) => ({
                 vendorId: account.vendorId,
