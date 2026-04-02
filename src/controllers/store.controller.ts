@@ -208,6 +208,13 @@ const getStores = catchAsync(async (req, res) => {
     });
     const sectionIds = assignments.map((a) => a.sectionId);
     defaultFilters.sectionId = { in: sectionIds };
+  } else if (user.role === "CONSTRUCTION_MANAGER") {
+    const assignments = await prisma.constructionManagerAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { sectionId: true },
+    });
+    const sectionIds = assignments.map((a) => a.sectionId);
+    defaultFilters.sectionId = { in: sectionIds };
   } else if (user.role === "STORE_INCHARGE") {
     if (user.isHead) {
       // Head store incharge can see all stores

@@ -161,6 +161,14 @@ const getStores = (0, catchAsync_1.default)(async (req, res) => {
         const sectionIds = assignments.map((a) => a.sectionId);
         defaultFilters.sectionId = { in: sectionIds };
     }
+    else if (user.role === "CONSTRUCTION_MANAGER") {
+        const assignments = await prisma_1.default.constructionManagerAssignment.findMany({
+            where: { userId: user.id, isActive: true },
+            select: { sectionId: true },
+        });
+        const sectionIds = assignments.map((a) => a.sectionId);
+        defaultFilters.sectionId = { in: sectionIds };
+    }
     else if (user.role === "STORE_INCHARGE") {
         if (user.isHead) {
         }
