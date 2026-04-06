@@ -320,10 +320,19 @@ const getStoreById = catchAsync(async (req, res, next) => {
   if (user.role !== "ADMIN") {
     let assigned = false;
     if (user.role === "STORE_INCHARGE") {
-      const assignment = await prisma.storeInchargeAssignment.findFirst({
-        where: { userId: user.id, storeId: id, isActive: true },
+      // Head store incharge can access all stores
+      const currentUser = await prisma.user.findUnique({
+        where: { id: user.id },
+        select: { isHead: true },
       });
-      assigned = !!assignment;
+      if (currentUser?.isHead) {
+        assigned = true;
+      } else {
+        const assignment = await prisma.storeInchargeAssignment.findFirst({
+          where: { userId: user.id, storeId: id, isActive: true },
+        });
+        assigned = !!assignment;
+      }
     } else if (user.role === "SITE_INCHARGE") {
       // Site incharge can access if assigned to the section of this store
       const store = await prisma.store.findUnique({
@@ -1093,9 +1102,62 @@ const stockOut = catchAsync(async (req, res, next) => {
   await NotificationService.notifyStoreTransaction(result.transaction.id);
 });
 
+// Helper: Check if user has access to a store based on role
+const checkStoreAccess = async (userId: string, userRole: string, store: any): Promise<boolean> => {
+  if (userRole === "ADMIN") return true;
+
+  if (userRole === "STORE_INCHARGE") {
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isHead: true },
+    });
+    if (currentUser?.isHead) return true;
+    const assignment = await prisma.storeInchargeAssignment.findFirst({
+      where: { userId, storeId: store.id, isActive: true },
+    });
+    return !!assignment;
+  }
+
+  if (userRole === "SITE_INCHARGE") {
+    const assignment = await prisma.siteInchargeAssignment.findFirst({
+      where: { userId, sectionId: store.sectionId, isActive: true },
+    });
+    return !!assignment;
+  }
+
+  if (userRole === "PROJECT_MANAGER") {
+    const assignment = await prisma.projectManagerAssignment.findFirst({
+      where: { userId, sectionId: store.sectionId, isActive: true },
+    });
+    return !!assignment;
+  }
+
+  if (userRole === "CONSTRUCTION_MANAGER") {
+    const assignment = await prisma.constructionManagerAssignment.findFirst({
+      where: { userId, sectionId: store.sectionId, isActive: true },
+    });
+    return !!assignment;
+  }
+
+  if (userRole === "ACCOUNTANT") {
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isHead: true },
+    });
+    if (currentUser?.isHead) return true;
+    const assignment = await prisma.accountantAssignment.findFirst({
+      where: { userId, sectionId: store.sectionId, isActive: true },
+    });
+    return !!assignment;
+  }
+
+  return false;
+};
+
 const getStoreInventory = catchAsync(async (req, res, next) => {
   const { storeId } = req.params;
   const { materialId } = req.query;
+  const user = req.user;
 
   // Validate store exists
   const store = await prisma.store.findUnique({
@@ -1104,6 +1166,12 @@ const getStoreInventory = catchAsync(async (req, res, next) => {
 
   if (!store) {
     return next(new AppError("Store not found", 404));
+  }
+
+  // Role-based access check
+  const hasInventoryAccess = await checkStoreAccess(user.id, user.role, store);
+  if (!hasInventoryAccess) {
+    return next(new AppError("Access denied: not assigned to this store", 403));
   }
 
   // Build where clause
@@ -1152,6 +1220,7 @@ const getStoreTransactions = catchAsync(async (req, res, next) => {
     page = 1,
     limit = 50,
   } = req.query;
+  const user = req.user;
 
   // Validate store exists
   const store = await prisma.store.findUnique({
@@ -1160,6 +1229,12 @@ const getStoreTransactions = catchAsync(async (req, res, next) => {
 
   if (!store) {
     return next(new AppError("Store not found", 404));
+  }
+
+  // Role-based access check
+  const hasTransactionAccess = await checkStoreAccess(user.id, user.role, store);
+  if (!hasTransactionAccess) {
+    return next(new AppError("Access denied: not assigned to this store", 403));
   }
 
   // Build where clause

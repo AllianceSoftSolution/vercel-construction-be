@@ -538,6 +538,39 @@ export const getSiteInchargeDashboard = catchAsync(
       })
     );
 
+    // Store/Inventory stats for Site Incharge
+    const totalStores = await prisma.store.count({
+      where: {
+        isDeleted: false,
+        sectionId: { in: accessibleSectionIds },
+      },
+    });
+
+    const inventorySummary = await prisma.storeInventory.aggregate({
+      where: {
+        store: {
+          sectionId: { in: accessibleSectionIds },
+          isDeleted: false,
+        },
+      },
+      _sum: {
+        stock: true,
+        reserved: true,
+        available: true,
+      },
+    });
+
+    const totalMaterials = await prisma.storeInventory.groupBy({
+      by: ["materialId"],
+      where: {
+        store: {
+          sectionId: { in: accessibleSectionIds },
+          isDeleted: false,
+        },
+        stock: { gt: 0 },
+      },
+    });
+
     res.status(200).json({
       status: "success",
       data: {
@@ -547,6 +580,11 @@ export const getSiteInchargeDashboard = catchAsync(
           totalDemands,
           totalPOsCreated,
           assignedSections: accessibleSectionIds.length,
+          totalStores,
+          totalStock: inventorySummary._sum.stock || 0,
+          totalReserved: inventorySummary._sum.reserved || 0,
+          totalAvailable: inventorySummary._sum.available || 0,
+          totalMaterialsInStock: totalMaterials.length,
         },
         charts: {
           demandBreakdown: demandBreakdown.map((item) => ({

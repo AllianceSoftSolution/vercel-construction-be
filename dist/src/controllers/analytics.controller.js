@@ -415,6 +415,35 @@ exports.getSiteInchargeDashboard = (0, catchAsync_1.default)(async (req, res, ne
             totalAmount: Number(vendor._sum.totalAmount) || 0,
         };
     }));
+    const totalStores = await prisma_1.default.store.count({
+        where: {
+            isDeleted: false,
+            sectionId: { in: accessibleSectionIds },
+        },
+    });
+    const inventorySummary = await prisma_1.default.storeInventory.aggregate({
+        where: {
+            store: {
+                sectionId: { in: accessibleSectionIds },
+                isDeleted: false,
+            },
+        },
+        _sum: {
+            stock: true,
+            reserved: true,
+            available: true,
+        },
+    });
+    const totalMaterials = await prisma_1.default.storeInventory.groupBy({
+        by: ["materialId"],
+        where: {
+            store: {
+                sectionId: { in: accessibleSectionIds },
+                isDeleted: false,
+            },
+            stock: { gt: 0 },
+        },
+    });
     res.status(200).json({
         status: "success",
         data: {
@@ -424,6 +453,11 @@ exports.getSiteInchargeDashboard = (0, catchAsync_1.default)(async (req, res, ne
                 totalDemands,
                 totalPOsCreated,
                 assignedSections: accessibleSectionIds.length,
+                totalStores,
+                totalStock: inventorySummary._sum.stock || 0,
+                totalReserved: inventorySummary._sum.reserved || 0,
+                totalAvailable: inventorySummary._sum.available || 0,
+                totalMaterialsInStock: totalMaterials.length,
             },
             charts: {
                 demandBreakdown: demandBreakdown.map((item) => ({

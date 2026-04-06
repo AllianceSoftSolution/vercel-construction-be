@@ -253,10 +253,19 @@ const getStoreById = (0, catchAsync_1.default)(async (req, res, next) => {
     if (user.role !== "ADMIN") {
         let assigned = false;
         if (user.role === "STORE_INCHARGE") {
-            const assignment = await prisma_1.default.storeInchargeAssignment.findFirst({
-                where: { userId: user.id, storeId: id, isActive: true },
+            const currentUser = await prisma_1.default.user.findUnique({
+                where: { id: user.id },
+                select: { isHead: true },
             });
-            assigned = !!assignment;
+            if (currentUser?.isHead) {
+                assigned = true;
+            }
+            else {
+                const assignment = await prisma_1.default.storeInchargeAssignment.findFirst({
+                    where: { userId: user.id, storeId: id, isActive: true },
+                });
+                assigned = !!assignment;
+            }
         }
         else if (user.role === "SITE_INCHARGE") {
             const store = await prisma_1.default.store.findUnique({
@@ -873,14 +882,66 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
     await notificationService_1.NotificationService.notifyStoreTransaction(result.transaction.id);
 });
 exports.stockOut = stockOut;
+const checkStoreAccess = async (userId, userRole, store) => {
+    if (userRole === "ADMIN")
+        return true;
+    if (userRole === "STORE_INCHARGE") {
+        const currentUser = await prisma_1.default.user.findUnique({
+            where: { id: userId },
+            select: { isHead: true },
+        });
+        if (currentUser?.isHead)
+            return true;
+        const assignment = await prisma_1.default.storeInchargeAssignment.findFirst({
+            where: { userId, storeId: store.id, isActive: true },
+        });
+        return !!assignment;
+    }
+    if (userRole === "SITE_INCHARGE") {
+        const assignment = await prisma_1.default.siteInchargeAssignment.findFirst({
+            where: { userId, sectionId: store.sectionId, isActive: true },
+        });
+        return !!assignment;
+    }
+    if (userRole === "PROJECT_MANAGER") {
+        const assignment = await prisma_1.default.projectManagerAssignment.findFirst({
+            where: { userId, sectionId: store.sectionId, isActive: true },
+        });
+        return !!assignment;
+    }
+    if (userRole === "CONSTRUCTION_MANAGER") {
+        const assignment = await prisma_1.default.constructionManagerAssignment.findFirst({
+            where: { userId, sectionId: store.sectionId, isActive: true },
+        });
+        return !!assignment;
+    }
+    if (userRole === "ACCOUNTANT") {
+        const currentUser = await prisma_1.default.user.findUnique({
+            where: { id: userId },
+            select: { isHead: true },
+        });
+        if (currentUser?.isHead)
+            return true;
+        const assignment = await prisma_1.default.accountantAssignment.findFirst({
+            where: { userId, sectionId: store.sectionId, isActive: true },
+        });
+        return !!assignment;
+    }
+    return false;
+};
 const getStoreInventory = (0, catchAsync_1.default)(async (req, res, next) => {
     const { storeId } = req.params;
     const { materialId } = req.query;
+    const user = req.user;
     const store = await prisma_1.default.store.findUnique({
         where: { id: storeId },
     });
     if (!store) {
         return next(new appError_1.default("Store not found", 404));
+    }
+    const hasInventoryAccess = await checkStoreAccess(user.id, user.role, store);
+    if (!hasInventoryAccess) {
+        return next(new appError_1.default("Access denied: not assigned to this store", 403));
     }
     const where = { storeId };
     if (materialId) {
@@ -918,11 +979,16 @@ exports.getStoreInventory = getStoreInventory;
 const getStoreTransactions = (0, catchAsync_1.default)(async (req, res, next) => {
     const { storeId } = req.params;
     const { materialId, type, startDate, endDate, page = 1, limit = 50, } = req.query;
+    const user = req.user;
     const store = await prisma_1.default.store.findUnique({
         where: { id: storeId },
     });
     if (!store) {
         return next(new appError_1.default("Store not found", 404));
+    }
+    const hasTransactionAccess = await checkStoreAccess(user.id, user.role, store);
+    if (!hasTransactionAccess) {
+        return next(new appError_1.default("Access denied: not assigned to this store", 403));
     }
     const where = { storeId };
     if (materialId) {
