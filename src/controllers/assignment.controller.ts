@@ -590,7 +590,7 @@ const createStoreInchargeAssignment = catchAsync(async (req, res, next) => {
   // Use the new notification service for comprehensive notifications
   await NotificationService.notifyUserAssignment({
     userId: assignment.userId,
-    sectionId: assignment.store.section.id,
+    sectionId: assignment.store.section?.id ?? "",
     role: "STORE_INCHARGE",
     assignedBy: currentUserId,
   });

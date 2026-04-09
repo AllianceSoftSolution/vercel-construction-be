@@ -10,4 +10,6 @@ declare const stockOut: (req: import("express").Request, res: import("express").
 declare const getStoreInventory: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const getStoreTransactions: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const getProjectInventory: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
-export { createStore, getStores, getStoreById, updateStore, deleteStore, activateStore, deactivateStore, stockIn, stockOut, getStoreInventory, getStoreTransactions, getProjectInventory, };
+declare const assignPersonnel: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const removePersonnel: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+export { createStore, getStores, getStoreById, updateStore, deleteStore, activateStore, deactivateStore, stockIn, stockOut, getStoreInventory, getStoreTransactions, getProjectInventory, assignPersonnel, removePersonnel, };

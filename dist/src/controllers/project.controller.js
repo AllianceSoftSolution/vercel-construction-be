@@ -105,8 +105,12 @@ const getProjects = (0, catchAsync_1.default)(async (req, res) => {
                 },
             },
         });
-        const projectIds = assignments.map((a) => a.store.section.projectId);
-        assignedSectionIds = assignments.map((a) => a.store.section.id);
+        const projectIds = assignments
+            .filter((a) => a.store.section != null)
+            .map((a) => a.store.section.projectId);
+        assignedSectionIds = assignments
+            .filter((a) => a.store.section != null)
+            .map((a) => a.store.section.id);
         defaultFilters.id = { in: projectIds };
     }
     else if (user.role === "ACCOUNTANT") {
@@ -241,7 +245,7 @@ const getProjectById = (0, catchAsync_1.default)(async (req, res, next) => {
             },
         });
         assignedSectionIds = assignments
-            .filter((a) => a.store.section.projectId === id)
+            .filter((a) => a.store.section?.projectId === id)
             .map((a) => a.store.section.id);
     }
     else if (user.role === "ACCOUNTANT") {

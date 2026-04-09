@@ -238,9 +238,16 @@ exports.getPurchaseOrders = (0, catchAsync_1.default)(async (req, res) => {
         orderBy: { createdAt: "desc" },
     });
     const total = await prisma_1.default.purchaseOrder.count({ where });
+    const isFinancialRestricted = user.role === "STORE_INCHARGE" || user.role === "PROJECT_MANAGER" || user.role === "CONSTRUCTION_MANAGER";
+    const responseData = isFinancialRestricted
+        ? purchaseOrders.map((po) => {
+            const { unitPrice, totalAmount, proofOfBill, ...safeFields } = po;
+            return safeFields;
+        })
+        : purchaseOrders;
     res.status(200).json({
         status: "success",
-        data: purchaseOrders,
+        data: responseData,
         pagination: {
             page: Number(page),
             limit: Number(limit),

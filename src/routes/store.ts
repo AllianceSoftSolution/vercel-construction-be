@@ -12,6 +12,8 @@ import {
   getStoreInventory,
   getStoreTransactions,
   getProjectInventory,
+  assignPersonnel,
+  removePersonnel,
 } from "../controllers/store.controller";
 import protect from "../middlewares/auth.middleware";
 
@@ -26,6 +28,10 @@ router.delete("/:id", protect, deleteStore);
 router.patch("/:id/activate", protect, activateStore);
 router.patch("/:id/deactivate", protect, deactivateStore);
 
+// Personnel assignment routes
+router.patch("/:storeId/assign", protect, assignPersonnel);
+router.delete("/:storeId/assign", protect, removePersonnel);
+
 // Stock management routes
 router.post("/:storeId/stock-in", protect, stockIn);
 router.post("/:storeId/stock-out", protect, stockOut);
@@ -35,4 +41,4 @@ router.get("/:storeId/transactions", protect, getStoreTransactions);
 // Project inventory route
 router.get("/project/:projectId/inventory", protect, getProjectInventory);
 
-export default router; 
+export default router;

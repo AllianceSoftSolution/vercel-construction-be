@@ -429,7 +429,7 @@ export class NotificationService {
     if (!material) return;
 
     const { section, users } = await this.getTopLevelSectionUsers(
-      transaction.store.sectionId
+      transaction.store.sectionId ?? ""
     );
     const adminUsers = await this.getAdminUsers();
 
@@ -445,7 +445,7 @@ export class NotificationService {
     await this.sendNotificationsToUsers(usersToNotify, title, body, {
       transactionId: transaction.id,
       storeId: transaction.storeId,
-      sectionId: transaction.store.sectionId,
+      sectionId: transaction.store.sectionId ?? "",
       projectId: section?.project.id || "",
       type: "STORE_TRANSACTION",
       transactionType: transaction.type,

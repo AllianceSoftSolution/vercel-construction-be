@@ -219,37 +219,17 @@ const getUsers = (0, catchAsync_1.default)(async (req, res) => {
             select: { sectionId: true },
         });
         const sectionIds = assignments.map((a) => a.sectionId);
-        const sectionUsers = await prisma_1.default.user.findMany({
+        const sectionCMs = await prisma_1.default.user.findMany({
             where: {
-                OR: [
-                    {
-                        siteInchargeAssignments: {
-                            some: { sectionId: { in: sectionIds } },
-                        },
-                    },
-                    {
-                        projectManagerAssignments: {
-                            some: { sectionId: { in: sectionIds } },
-                        },
-                    },
-                    {
-                        constructionManagerAssignments: {
-                            some: { sectionId: { in: sectionIds } },
-                        },
-                    },
-                    {
-                        accountantAssignments: { some: { sectionId: { in: sectionIds } } },
-                    },
-                    {
-                        storeInchargeAssignments: {
-                            some: { store: { sectionId: { in: sectionIds } } },
-                        },
-                    },
-                ],
+                role: "CONSTRUCTION_MANAGER",
+                isDeleted: false,
+                constructionManagerAssignments: {
+                    some: { sectionId: { in: sectionIds } },
+                },
             },
             select: { id: true },
         });
-        userFilter.id = { in: sectionUsers.map((u) => u.id) };
+        userFilter.id = { in: sectionCMs.map((u) => u.id) };
     }
     else {
         return res.json({

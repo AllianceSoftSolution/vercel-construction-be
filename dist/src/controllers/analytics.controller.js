@@ -54,7 +54,9 @@ const getUserAccessibleSections = async (userId, userRole) => {
                     where: { userId, isActive: true },
                     select: { store: { select: { sectionId: true } } },
                 });
-                sectionIds = storeInchargeAssignments.map((a) => a.store.sectionId);
+                sectionIds = storeInchargeAssignments
+                    .map((a) => a.store.sectionId)
+                    .filter((id) => id !== null);
             }
             break;
         case "ACCOUNTANT":
@@ -126,7 +128,9 @@ const getUserAccessibleProjects = async (userId, userRole) => {
                         store: { select: { section: { select: { projectId: true } } } },
                     },
                 });
-                projectIds = storeInchargeAssignments.map((a) => a.store.section.projectId);
+                projectIds = storeInchargeAssignments
+                    .filter((a) => a.store.section != null)
+                    .map((a) => a.store.section.projectId);
             }
             break;
         case "ACCOUNTANT":
@@ -348,26 +352,22 @@ exports.getSiteInchargeDashboard = (0, catchAsync_1.default)(async (req, res, ne
             totalAmount: true,
         },
     });
-    const cmDemandWhere = {
+    const sectionDemandWhere = {
         isDeleted: false,
         sectionId: { in: accessibleSectionIds },
-        createdBy: user.id,
     };
     const totalDemands = await prisma_1.default.demand.count({
-        where: cmDemandWhere,
+        where: sectionDemandWhere,
     });
     const totalPOsCreated = await prisma_1.default.purchaseOrder.count({
         where: {
             isDeleted: false,
             sectionId: { in: accessibleSectionIds },
-            demand: {
-                createdBy: user.id,
-            },
         },
     });
     const demandBreakdown = await prisma_1.default.demand.groupBy({
         by: ["status"],
-        where: cmDemandWhere,
+        where: sectionDemandWhere,
         _count: {
             id: true,
         },

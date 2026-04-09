@@ -298,46 +298,25 @@ const getUsers = catchAsync(async (req, res) => {
 
     userFilter.id = { in: sectionUsers.map((u) => u.id) };
   } else if (user.role === "PROJECT_MANAGER") {
-    // Project Manager can only see users assigned to their sections
+    // Project Manager can only see Construction Managers in their sections
     const assignments = await prisma.projectManagerAssignment.findMany({
       where: { userId: user.id, isActive: true },
       select: { sectionId: true },
     });
     const sectionIds = assignments.map((a) => a.sectionId);
 
-    // Get users assigned to these sections
-    const sectionUsers = await prisma.user.findMany({
+    const sectionCMs = await prisma.user.findMany({
       where: {
-        OR: [
-          {
-            siteInchargeAssignments: {
-              some: { sectionId: { in: sectionIds } },
-            },
-          },
-          {
-            projectManagerAssignments: {
-              some: { sectionId: { in: sectionIds } },
-            },
-          },
-          {
-            constructionManagerAssignments: {
-              some: { sectionId: { in: sectionIds } },
-            },
-          },
-          {
-            accountantAssignments: { some: { sectionId: { in: sectionIds } } },
-          },
-          {
-            storeInchargeAssignments: {
-              some: { store: { sectionId: { in: sectionIds } } },
-            },
-          },
-        ],
+        role: "CONSTRUCTION_MANAGER",
+        isDeleted: false,
+        constructionManagerAssignments: {
+          some: { sectionId: { in: sectionIds } },
+        },
       },
       select: { id: true },
     });
 
-    userFilter.id = { in: sectionUsers.map((u) => u.id) };
+    userFilter.id = { in: sectionCMs.map((u) => u.id) };
   } else {
     // CM, Store Incharge, Accountant cannot see other users
     return res.json({

@@ -118,8 +118,12 @@ const getProjects = catchAsync(async (req, res) => {
         },
       },
     });
-    const projectIds = assignments.map((a) => a.store.section.projectId);
-    assignedSectionIds = assignments.map((a) => a.store.section.id);
+    const projectIds = assignments
+      .filter((a) => a.store.section != null)
+      .map((a) => a.store.section!.projectId);
+    assignedSectionIds = assignments
+      .filter((a) => a.store.section != null)
+      .map((a) => a.store.section!.id);
     defaultFilters.id = { in: projectIds };
   } else if (user.role === "ACCOUNTANT") {
     if (user.isHead) {
@@ -288,8 +292,8 @@ const getProjectById = catchAsync(async (req, res, next) => {
       },
     });
     assignedSectionIds = assignments
-      .filter((a) => a.store.section.projectId === id)
-      .map((a) => a.store.section.id);
+      .filter((a) => a.store.section?.projectId === id)
+      .map((a) => a.store.section!.id);
   } else if (user.role === "ACCOUNTANT") {
     // If user is head accountant, they can see all projects and sections
     if (user.isHead) {

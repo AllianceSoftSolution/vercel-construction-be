@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getProjectInventory = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
+exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const buildQueryOptions_1 = require("../utils/buildQueryOptions");
@@ -12,16 +12,41 @@ const notification_1 = require("../utils/notification");
 const notificationService_1 = require("../utils/notificationService");
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const createStore = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { name, type, sectionId, cmUserId, initialStock, } = req.body;
+    const { name, type, sectionId, projectId, cmUserId, initialStock, } = req.body;
     const userId = req.user.id;
-    if (!name || !type || !sectionId) {
-        return next(new appError_1.default("Name, type, and sectionId are required", 400));
+    if (!name || !type) {
+        return next(new appError_1.default("Name and type are required", 400));
     }
-    const section = await prisma_1.default.section.findUnique({
-        where: { id: sectionId },
-    });
-    if (!section) {
-        return next(new appError_1.default("Section not found", 404));
+    if (type === "HEAD_STORE" && !projectId) {
+        return next(new appError_1.default("projectId is required for HEAD_STORE", 400));
+    }
+    if ((type === "SECTION_STORE" || type === "CM_STORE") && !sectionId) {
+        return next(new appError_1.default("sectionId is required for SECTION_STORE and CM_STORE", 400));
+    }
+    let section = null;
+    if (sectionId) {
+        section = await prisma_1.default.section.findUnique({
+            where: { id: sectionId },
+        });
+        if (!section) {
+            return next(new appError_1.default("Section not found", 404));
+        }
+    }
+    if (projectId) {
+        const project = await prisma_1.default.project.findUnique({
+            where: { id: projectId },
+        });
+        if (!project) {
+            return next(new appError_1.default("Project not found", 404));
+        }
+    }
+    if (type === "HEAD_STORE") {
+        const existingHead = await prisma_1.default.store.findFirst({
+            where: { projectId, type: "HEAD_STORE", isDeleted: false },
+        });
+        if (existingHead) {
+            return next(new appError_1.default("A Head Store already exists for this project", 400));
+        }
     }
     if (type === "CM_STORE" && !cmUserId) {
         return next(new appError_1.default("CM User ID is required for CM stores", 400));
@@ -58,7 +83,8 @@ const createStore = (0, catchAsync_1.default)(async (req, res, next) => {
             data: {
                 name,
                 type,
-                sectionId,
+                sectionId: sectionId || null,
+                projectId: projectId || null,
                 cmUserId,
                 createdBy: userId,
             },
@@ -140,26 +166,50 @@ const createStore = (0, catchAsync_1.default)(async (req, res, next) => {
 exports.createStore = createStore;
 const getStores = (0, catchAsync_1.default)(async (req, res) => {
     const user = req.user;
+    const { projectId } = req.query;
     const filterOptions = (0, buildQueryOptions_1.extractQueryParams)(req);
+    if (filterOptions.filters && filterOptions.filters.projectId) {
+        delete filterOptions.filters.projectId;
+    }
     const searchableFields = ["name"];
     let defaultFilters = { isDeleted: false };
+    if (projectId) {
+        defaultFilters.OR = [
+            { projectId: projectId },
+            { section: { projectId: projectId } },
+        ];
+    }
     if (user.role === "ADMIN") {
     }
     else if (user.role === "PROJECT_MANAGER") {
         const assignments = await prisma_1.default.projectManagerAssignment.findMany({
             where: { userId: user.id, isActive: true },
-            select: { sectionId: true },
+            select: { sectionId: true, projectId: true },
         });
         const sectionIds = assignments.map((a) => a.sectionId);
-        defaultFilters.sectionId = { in: sectionIds };
+        const projectIds = [...new Set(assignments.map((a) => a.projectId))];
+        const roleOR = [{ sectionId: { in: sectionIds } }];
+        if (projectIds.length > 0)
+            roleOR.push({ projectId: { in: projectIds } });
+        defaultFilters.OR = defaultFilters.OR
+            ? [{ AND: [defaultFilters.OR, { OR: roleOR }] }]
+            : roleOR;
+        delete defaultFilters.sectionId;
     }
     else if (user.role === "SITE_INCHARGE") {
         const assignments = await prisma_1.default.siteInchargeAssignment.findMany({
             where: { userId: user.id, isActive: true },
-            select: { sectionId: true },
+            select: { sectionId: true, projectId: true },
         });
         const sectionIds = assignments.map((a) => a.sectionId);
-        defaultFilters.sectionId = { in: sectionIds };
+        const projectIds = [...new Set(assignments.map((a) => a.projectId))];
+        const roleOR = [{ sectionId: { in: sectionIds } }];
+        if (projectIds.length > 0)
+            roleOR.push({ projectId: { in: projectIds } });
+        defaultFilters.OR = defaultFilters.OR
+            ? [{ AND: [defaultFilters.OR, { OR: roleOR }] }]
+            : roleOR;
+        delete defaultFilters.sectionId;
     }
     else if (user.role === "CONSTRUCTION_MANAGER") {
         const assignments = await prisma_1.default.constructionManagerAssignment.findMany({
@@ -214,6 +264,21 @@ const getStores = (0, catchAsync_1.default)(async (req, res) => {
                             code: true,
                         },
                     },
+                },
+            },
+            project: {
+                select: {
+                    id: true,
+                    name: true,
+                    code: true,
+                },
+            },
+            assignedUser: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
                 },
             },
             cmUser: {
@@ -276,7 +341,7 @@ const getStoreById = (0, catchAsync_1.default)(async (req, res, next) => {
                 const assignment = await prisma_1.default.siteInchargeAssignment.findFirst({
                     where: {
                         userId: user.id,
-                        sectionId: store.sectionId,
+                        sectionId: store.sectionId ?? undefined,
                         isActive: true,
                     },
                 });
@@ -292,7 +357,7 @@ const getStoreById = (0, catchAsync_1.default)(async (req, res, next) => {
                 const assignment = await prisma_1.default.projectManagerAssignment.findFirst({
                     where: {
                         userId: user.id,
-                        sectionId: store.sectionId,
+                        sectionId: store.sectionId ?? undefined,
                         isActive: true,
                     },
                 });
@@ -308,7 +373,7 @@ const getStoreById = (0, catchAsync_1.default)(async (req, res, next) => {
                 const assignment = await prisma_1.default.constructionManagerAssignment.findFirst({
                     where: {
                         userId: user.id,
-                        sectionId: store.sectionId,
+                        sectionId: store.sectionId ?? undefined,
                         isActive: true,
                     },
                 });
@@ -328,7 +393,7 @@ const getStoreById = (0, catchAsync_1.default)(async (req, res, next) => {
                     const assignment = await prisma_1.default.accountantAssignment.findFirst({
                         where: {
                             userId: user.id,
-                            sectionId: store.sectionId,
+                            sectionId: store.sectionId ?? undefined,
                             isActive: true,
                         },
                     });
@@ -897,23 +962,37 @@ const checkStoreAccess = async (userId, userRole, store) => {
         });
         return !!assignment;
     }
+    const getSectionIdFilter = async (roleFilter) => {
+        if (store.sectionId) {
+            return roleFilter(store.sectionId);
+        }
+        if (store.projectId) {
+            const sections = await prisma_1.default.section.findMany({
+                where: { projectId: store.projectId },
+                select: { id: true },
+            });
+            for (const section of sections) {
+                const found = await roleFilter(section.id);
+                if (found)
+                    return true;
+            }
+        }
+        return false;
+    };
     if (userRole === "SITE_INCHARGE") {
-        const assignment = await prisma_1.default.siteInchargeAssignment.findFirst({
-            where: { userId, sectionId: store.sectionId, isActive: true },
-        });
-        return !!assignment;
+        return !!(await getSectionIdFilter((sectionId) => prisma_1.default.siteInchargeAssignment.findFirst({
+            where: { userId, sectionId, isActive: true },
+        })));
     }
     if (userRole === "PROJECT_MANAGER") {
-        const assignment = await prisma_1.default.projectManagerAssignment.findFirst({
-            where: { userId, sectionId: store.sectionId, isActive: true },
-        });
-        return !!assignment;
+        return !!(await getSectionIdFilter((sectionId) => prisma_1.default.projectManagerAssignment.findFirst({
+            where: { userId, sectionId, isActive: true },
+        })));
     }
     if (userRole === "CONSTRUCTION_MANAGER") {
-        const assignment = await prisma_1.default.constructionManagerAssignment.findFirst({
-            where: { userId, sectionId: store.sectionId, isActive: true },
-        });
-        return !!assignment;
+        return !!(await getSectionIdFilter((sectionId) => prisma_1.default.constructionManagerAssignment.findFirst({
+            where: { userId, sectionId, isActive: true },
+        })));
     }
     if (userRole === "ACCOUNTANT") {
         const currentUser = await prisma_1.default.user.findUnique({
@@ -922,10 +1001,9 @@ const checkStoreAccess = async (userId, userRole, store) => {
         });
         if (currentUser?.isHead)
             return true;
-        const assignment = await prisma_1.default.accountantAssignment.findFirst({
-            where: { userId, sectionId: store.sectionId, isActive: true },
-        });
-        return !!assignment;
+        return !!(await getSectionIdFilter((sectionId) => prisma_1.default.accountantAssignment.findFirst({
+            where: { userId, sectionId, isActive: true },
+        })));
     }
     return false;
 };
@@ -1147,8 +1225,8 @@ const getProjectInventory = (0, catchAsync_1.default)(async (req, res, next) => 
                 storeId: store.id,
                 storeName: store.name,
                 storeType: store.type,
-                sectionName: store.section.name,
-                sectionCode: store.section.code,
+                sectionName: store.section?.name ?? "",
+                sectionCode: store.section?.code ?? "",
                 stock: Number(inventoryItem.stock),
                 reserved: Number(inventoryItem.reserved),
                 available: Number(inventoryItem.available),
@@ -1227,4 +1305,62 @@ const getProjectInventory = (0, catchAsync_1.default)(async (req, res, next) => 
     });
 });
 exports.getProjectInventory = getProjectInventory;
+const assignPersonnel = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { storeId } = req.params;
+    const { userId } = req.body;
+    const actorId = req.user.id;
+    if (!userId) {
+        return next(new appError_1.default("userId is required", 400));
+    }
+    const store = await prisma_1.default.store.findUnique({ where: { id: storeId } });
+    if (!store || store.isDeleted) {
+        return next(new appError_1.default("Store not found", 404));
+    }
+    const userToAssign = await prisma_1.default.user.findUnique({ where: { id: userId } });
+    if (!userToAssign) {
+        return next(new appError_1.default("User not found", 404));
+    }
+    await prisma_1.default.storeInchargeAssignment.updateMany({
+        where: { storeId, isActive: true },
+        data: { isActive: false },
+    });
+    await prisma_1.default.storeInchargeAssignment.upsert({
+        where: { userId_storeId: { userId, storeId } },
+        update: { isActive: true },
+        create: { userId, storeId, createdBy: actorId },
+    });
+    const updatedStore = await prisma_1.default.store.update({
+        where: { id: storeId },
+        data: { assignedUserId: userId, updatedBy: actorId },
+        include: {
+            assignedUser: { select: { id: true, name: true, email: true, role: true } },
+        },
+    });
+    res.json({
+        message: "Personnel assigned successfully",
+        store: updatedStore,
+    });
+});
+exports.assignPersonnel = assignPersonnel;
+const removePersonnel = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { storeId } = req.params;
+    const actorId = req.user.id;
+    const store = await prisma_1.default.store.findUnique({ where: { id: storeId } });
+    if (!store || store.isDeleted) {
+        return next(new appError_1.default("Store not found", 404));
+    }
+    await prisma_1.default.storeInchargeAssignment.updateMany({
+        where: { storeId, isActive: true },
+        data: { isActive: false },
+    });
+    const updatedStore = await prisma_1.default.store.update({
+        where: { id: storeId },
+        data: { assignedUserId: null, updatedBy: actorId },
+    });
+    res.json({
+        message: "Personnel assignment removed successfully",
+        store: updatedStore,
+    });
+});
+exports.removePersonnel = removePersonnel;
 //# sourceMappingURL=store.controller.js.map

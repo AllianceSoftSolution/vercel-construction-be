@@ -43,6 +43,7 @@ enum ApprovalStatus {
 enum StoreType {
   HEAD_STORE
   CM_STORE
+  SECTION_STORE
 }
 
 enum PaymentStatus {
@@ -118,6 +119,7 @@ model User {
   storeTransactions          StoreTransaction[]
   auditLogs                  AuditLog[]
   cmStore                    Store[] @relation("UserCMStore")
+  assignedStores             Store[] @relation("StoreAssignedUser")
   deviceTokens               DeviceToken[]
   materialCaps               MaterialCap[] @relation("MaterialCapCreator")
   materialCapsUpdated        MaterialCap[] @relation("MaterialCapUpdater")
@@ -145,6 +147,7 @@ model Project {
   accountantAssignments      AccountantAssignment[]
   purchaseOrders            PurchaseOrder[]
   materialCaps              MaterialCap[]
+  headStores                Store[] @relation("ProjectHeadStores")
 
   @@map("projects")
 }
@@ -263,20 +266,24 @@ model AccountantAssignment {
 
 // Store Management
 model Store {
-  id          String    @id @default(cuid())
-  name        String
-  type        StoreType
-  sectionId   String
-  cmUserId    String?   // Only for CM stores
-  isActive    Boolean   @default(true)
-  isDeleted   Boolean   @default(false)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  createdBy   String
-  updatedBy   String?
+  id               String    @id @default(cuid())
+  name             String
+  type             StoreType
+  sectionId        String?   // Optional: for SECTION_STORE and CM_STORE
+  projectId        String?   // For HEAD_STORE (project-level)
+  assignedUserId   String?   // Quick-assign personnel field
+  cmUserId         String?   // Only for CM stores
+  isActive         Boolean   @default(true)
+  isDeleted        Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  createdBy        String
+  updatedBy        String?
 
-  section     Section @relation("SectionStores", fields: [sectionId], references: [id], map: "stores_section_fkey")
-  cmUser      User?   @relation("UserCMStore", fields: [cmUserId], references: [id], map: "stores_cm_user_fkey")
+  section     Section?  @relation("SectionStores", fields: [sectionId], references: [id], map: "stores_section_fkey")
+  project     Project?  @relation("ProjectHeadStores", fields: [projectId], references: [id], map: "stores_project_fkey")
+  cmUser      User?     @relation("UserCMStore", fields: [cmUserId], references: [id], map: "stores_cm_user_fkey")
+  assignedUser User?    @relation("StoreAssignedUser", fields: [assignedUserId], references: [id], map: "stores_assigned_user_fkey")
 
   storeInchargeAssignments StoreInchargeAssignment[]
   inventory                StoreInventory[]

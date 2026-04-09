@@ -64,7 +64,9 @@ const getUserAccessibleSections = async (userId: string, userRole: string) => {
             where: { userId, isActive: true },
             select: { store: { select: { sectionId: true } } },
           });
-        sectionIds = storeInchargeAssignments.map((a) => a.store.sectionId);
+        sectionIds = storeInchargeAssignments
+          .map((a) => a.store.sectionId)
+          .filter((id): id is string => id !== null);
       }
       break;
 
@@ -157,9 +159,9 @@ const getUserAccessibleProjects = async (userId: string, userRole: string) => {
               store: { select: { section: { select: { projectId: true } } } },
             },
           });
-        projectIds = storeInchargeAssignments.map(
-          (a) => a.store.section.projectId
-        );
+        projectIds = storeInchargeAssignments
+          .filter((a) => a.store.section != null)
+          .map((a) => a.store.section!.projectId);
       }
       break;
 
@@ -456,30 +458,26 @@ export const getSiteInchargeDashboard = catchAsync(
       },
     });
 
-    const cmDemandWhere = {
+    const sectionDemandWhere = {
       isDeleted: false,
       sectionId: { in: accessibleSectionIds },
-      createdBy: user.id,
     };
 
     const totalDemands = await prisma.demand.count({
-      where: cmDemandWhere,
+      where: sectionDemandWhere,
     });
 
     const totalPOsCreated = await prisma.purchaseOrder.count({
       where: {
         isDeleted: false,
         sectionId: { in: accessibleSectionIds },
-        demand: {
-          createdBy: user.id,
-        },
       },
     });
 
     // Demand breakdown for assigned sections
     const demandBreakdown = await prisma.demand.groupBy({
       by: ["status"],
-      where: cmDemandWhere,
+      where: sectionDemandWhere,
       _count: {
         id: true,
       },
