@@ -23,30 +23,17 @@ const createSection = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new appError_1.default("Project not found", 404));
     }
     const code = await (0, generateCode_1.generateSectionCode)(projectId);
-    const result = await prisma_1.default.$transaction(async (tx) => {
-        const section = await tx.section.create({
-            data: {
-                name,
-                code,
-                description,
-                projectId,
-                createdBy: userId,
-            },
-        });
-        const headStore = await tx.store.create({
-            data: {
-                name: `Head Store - ${section.code}`,
-                type: "HEAD_STORE",
-                sectionId: section.id,
-                isActive: true,
-                isDeleted: false,
-                createdBy: userId,
-            },
-        });
-        return { section, headStore };
+    const createdSection = await prisma_1.default.section.create({
+        data: {
+            name,
+            code,
+            description,
+            projectId,
+            createdBy: userId,
+        },
     });
     const section = await prisma_1.default.section.findUnique({
-        where: { id: result.section.id },
+        where: { id: createdSection.id },
         include: {
             project: {
                 select: {
@@ -86,13 +73,9 @@ const createSection = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!section) {
         return next(new appError_1.default("Section not found after creation", 404));
     }
-    const headStore = section.stores.find((s) => s.type === "HEAD_STORE");
     res.status(201).json({
         message: "Section created successfully",
-        section: {
-            ...section,
-            headStore,
-        },
+        section,
     });
     await (0, notification_1.sendNotificationToUserSafe)({
         userId,

@@ -29,36 +29,20 @@ const createSection = catchAsync(async (req, res, next) => {
   // Generate automatic section code
   const code = await generateSectionCode(projectId);
 
-  // Create section and head store in a transaction
-  const result = await prisma.$transaction(async (tx) => {
-    const section = await tx.section.create({
-      data: {
-        name,
-        code,
-        description,
-        projectId,
-        createdBy: userId,
-      },
-    });
-
-    // Create head store for the section
-    const headStore = await tx.store.create({
-      data: {
-        name: `Head Store - ${section.code}`,
-        type: "HEAD_STORE",
-        sectionId: section.id,
-        isActive: true,
-        isDeleted: false,
-        createdBy: userId,
-      },
-    });
-
-    return { section, headStore };
+  // Create section only (stores are created manually from Store Creation tab)
+  const createdSection = await prisma.section.create({
+    data: {
+      name,
+      code,
+      description,
+      projectId,
+      createdBy: userId,
+    },
   });
 
-  // Fetch the section with all details and the head store
+  // Fetch the section with all details
   const section = await prisma.section.findUnique({
-    where: { id: result.section.id },
+    where: { id: createdSection.id },
     include: {
       project: {
         select: {
@@ -100,15 +84,9 @@ const createSection = catchAsync(async (req, res, next) => {
     return next(new AppError("Section not found after creation", 404));
   }
 
-  // Find the head store (should be only one)
-  const headStore = section.stores.find((s) => s.type === "HEAD_STORE");
-
   res.status(201).json({
     message: "Section created successfully",
-    section: {
-      ...section,
-      headStore,
-    },
+    section,
   });
   await sendNotificationToUserSafe({
     userId,
