@@ -408,32 +408,60 @@ const getStoreById = catchAsync(async (req, res, next) => {
       // Site incharge can access if assigned to the section of this store
       const store = await prisma.store.findUnique({
         where: { id },
-        select: { sectionId: true },
+        select: { sectionId: true, projectId: true },
       });
       if (store) {
-        const assignment = await prisma.siteInchargeAssignment.findFirst({
-          where: {
-            userId: user.id,
-            sectionId: store.sectionId ?? undefined,
-            isActive: true,
-          },
-        });
-        assigned = !!assignment;
+        if (store.sectionId) {
+          const assignment = await prisma.siteInchargeAssignment.findFirst({
+            where: {
+              userId: user.id,
+              sectionId: store.sectionId,
+              isActive: true,
+            },
+          });
+          assigned = !!assignment;
+        } else if (store.projectId) {
+          // HEAD_STORE: check if SI is assigned to any section in the project
+          const sections = await prisma.section.findMany({
+            where: { projectId: store.projectId },
+            select: { id: true },
+          });
+          for (const section of sections) {
+            const found = await prisma.siteInchargeAssignment.findFirst({
+              where: { userId: user.id, sectionId: section.id, isActive: true },
+            });
+            if (found) { assigned = true; break; }
+          }
+        }
       }
     } else if (user.role === "PROJECT_MANAGER") {
       const store = await prisma.store.findUnique({
         where: { id },
-        select: { sectionId: true },
+        select: { sectionId: true, projectId: true },
       });
       if (store) {
-        const assignment = await prisma.projectManagerAssignment.findFirst({
-          where: {
-            userId: user.id,
-            sectionId: store.sectionId ?? undefined,
-            isActive: true,
-          },
-        });
-        assigned = !!assignment;
+        if (store.sectionId) {
+          const assignment = await prisma.projectManagerAssignment.findFirst({
+            where: {
+              userId: user.id,
+              sectionId: store.sectionId,
+              isActive: true,
+            },
+          });
+          assigned = !!assignment;
+        } else if (store.projectId) {
+          // HEAD_STORE: check if PM is assigned to any section in the project
+          const sections = await prisma.section.findMany({
+            where: { projectId: store.projectId },
+            select: { id: true },
+          });
+          for (const section of sections) {
+            const found = await prisma.projectManagerAssignment.findFirst({
+              where: { userId: user.id, sectionId: section.id, isActive: true },
+            });
+            if (found) { assigned = true; break; }
+          }
+        }
       }
     } else if (user.role === "CONSTRUCTION_MANAGER") {
       const store = await prisma.store.findUnique({
