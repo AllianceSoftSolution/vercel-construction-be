@@ -1787,6 +1787,7 @@ const assignSiteIncharge = catchAsync(async (req, res, next) => {
       userId,
       projectId,
       sectionId,
+      createdBy: req.user.id,
       isActive: true,
     },
     update: {
