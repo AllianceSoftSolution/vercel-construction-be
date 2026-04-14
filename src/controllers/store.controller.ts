@@ -244,13 +244,18 @@ const getStores = catchAsync(async (req, res) => {
       select: { sectionId: true, projectId: true },
     });
     const sectionIds = assignments.map((a) => a.sectionId);
-    const projectIds = [...new Set(assignments.map((a) => a.projectId))];
-    const roleOR: any[] = [{ sectionId: { in: sectionIds } }];
-    if (projectIds.length > 0) roleOR.push({ projectId: { in: projectIds } });
-    defaultFilters.OR = defaultFilters.OR
-      ? [{ AND: [defaultFilters.OR, { OR: roleOR }] }]
-      : roleOR;
-    delete defaultFilters.sectionId;
+    // PM only sees SECTION_STORE types (not HEAD_STORE)
+    defaultFilters.type = "SECTION_STORE";
+    defaultFilters.sectionId = { in: sectionIds };
+    // Also allow project-level filtering if projectId query param was provided
+    if (defaultFilters.OR) {
+      defaultFilters.AND = [
+        { OR: defaultFilters.OR },
+        { sectionId: { in: sectionIds } },
+      ];
+      delete defaultFilters.OR;
+      delete defaultFilters.sectionId;
+    }
   } else if (user.role === "SITE_INCHARGE") {
     const assignments = await prisma.siteInchargeAssignment.findMany({
       where: { userId: user.id, isActive: true },
@@ -261,7 +266,7 @@ const getStores = catchAsync(async (req, res) => {
     const roleOR: any[] = [{ sectionId: { in: sectionIds } }];
     if (projectIds.length > 0) roleOR.push({ projectId: { in: projectIds } });
     defaultFilters.OR = defaultFilters.OR
-      ? [{ AND: [defaultFilters.OR, { OR: roleOR }] }]
+      ? [{ AND: [{ OR: defaultFilters.OR }, { OR: roleOR }] }]
       : roleOR;
     delete defaultFilters.sectionId;
   } else if (user.role === "CONSTRUCTION_MANAGER") {
@@ -1720,6 +1725,143 @@ const removePersonnel = catchAsync(async (req, res, next) => {
   });
 });
 
+// Assign a store to a Site Incharge (creates SiteInchargeAssignment for the store's section/project)
+const assignSiteIncharge = catchAsync(async (req, res, next) => {
+  const { storeId } = req.params;
+  const { userId } = req.body;
+
+  if (!userId) {
+    return next(new AppError("userId is required", 400));
+  }
+
+  // Verify store exists
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    include: { section: { select: { id: true, projectId: true } } },
+  });
+  if (!store || store.isDeleted) {
+    return next(new AppError("Store not found", 404));
+  }
+
+  // Verify user exists and is SITE_INCHARGE
+  const siUser = await prisma.user.findUnique({ where: { id: userId } });
+  if (!siUser) {
+    return next(new AppError("User not found", 404));
+  }
+  if (siUser.role !== "SITE_INCHARGE") {
+    return next(new AppError("User must have SITE_INCHARGE role", 400));
+  }
+
+  // Determine projectId and sectionId
+  let projectId: string | null = null;
+  let sectionId: string | null = null;
+
+  if (store.type === "SECTION_STORE" || store.type === "CM_STORE") {
+    sectionId = store.sectionId;
+    projectId = store.section?.projectId || null;
+  } else if (store.type === "HEAD_STORE") {
+    projectId = store.projectId;
+    // HEAD_STORE has no section — pick the first section in the project
+    if (projectId) {
+      const firstSection = await prisma.section.findFirst({
+        where: { projectId },
+        select: { id: true },
+      });
+      if (!firstSection) {
+        return next(new AppError("No sections found in this project. Create a section first.", 400));
+      }
+      sectionId = firstSection.id;
+    }
+  }
+
+  if (!projectId || !sectionId) {
+    return next(new AppError("Cannot determine project/section for this store", 400));
+  }
+
+  // Upsert SiteInchargeAssignment
+  const assignment = await prisma.siteInchargeAssignment.upsert({
+    where: {
+      userId_sectionId: { userId, sectionId },
+    },
+    create: {
+      userId,
+      projectId,
+      sectionId,
+      isActive: true,
+    },
+    update: {
+      isActive: true,
+    },
+  });
+
+  res.json({
+    message: "Site Incharge assigned to store successfully",
+    assignment,
+  });
+});
+
+// Assign a store to a Project Manager (creates ProjectManagerAssignment for the store's section/project)
+const assignProjectManager = catchAsync(async (req, res, next) => {
+  const { storeId } = req.params;
+  const { userId } = req.body;
+
+  if (!userId) {
+    return next(new AppError("userId is required", 400));
+  }
+
+  // Verify store exists
+  const store = await prisma.store.findUnique({
+    where: { id: storeId },
+    include: { section: { select: { id: true, projectId: true } } },
+  });
+  if (!store || store.isDeleted) {
+    return next(new AppError("Store not found", 404));
+  }
+
+  // Only SECTION_STORE can be assigned to PM
+  if (store.type !== "SECTION_STORE") {
+    return next(new AppError("Only Section Stores can be assigned to a Project Manager", 400));
+  }
+
+  // Verify user exists and is PROJECT_MANAGER
+  const pmUser = await prisma.user.findUnique({ where: { id: userId } });
+  if (!pmUser) {
+    return next(new AppError("User not found", 404));
+  }
+  if (pmUser.role !== "PROJECT_MANAGER") {
+    return next(new AppError("User must have PROJECT_MANAGER role", 400));
+  }
+
+  const sectionId = store.sectionId;
+  const projectId = store.section?.projectId || null;
+
+  if (!projectId || !sectionId) {
+    return next(new AppError("Cannot determine project/section for this store", 400));
+  }
+
+  // Upsert ProjectManagerAssignment
+  const assignment = await prisma.projectManagerAssignment.upsert({
+    where: {
+      userId_sectionId: { userId, sectionId },
+    },
+    create: {
+      userId,
+      projectId,
+      sectionId,
+      createdBy: req.user.id,
+      isActive: true,
+    },
+    update: {
+      isActive: true,
+    },
+  });
+
+  res.json({
+    message: "Project Manager assigned to store successfully",
+    assignment,
+  });
+});
+
 export {
   createStore,
   getStores,
@@ -1735,4 +1877,6 @@ export {
   getProjectInventory,
   assignPersonnel,
   removePersonnel,
+  assignSiteIncharge,
+  assignProjectManager,
 };

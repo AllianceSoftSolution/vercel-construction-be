@@ -16,6 +16,8 @@ router.patch("/:id/activate", auth_middleware_1.default, store_controller_1.acti
 router.patch("/:id/deactivate", auth_middleware_1.default, store_controller_1.deactivateStore);
 router.patch("/:storeId/assign", auth_middleware_1.default, store_controller_1.assignPersonnel);
 router.delete("/:storeId/assign", auth_middleware_1.default, store_controller_1.removePersonnel);
+router.post("/:storeId/assign-site-incharge", auth_middleware_1.default, store_controller_1.assignSiteIncharge);
+router.post("/:storeId/assign-project-manager", auth_middleware_1.default, store_controller_1.assignProjectManager);
 router.post("/:storeId/stock-in", auth_middleware_1.default, store_controller_1.stockIn);
 router.post("/:storeId/stock-out", auth_middleware_1.default, store_controller_1.stockOut);
 router.get("/:storeId/inventory", auth_middleware_1.default, store_controller_1.getStoreInventory);
