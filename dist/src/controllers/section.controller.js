@@ -124,16 +124,12 @@ const getSections = (0, catchAsync_1.default)(async (req, res) => {
         defaultFilters.id = { in: sectionIds };
     }
     else if (user.role === "ACCOUNTANT") {
-        if (user.isHead) {
-        }
-        else {
-            const assignments = await prisma_1.default.accountantAssignment.findMany({
-                where: { userId: user.id, isActive: true },
-                select: { sectionId: true },
-            });
-            const sectionIds = assignments.map((a) => a.sectionId);
-            defaultFilters.id = { in: sectionIds };
-        }
+        const assignments = await prisma_1.default.accountantAssignment.findMany({
+            where: { userId: user.id, isActive: true },
+            select: { sectionId: true },
+        });
+        const sectionIds = assignments.map((a) => a.sectionId);
+        defaultFilters.id = { in: sectionIds };
     }
     const queryOptions = (0, buildQueryOptions_1.buildQueryOptions)(filterOptions, defaultFilters, searchableFields);
     const total = await prisma_1.default.section.count({

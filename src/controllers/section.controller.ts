@@ -139,18 +139,13 @@ const getSections = catchAsync(async (req, res) => {
     const sectionIds = assignments.map((a) => a.store.sectionId);
     defaultFilters.id = { in: sectionIds };
   } else if (user.role === "ACCOUNTANT") {
-    // If user is head accountant, they can see all sections
-    if (user.isHead) {
-      // No filter, see all sections
-    } else {
-      // Regular accountant - only assigned sections
-      const assignments = await prisma.accountantAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: { sectionId: true },
-      });
-      const sectionIds = assignments.map((a) => a.sectionId);
-      defaultFilters.id = { in: sectionIds };
-    }
+    // Both head and regular accountants only see sections they are explicitly assigned to
+    const assignments = await prisma.accountantAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { sectionId: true },
+    });
+    const sectionIds = assignments.map((a) => a.sectionId);
+    defaultFilters.id = { in: sectionIds };
   }
 
   // Build query options
