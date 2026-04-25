@@ -375,8 +375,8 @@ const getDemandById = catchAsync(async (req, res, next) => {
   }
 
   // --- New logic: Fetch CM and Head store stock for the material ---
-  let cmStoreQty: number | null = null;
-  let headStoreQty: number | null = null;
+  let cmStoreQty: number = 0;
+  let headStoreQty: number = 0;
   let cmStoreId: string | null = null;
   let headStoreId: string | null = null;
   try {
@@ -385,11 +385,19 @@ const getDemandById = catchAsync(async (req, res, next) => {
         ? (demand.section as any).projectId
         : null;
 
-    const [cmStore, headStore] = await Promise.all([
+    const [cmStoreExact, sectionStoreFallback, headStore] = await Promise.all([
       prisma.store.findFirst({
         where: {
           sectionId: demand.sectionId,
           type: "CM_STORE",
+          isActive: true,
+          isDeleted: false,
+        },
+      }),
+      prisma.store.findFirst({
+        where: {
+          sectionId: demand.sectionId,
+          type: "SECTION_STORE",
           isActive: true,
           isDeleted: false,
         },
@@ -403,6 +411,8 @@ const getDemandById = catchAsync(async (req, res, next) => {
         },
       }),
     ]);
+
+    const cmStore = cmStoreExact || sectionStoreFallback;
 
     if (cmStore) {
       cmStoreId = cmStore.id;
@@ -429,7 +439,7 @@ const getDemandById = catchAsync(async (req, res, next) => {
       headStoreQty = headInv ? Number(headInv.available) : 0;
     }
   } catch (e) {
-    // If error, leave as null
+    // Keep safe numeric defaults on errors.
   }
   // --- End new logic ---
 
@@ -1067,8 +1077,8 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
     return next(new AppError("From store must be a head store", 400));
   }
 
-  if (toStore.type !== "CM_STORE") {
-    return next(new AppError("To store must be a CM store", 400));
+  if (!["CM_STORE", "SECTION_STORE"].includes(toStore.type)) {
+    return next(new AppError("To store must be a section-level store", 400));
   }
 
   // HEAD_STORE is project-level, while CM_STORE is section-level.

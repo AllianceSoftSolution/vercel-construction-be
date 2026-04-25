@@ -305,19 +305,27 @@ const getDemandById = (0, catchAsync_1.default)(async (req, res, next) => {
         demand.section.projectName = demand.section.project.name;
         delete demand.section.project;
     }
-    let cmStoreQty = null;
-    let headStoreQty = null;
+    let cmStoreQty = 0;
+    let headStoreQty = 0;
     let cmStoreId = null;
     let headStoreId = null;
     try {
         const demandProjectId = demand.section && typeof demand.section === "object"
             ? demand.section.projectId
             : null;
-        const [cmStore, headStore] = await Promise.all([
+        const [cmStoreExact, sectionStoreFallback, headStore] = await Promise.all([
             prisma_1.default.store.findFirst({
                 where: {
                     sectionId: demand.sectionId,
                     type: "CM_STORE",
+                    isActive: true,
+                    isDeleted: false,
+                },
+            }),
+            prisma_1.default.store.findFirst({
+                where: {
+                    sectionId: demand.sectionId,
+                    type: "SECTION_STORE",
                     isActive: true,
                     isDeleted: false,
                 },
@@ -331,6 +339,7 @@ const getDemandById = (0, catchAsync_1.default)(async (req, res, next) => {
                 },
             }),
         ]);
+        const cmStore = cmStoreExact || sectionStoreFallback;
         if (cmStore) {
             cmStoreId = cmStore.id;
             const cmInv = await prisma_1.default.storeInventory.findUnique({
@@ -880,8 +889,8 @@ const fulfillDemand = (0, catchAsync_1.default)(async (req, res, next) => {
     if (fromStore.type !== "HEAD_STORE") {
         return next(new appError_1.default("From store must be a head store", 400));
     }
-    if (toStore.type !== "CM_STORE") {
-        return next(new appError_1.default("To store must be a CM store", 400));
+    if (!["CM_STORE", "SECTION_STORE"].includes(toStore.type)) {
+        return next(new appError_1.default("To store must be a section-level store", 400));
     }
     const demandProjectId = demand.section?.projectId;
     if (fromStore.projectId !== demandProjectId ||
