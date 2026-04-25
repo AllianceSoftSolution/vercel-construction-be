@@ -361,21 +361,16 @@ const createConstructionManagerAssignment = catchAsync(
       );
     }
 
-    // Check if CM already has a store in this section
-    const existingCMStore = await prisma.store.findFirst({
+    // Ensure section has a SECTION_STORE (created automatically when first CM is assigned)
+    const existingSectionStore = await prisma.store.findFirst({
       where: {
-        type: "CM_STORE",
-        cmUserId: userId,
+        type: "SECTION_STORE",
         sectionId,
         isDeleted: false,
       },
     });
 
-    if (existingCMStore) {
-      return next(new AppError("CM already has a store in this section", 400));
-    }
-
-    // Create assignment and CM store in a transaction
+    // Create assignment and ensure section store in a transaction
     const result = await prisma.$transaction(async (tx) => {
       // Create the CM assignment
       const assignment = await tx.constructionManagerAssignment.create({
@@ -410,42 +405,35 @@ const createConstructionManagerAssignment = catchAsync(
         },
       });
 
-      // Create CM store for this CM
-      const cmStore = await tx.store.create({
-        data: {
-          name: `CM Store - ${user.name} - ${section.code}`,
-          type: "CM_STORE",
-          sectionId,
-          cmUserId: userId,
-          createdBy: currentUserId,
-        },
-        include: {
-          section: {
-            select: {
-              id: true,
-              name: true,
-              code: true,
+      let sectionStore = existingSectionStore;
+      if (!sectionStore) {
+        sectionStore = await tx.store.create({
+          data: {
+            name: `Section Store - ${section.code}`,
+            type: "SECTION_STORE",
+            sectionId,
+            createdBy: currentUserId,
+          },
+          include: {
+            section: {
+              select: {
+                id: true,
+                name: true,
+                code: true,
+              },
             },
           },
-          cmUser: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              role: true,
-            },
-          },
-        },
-      });
+        });
+      }
 
-      return { assignment, cmStore };
+      return { assignment, sectionStore };
     });
 
     res.status(201).json({
       message:
-        "Construction Manager assignment and CM store created successfully",
+        "Construction Manager assignment and section store ensured successfully",
       assignment: result.assignment,
-      cmStore: result.cmStore,
+      sectionStore: result.sectionStore,
     });
   }
 );

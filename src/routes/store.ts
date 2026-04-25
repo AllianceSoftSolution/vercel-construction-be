@@ -21,20 +21,30 @@ import protect from "../middlewares/auth.middleware";
 
 const router = express.Router();
 
+const adminOnly = (req: any, res: any, next: any) => {
+  if (!req.user || req.user.role !== "ADMIN") {
+    return res.status(403).json({
+      status: "error",
+      message: "Only Admin can perform this action",
+    });
+  }
+  next();
+};
+
 // Store routes (all protected)
-router.post("/", protect, createStore);
+router.post("/", protect, adminOnly, createStore);
 router.get("/", protect, getStores);
 router.get("/:id", protect, getStoreById);
-router.put("/:id", protect, updateStore);
-router.delete("/:id", protect, deleteStore);
-router.patch("/:id/activate", protect, activateStore);
-router.patch("/:id/deactivate", protect, deactivateStore);
+router.put("/:id", protect, adminOnly, updateStore);
+router.delete("/:id", protect, adminOnly, deleteStore);
+router.patch("/:id/activate", protect, adminOnly, activateStore);
+router.patch("/:id/deactivate", protect, adminOnly, deactivateStore);
 
 // Personnel assignment routes
-router.patch("/:storeId/assign", protect, assignPersonnel);
-router.delete("/:storeId/assign", protect, removePersonnel);
-router.post("/:storeId/assign-site-incharge", protect, assignSiteIncharge);
-router.post("/:storeId/assign-project-manager", protect, assignProjectManager);
+router.patch("/:storeId/assign", protect, adminOnly, assignPersonnel);
+router.delete("/:storeId/assign", protect, adminOnly, removePersonnel);
+router.post("/:storeId/assign-site-incharge", protect, adminOnly, assignSiteIncharge);
+router.post("/:storeId/assign-project-manager", protect, adminOnly, assignProjectManager);
 
 // Stock management routes
 router.post("/:storeId/stock-in", protect, stockIn);

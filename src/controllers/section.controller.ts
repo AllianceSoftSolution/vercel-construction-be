@@ -539,12 +539,11 @@ const getSectionById = catchAsync(async (req, res, next) => {
         : null,
     associatedConstructionManagers: await Promise.all(
       section.constructionManagerAssignments.map(async (cmAssignment) => {
-        // Find the CM store for this CM
+        // Prefer section-level store for section operations; fallback to legacy CM store.
         const cmStore = await prisma.store.findFirst({
           where: {
-            type: "CM_STORE",
-            cmUserId: cmAssignment.userId,
             sectionId: section.id,
+            OR: [{ type: "SECTION_STORE" }, { type: "CM_STORE" }],
             isDeleted: false,
           },
           select: {

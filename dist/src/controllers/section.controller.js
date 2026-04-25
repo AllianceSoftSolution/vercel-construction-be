@@ -462,9 +462,8 @@ const getSectionById = (0, catchAsync_1.default)(async (req, res, next) => {
         associatedConstructionManagers: await Promise.all(section.constructionManagerAssignments.map(async (cmAssignment) => {
             const cmStore = await prisma_1.default.store.findFirst({
                 where: {
-                    type: "CM_STORE",
-                    cmUserId: cmAssignment.userId,
                     sectionId: section.id,
+                    OR: [{ type: "SECTION_STORE" }, { type: "CM_STORE" }],
                     isDeleted: false,
                 },
                 select: {
