@@ -219,7 +219,20 @@ const getStores = (0, catchAsync_1.default)(async (req, res) => {
             select: { sectionId: true },
         });
         const sectionIds = assignments.map((a) => a.sectionId);
-        defaultFilters.sectionId = { in: sectionIds };
+        const cmStoreFilter = [
+            { type: "SECTION_STORE", sectionId: { in: sectionIds } },
+            { type: "CM_STORE", cmUserId: user.id },
+        ];
+        if (defaultFilters.OR) {
+            defaultFilters.AND = [
+                { OR: defaultFilters.OR },
+                { OR: cmStoreFilter },
+            ];
+            delete defaultFilters.OR;
+        }
+        else {
+            defaultFilters.OR = cmStoreFilter;
+        }
     }
     else if (user.role === "STORE_INCHARGE") {
         if (user.isHead) {

@@ -275,7 +275,21 @@ const getStores = catchAsync(async (req, res) => {
       select: { sectionId: true },
     });
     const sectionIds = assignments.map((a) => a.sectionId);
-    defaultFilters.sectionId = { in: sectionIds };
+    // CM sees: SECTION_STOREs in their assigned sections + CM_STOREs explicitly assigned to them
+    const cmStoreFilter: any[] = [
+      { type: "SECTION_STORE", sectionId: { in: sectionIds } },
+      { type: "CM_STORE", cmUserId: user.id },
+    ];
+    if (defaultFilters.OR) {
+      // Combine with any existing OR filter (e.g., from projectId query param)
+      defaultFilters.AND = [
+        { OR: defaultFilters.OR },
+        { OR: cmStoreFilter },
+      ];
+      delete defaultFilters.OR;
+    } else {
+      defaultFilters.OR = cmStoreFilter;
+    }
   } else if (user.role === "STORE_INCHARGE") {
     if (user.isHead) {
       // Head store incharge can see all stores across all projects

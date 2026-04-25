@@ -249,7 +249,7 @@ const getProjectManagerAssignments = (0, catchAsync_1.default)(async (req, res) 
 });
 exports.getProjectManagerAssignments = getProjectManagerAssignments;
 const createConstructionManagerAssignment = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { userId, sectionId } = req.body;
+    const { userId, sectionId, storeIds } = req.body;
     const currentUserId = req.user.id;
     if (!userId || !sectionId) {
         return next(new appError_1.default("UserId and sectionId are required", 400));
@@ -336,6 +336,15 @@ const createConstructionManagerAssignment = (0, catchAsync_1.default)(async (req
                         },
                     },
                 },
+            });
+        }
+        if (Array.isArray(storeIds) && storeIds.length > 0) {
+            await tx.store.updateMany({
+                where: {
+                    id: { in: storeIds },
+                    sectionId,
+                },
+                data: { cmUserId: userId },
             });
         }
         return { assignment, sectionStore };

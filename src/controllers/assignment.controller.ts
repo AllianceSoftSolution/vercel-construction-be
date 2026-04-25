@@ -314,7 +314,7 @@ const getProjectManagerAssignments = catchAsync(async (req, res) => {
 // Construction Manager Assignments
 const createConstructionManagerAssignment = catchAsync(
   async (req, res, next) => {
-    const { userId, sectionId } = req.body;
+    const { userId, sectionId, storeIds } = req.body;
     const currentUserId = req.user.id;
 
     if (!userId || !sectionId) {
@@ -423,6 +423,17 @@ const createConstructionManagerAssignment = catchAsync(
               },
             },
           },
+        });
+      }
+
+      // Assign selected stores to this CM (set cmUserId)
+      if (Array.isArray(storeIds) && storeIds.length > 0) {
+        await tx.store.updateMany({
+          where: {
+            id: { in: storeIds },
+            sectionId, // safety: only update stores within this section
+          },
+          data: { cmUserId: userId },
         });
       }
 
