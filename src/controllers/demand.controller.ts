@@ -380,6 +380,11 @@ const getDemandById = catchAsync(async (req, res, next) => {
   let cmStoreId: string | null = null;
   let headStoreId: string | null = null;
   try {
+    const demandProjectId =
+      demand.section && typeof demand.section === "object"
+        ? (demand.section as any).projectId
+        : null;
+
     const [cmStore, headStore] = await Promise.all([
       prisma.store.findFirst({
         where: {
@@ -391,7 +396,7 @@ const getDemandById = catchAsync(async (req, res, next) => {
       }),
       prisma.store.findFirst({
         where: {
-          sectionId: demand.sectionId,
+          projectId: demandProjectId || undefined,
           type: "HEAD_STORE",
           isActive: true,
           isDeleted: false,
@@ -1066,13 +1071,18 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
     return next(new AppError("To store must be a CM store", 400));
   }
 
-  // Check if stores belong to the same section as the demand
+  // HEAD_STORE is project-level, while CM_STORE is section-level.
+  // Enforce project match for source and section match for destination.
+  const demandProjectId = demand.section?.projectId;
   if (
-    fromStore.sectionId !== demand.sectionId ||
+    fromStore.projectId !== demandProjectId ||
     toStore.sectionId !== demand.sectionId
   ) {
     return next(
-      new AppError("Stores must belong to the same section as the demand", 400)
+      new AppError(
+        "Source and destination stores are not valid for this demand's project/section",
+        400
+      )
     );
   }
 
