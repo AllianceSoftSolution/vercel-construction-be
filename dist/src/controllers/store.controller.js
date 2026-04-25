@@ -223,6 +223,38 @@ const getStores = (0, catchAsync_1.default)(async (req, res) => {
     }
     else if (user.role === "STORE_INCHARGE") {
         if (user.isHead) {
+            const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
+                where: { userId: user.id, isActive: true },
+                select: {
+                    store: {
+                        select: {
+                            projectId: true,
+                            section: { select: { projectId: true } },
+                        },
+                    },
+                },
+            });
+            const projectIds = Array.from(new Set(assignments
+                .map((a) => a.store.projectId || a.store.section?.projectId)
+                .filter((id) => !!id)));
+            const roleProjectFilter = projectIds.length > 0
+                ? {
+                    OR: [
+                        { projectId: { in: projectIds } },
+                        { section: { projectId: { in: projectIds } } },
+                    ],
+                }
+                : { id: { in: [] } };
+            if (defaultFilters.OR) {
+                defaultFilters.AND = [
+                    { OR: defaultFilters.OR },
+                    roleProjectFilter,
+                ];
+                delete defaultFilters.OR;
+            }
+            else {
+                Object.assign(defaultFilters, roleProjectFilter);
+            }
         }
         else {
             const assignments = await prisma_1.default.storeInchargeAssignment.findMany({

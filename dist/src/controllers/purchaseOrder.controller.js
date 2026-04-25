@@ -205,9 +205,31 @@ exports.getPurchaseOrders = (0, catchAsync_1.default)(async (req, res) => {
     else if (user.role === "STORE_INCHARGE") {
         const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
             where: { userId: user.id, isActive: true },
-            select: { store: { select: { sectionId: true } } },
+            select: {
+                store: {
+                    select: {
+                        sectionId: true,
+                        projectId: true,
+                        section: { select: { projectId: true } },
+                    },
+                },
+            },
         });
-        const sectionIds = assignments.map((a) => a.store.sectionId);
+        const directSectionIds = assignments
+            .map((a) => a.store.sectionId)
+            .filter((id) => !!id);
+        const projectIds = Array.from(new Set(assignments
+            .map((a) => a.store.projectId || a.store.section?.projectId)
+            .filter((id) => !!id)));
+        let projectSectionIds = [];
+        if (projectIds.length > 0) {
+            const sections = await prisma_1.default.section.findMany({
+                where: { projectId: { in: projectIds }, isDeleted: false },
+                select: { id: true },
+            });
+            projectSectionIds = sections.map((s) => s.id);
+        }
+        const sectionIds = Array.from(new Set([...directSectionIds, ...projectSectionIds]));
         where.sectionId = { in: sectionIds };
     }
     const purchaseOrders = await prisma_1.default.purchaseOrder.findMany({

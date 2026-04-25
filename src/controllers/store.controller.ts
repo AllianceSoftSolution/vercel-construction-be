@@ -278,7 +278,46 @@ const getStores = catchAsync(async (req, res) => {
     defaultFilters.sectionId = { in: sectionIds };
   } else if (user.role === "STORE_INCHARGE") {
     if (user.isHead) {
-      // Head store incharge can see all stores
+      // Head store incharge can only see stores in their assigned project(s)
+      const assignments = await prisma.storeInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: {
+          store: {
+            select: {
+              projectId: true,
+              section: { select: { projectId: true } },
+            },
+          },
+        },
+      });
+
+      const projectIds = Array.from(
+        new Set(
+          assignments
+            .map((a) => a.store.projectId || a.store.section?.projectId)
+            .filter((id): id is string => !!id)
+        )
+      );
+
+      const roleProjectFilter: any =
+        projectIds.length > 0
+          ? {
+              OR: [
+                { projectId: { in: projectIds } },
+                { section: { projectId: { in: projectIds } } },
+              ],
+            }
+          : { id: { in: [] } };
+
+      if (defaultFilters.OR) {
+        defaultFilters.AND = [
+          { OR: defaultFilters.OR },
+          roleProjectFilter,
+        ];
+        delete defaultFilters.OR;
+      } else {
+        Object.assign(defaultFilters, roleProjectFilter);
+      }
     } else {
       // Only stores assigned to this store incharge
       const assignments = await prisma.storeInchargeAssignment.findMany({

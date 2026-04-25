@@ -166,9 +166,41 @@ const getDemands = catchAsync(async (req, res) => {
   } else if (user.role === "STORE_INCHARGE") {
     const assignments = await prisma.storeInchargeAssignment.findMany({
       where: { userId: user.id, isActive: true },
-      select: { store: { select: { sectionId: true } } },
+      select: {
+        store: {
+          select: {
+            sectionId: true,
+            projectId: true,
+            section: { select: { projectId: true } },
+          },
+        },
+      },
     });
-    const sectionIds = assignments.map((a) => a.store.sectionId);
+
+    const directSectionIds = assignments
+      .map((a) => a.store.sectionId)
+      .filter((id): id is string => !!id);
+
+    const projectIds = Array.from(
+      new Set(
+        assignments
+          .map((a) => a.store.projectId || a.store.section?.projectId)
+          .filter((id): id is string => !!id)
+      )
+    );
+
+    let projectSectionIds: string[] = [];
+    if (projectIds.length > 0) {
+      const sections = await prisma.section.findMany({
+        where: { projectId: { in: projectIds }, isDeleted: false },
+        select: { id: true },
+      });
+      projectSectionIds = sections.map((s) => s.id);
+    }
+
+    const sectionIds = Array.from(
+      new Set([...directSectionIds, ...projectSectionIds])
+    );
     defaultFilters.sectionId = { in: sectionIds };
   }
 
