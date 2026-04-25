@@ -291,30 +291,21 @@ const getStores = catchAsync(async (req, res) => {
       defaultFilters.OR = cmStoreFilter;
     }
   } else if (user.role === "STORE_INCHARGE") {
-    if (user.isHead) {
-      // Head store incharge can see all stores across all projects
-    } else {
-      // Only stores assigned to this store incharge
-      const assignments = await prisma.storeInchargeAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: { storeId: true },
-      });
-      const storeIds = assignments.map((a) => a.storeId);
-      defaultFilters.id = { in: storeIds };
-    }
+    // All store incharges (including head) only see stores they are explicitly assigned to
+    const assignments = await prisma.storeInchargeAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { storeId: true },
+    });
+    const storeIds = assignments.map((a) => a.storeId);
+    defaultFilters.id = { in: storeIds };
   } else if (user.role === "ACCOUNTANT") {
-    // If user is head accountant, they can see all stores
-    if (user.isHead) {
-      // No filter, see all stores
-    } else {
-      // Regular accountant - only stores in assigned sections
-      const assignments = await prisma.accountantAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: { sectionId: true },
-      });
-      const sectionIds = assignments.map((a) => a.sectionId);
-      defaultFilters.sectionId = { in: sectionIds };
-    }
+    // All accountants (including head) only see stores in sections they are explicitly assigned to
+    const assignments = await prisma.accountantAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { sectionId: true },
+    });
+    const sectionIds = assignments.map((a) => a.sectionId);
+    defaultFilters.sectionId = { in: sectionIds };
   } else {
     // Other roles: no stores
     defaultFilters.id = { in: [] };
@@ -410,19 +401,11 @@ const getStoreById = catchAsync(async (req, res, next) => {
   if (user.role !== "ADMIN") {
     let assigned = false;
     if (user.role === "STORE_INCHARGE") {
-      // Head store incharge can access all stores
-      const currentUser = await prisma.user.findUnique({
-        where: { id: user.id },
-        select: { isHead: true },
+      // All store incharges need explicit assignment to access a store
+      const assignment = await prisma.storeInchargeAssignment.findFirst({
+        where: { userId: user.id, storeId: id, isActive: true },
       });
-      if (currentUser?.isHead) {
-        assigned = true;
-      } else {
-        const assignment = await prisma.storeInchargeAssignment.findFirst({
-          where: { userId: user.id, storeId: id, isActive: true },
-        });
-        assigned = !!assignment;
-      }
+      assigned = !!assignment;
     } else if (user.role === "SITE_INCHARGE") {
       // Site incharge can access if assigned to the section of this store
       const store = await prisma.store.findUnique({
@@ -868,21 +851,20 @@ const stockIn = catchAsync(async (req, res, next) => {
     return next(new AppError("Store is not active", 400));
   }
 
-  // Check if user is store incharge for this store or has isHead permission
+  // Check if user is store incharge for this store
   const isStoreIncharge = store.storeInchargeAssignments.some(
     (assignment) => assignment.user.id === userId
   );
 
-  // Get current user to check isHead status
   const currentUser = await prisma.user.findUnique({
     where: { id: userId },
-    select: { isHead: true, role: true },
+    select: { role: true },
   });
 
-  if (!isStoreIncharge && !currentUser?.isHead && currentUser?.role !== "ADMIN") {
+  if (!isStoreIncharge && currentUser?.role !== "ADMIN") {
     return next(
       new AppError(
-        "Only store incharges or head store incharges can perform stock operations",
+        "Only assigned store incharges can perform stock-in operations",
         403
       )
     );
@@ -1048,21 +1030,20 @@ const stockOut = catchAsync(async (req, res, next) => {
     return next(new AppError("Store is not active", 400));
   }
 
-  // Check if user is store incharge for this store or has isHead permission
+  // Check if user is store incharge for this store
   const isStoreIncharge = store.storeInchargeAssignments.some(
     (assignment) => assignment.user.id === userId
   );
 
-  // Get current user to check isHead status
   const currentUser = await prisma.user.findUnique({
     where: { id: userId },
-    select: { isHead: true, role: true },
+    select: { role: true },
   });
 
-  if (!isStoreIncharge && !currentUser?.isHead && currentUser?.role !== "ADMIN") {
+  if (!isStoreIncharge && currentUser?.role !== "ADMIN") {
     return next(
       new AppError(
-        "Only store incharges or head store incharges can perform stock operations",
+        "Only assigned store incharges can perform stock-out operations",
         403
       )
     );
@@ -1225,11 +1206,6 @@ const checkStoreAccess = async (userId: string, userRole: string, store: any): P
   if (userRole === "ADMIN") return true;
 
   if (userRole === "STORE_INCHARGE") {
-    const currentUser = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isHead: true },
-    });
-    if (currentUser?.isHead) return true;
     const assignment = await prisma.storeInchargeAssignment.findFirst({
       where: { userId, storeId: store.id, isActive: true },
     });
@@ -1280,11 +1256,6 @@ const checkStoreAccess = async (userId: string, userRole: string, store: any): P
   }
 
   if (userRole === "ACCOUNTANT") {
-    const currentUser = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isHead: true },
-    });
-    if (currentUser?.isHead) return true;
     return !!(await getSectionIdFilter((sectionId: string) =>
       prisma.accountantAssignment.findFirst({
         where: { userId, sectionId, isActive: true },
