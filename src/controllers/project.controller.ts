@@ -739,7 +739,9 @@ const getProjectById = catchAsync(async (req, res, next) => {
         sections: [],
       });
     }
-    accountantMap.get(userId).sections.push(assignment.section);
+    if (assignment.section) {
+      accountantMap.get(userId).sections.push(assignment.section);
+    }
   });
   const assignedAccountants = Array.from(accountantMap.values());
 
