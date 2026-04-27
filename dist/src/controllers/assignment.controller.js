@@ -249,7 +249,7 @@ const getProjectManagerAssignments = (0, catchAsync_1.default)(async (req, res) 
 });
 exports.getProjectManagerAssignments = getProjectManagerAssignments;
 const createConstructionManagerAssignment = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { userId, sectionId, storeIds } = req.body;
+    const { userId, sectionId, storeIds, createStore = false } = req.body;
     const currentUserId = req.user.id;
     if (!userId || !sectionId) {
         return next(new appError_1.default("UserId and sectionId are required", 400));
@@ -319,7 +319,7 @@ const createConstructionManagerAssignment = (0, catchAsync_1.default)(async (req
             },
         });
         let sectionStore = existingSectionStore;
-        if (!sectionStore) {
+        if (!sectionStore && createStore === true) {
             sectionStore = await tx.store.create({
                 data: {
                     name: `Section Store - ${section.code}`,

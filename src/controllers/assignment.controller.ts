@@ -314,7 +314,7 @@ const getProjectManagerAssignments = catchAsync(async (req, res) => {
 // Construction Manager Assignments
 const createConstructionManagerAssignment = catchAsync(
   async (req, res, next) => {
-    const { userId, sectionId, storeIds } = req.body;
+    const { userId, sectionId, storeIds, createStore = false } = req.body;
     const currentUserId = req.user.id;
 
     if (!userId || !sectionId) {
@@ -361,7 +361,7 @@ const createConstructionManagerAssignment = catchAsync(
       );
     }
 
-    // Ensure section has a SECTION_STORE (created automatically when first CM is assigned)
+    // Check if section already has a SECTION_STORE
     const existingSectionStore = await prisma.store.findFirst({
       where: {
         type: "SECTION_STORE",
@@ -370,7 +370,7 @@ const createConstructionManagerAssignment = catchAsync(
       },
     });
 
-    // Create assignment and ensure section store in a transaction
+    // Create assignment and optionally create section store in a transaction
     const result = await prisma.$transaction(async (tx) => {
       // Create the CM assignment
       const assignment = await tx.constructionManagerAssignment.create({
@@ -406,7 +406,8 @@ const createConstructionManagerAssignment = catchAsync(
       });
 
       let sectionStore = existingSectionStore;
-      if (!sectionStore) {
+      // Only create a SECTION_STORE if explicitly requested and none exists yet
+      if (!sectionStore && createStore === true) {
         sectionStore = await tx.store.create({
           data: {
             name: `Section Store - ${section.code}`,
