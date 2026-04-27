@@ -50,6 +50,40 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
         where: { email },
     });
     if (existingUser) {
+        if (isHead && role === "ACCOUNTANT" && Array.isArray(projectIds) && projectIds.length > 0) {
+            const updatedUser = await prisma_1.default.$transaction(async (tx) => {
+                const updated = await tx.user.update({
+                    where: { id: existingUser.id },
+                    data: { role: "ACCOUNTANT", isHead: true },
+                    select: {
+                        id: true,
+                        email: true,
+                        name: true,
+                        employeeId: true,
+                        role: true,
+                        isHead: true,
+                        isActive: true,
+                        createdAt: true,
+                        notes: true,
+                    },
+                });
+                await tx.accountantAssignment.createMany({
+                    data: projectIds.map((pid) => ({
+                        userId: existingUser.id,
+                        projectId: pid,
+                        sectionId: null,
+                        isActive: true,
+                        createdBy: createdBy ?? existingUser.id,
+                    })),
+                    skipDuplicates: true,
+                });
+                return updated;
+            });
+            return res.status(200).json({
+                message: "Existing user updated and assigned as Head Accountant successfully",
+                user: updatedUser,
+            });
+        }
         return next(new appError_1.default("User with this email already exists", 400));
     }
     const employeeId = await (0, generateCode_1.generateEmployeeId)(role);

@@ -85,6 +85,48 @@ const registerUser = catchAsync(async (req, res, next) => {
   });
 
   if (existingUser) {
+    // Special case: assigning an existing user as Head Accountant to new projects.
+    // Instead of failing, update their role/isHead and create the project assignments.
+    if (isHead && role === "ACCOUNTANT" && Array.isArray(projectIds) && projectIds.length > 0) {
+      const updatedUser = await prisma.$transaction(async (tx) => {
+        // Update role + isHead in case the existing user has a different role
+        const updated = await tx.user.update({
+          where: { id: existingUser.id },
+          data: { role: "ACCOUNTANT", isHead: true },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            employeeId: true,
+            role: true,
+            isHead: true,
+            isActive: true,
+            createdAt: true,
+            notes: true,
+          },
+        });
+
+        // Create project-level assignments, skipping any already present
+        await tx.accountantAssignment.createMany({
+          data: (projectIds as string[]).map((pid: string) => ({
+            userId: existingUser.id,
+            projectId: pid,
+            sectionId: null,
+            isActive: true,
+            createdBy: createdBy ?? existingUser.id,
+          })),
+          skipDuplicates: true,
+        });
+
+        return updated;
+      });
+
+      return res.status(200).json({
+        message: "Existing user updated and assigned as Head Accountant successfully",
+        user: updatedUser,
+      });
+    }
+
     return next(new AppError("User with this email already exists", 400));
   }
 
