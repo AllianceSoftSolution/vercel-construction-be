@@ -11,7 +11,7 @@ const buildQueryOptions_1 = require("../utils/buildQueryOptions");
 const notification_1 = require("../utils/notification");
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const createSection = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { name, description, projectId, storePermissions } = req.body;
+    const { name, description, projectId, createStore, storePermissions } = req.body;
     const userId = req.user.id;
     if (!name || !projectId) {
         return next(new appError_1.default("Name and projectId are required", 400));
@@ -33,28 +33,30 @@ const createSection = (0, catchAsync_1.default)(async (req, res, next) => {
                 createdBy: userId,
             },
         });
-        const sectionStore = await tx.store.create({
-            data: {
-                name: `Section Store - ${section.code}`,
-                type: "SECTION_STORE",
-                sectionId: section.id,
-                createdBy: userId,
-            },
-        });
-        if (Array.isArray(storePermissions) && storePermissions.length > 0) {
-            await tx.storePermission.createMany({
-                data: storePermissions.map((p) => ({
-                    storeId: sectionStore.id,
-                    userId: p.userId,
-                    canViewStock: p.canViewStock ?? true,
-                    canRequestMaterials: p.canRequestMaterials ?? false,
-                    canApproveMaterials: p.canApproveMaterials ?? false,
-                    canAddStock: p.canAddStock ?? false,
-                    canTransferStock: p.canTransferStock ?? false,
+        if (createStore === true) {
+            const sectionStore = await tx.store.create({
+                data: {
+                    name: `Section Store - ${section.code}`,
+                    type: "SECTION_STORE",
+                    sectionId: section.id,
                     createdBy: userId,
-                })),
-                skipDuplicates: true,
+                },
             });
+            if (Array.isArray(storePermissions) && storePermissions.length > 0) {
+                await tx.storePermission.createMany({
+                    data: storePermissions.map((p) => ({
+                        storeId: sectionStore.id,
+                        userId: p.userId,
+                        canViewStock: p.canViewStock ?? true,
+                        canRequestMaterials: p.canRequestMaterials ?? false,
+                        canApproveMaterials: p.canApproveMaterials ?? false,
+                        canAddStock: p.canAddStock ?? false,
+                        canTransferStock: p.canTransferStock ?? false,
+                        createdBy: userId,
+                    })),
+                    skipDuplicates: true,
+                });
+            }
         }
         return section;
     });

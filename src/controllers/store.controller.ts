@@ -1924,6 +1924,38 @@ const deleteStorePermission = catchAsync(async (req, res, next) => {
   res.json({ message: "Store permission removed" });
 });
 
+// ─── Cleanup: delete SECTION_STORE entries that have no inventory ─────────────
+
+const cleanupEmptySectionStores = catchAsync(async (req, res) => {
+  // Find SECTION_STORE stores with no inventory and no transactions
+  const emptyStores = await prisma.store.findMany({
+    where: {
+      type: "SECTION_STORE",
+      isDeleted: false,
+      inventory: { none: {} },
+      transactions: { none: {} },
+    },
+    select: { id: true, name: true },
+  });
+
+  if (emptyStores.length === 0) {
+    return res.json({ message: "No empty section stores found.", deleted: [] });
+  }
+
+  const ids = emptyStores.map((s) => s.id);
+
+  // Delete permissions first (FK constraint)
+  await prisma.storePermission.deleteMany({ where: { storeId: { in: ids } } });
+
+  // Hard delete the empty stores
+  await prisma.store.deleteMany({ where: { id: { in: ids } } });
+
+  return res.json({
+    message: `Deleted ${emptyStores.length} empty section store(s).`,
+    deleted: emptyStores.map((s) => s.name),
+  });
+});
+
 export {
   createStore,
   getStores,
@@ -1944,4 +1976,5 @@ export {
   getStorePermissions,
   setStorePermissions,
   deleteStorePermission,
+  cleanupEmptySectionStores,
 };

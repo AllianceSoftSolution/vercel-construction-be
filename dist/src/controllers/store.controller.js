@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteStorePermission = exports.setStorePermissions = exports.getStorePermissions = exports.assignProjectManager = exports.assignSiteIncharge = exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
+exports.cleanupEmptySectionStores = exports.deleteStorePermission = exports.setStorePermissions = exports.getStorePermissions = exports.assignProjectManager = exports.assignSiteIncharge = exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const buildQueryOptions_1 = require("../utils/buildQueryOptions");
@@ -1558,4 +1558,26 @@ const deleteStorePermission = (0, catchAsync_1.default)(async (req, res, next) =
     res.json({ message: "Store permission removed" });
 });
 exports.deleteStorePermission = deleteStorePermission;
+const cleanupEmptySectionStores = (0, catchAsync_1.default)(async (req, res) => {
+    const emptyStores = await prisma_1.default.store.findMany({
+        where: {
+            type: "SECTION_STORE",
+            isDeleted: false,
+            inventory: { none: {} },
+            transactions: { none: {} },
+        },
+        select: { id: true, name: true },
+    });
+    if (emptyStores.length === 0) {
+        return res.json({ message: "No empty section stores found.", deleted: [] });
+    }
+    const ids = emptyStores.map((s) => s.id);
+    await prisma_1.default.storePermission.deleteMany({ where: { storeId: { in: ids } } });
+    await prisma_1.default.store.deleteMany({ where: { id: { in: ids } } });
+    return res.json({
+        message: `Deleted ${emptyStores.length} empty section store(s).`,
+        deleted: emptyStores.map((s) => s.name),
+    });
+});
+exports.cleanupEmptySectionStores = cleanupEmptySectionStores;
 //# sourceMappingURL=store.controller.js.map

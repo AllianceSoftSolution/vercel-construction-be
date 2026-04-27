@@ -35,5 +35,6 @@ router.get("/project/:projectId/inventory", auth_middleware_1.default, store_con
 router.get("/:storeId/permissions", auth_middleware_1.default, adminOnly, store_controller_1.getStorePermissions);
 router.put("/:storeId/permissions", auth_middleware_1.default, adminOnly, store_controller_1.setStorePermissions);
 router.delete("/:storeId/permissions/:userId", auth_middleware_1.default, adminOnly, store_controller_1.deleteStorePermission);
+router.delete("/cleanup/empty-section-stores", auth_middleware_1.default, adminOnly, store_controller_1.cleanupEmptySectionStores);
 exports.default = router;
 //# sourceMappingURL=store.js.map

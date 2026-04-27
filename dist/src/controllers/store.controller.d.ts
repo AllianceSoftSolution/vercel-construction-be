@@ -17,4 +17,5 @@ declare const assignProjectManager: (req: import("express").Request, res: import
 declare const getStorePermissions: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const setStorePermissions: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const deleteStorePermission: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
-export { createStore, getStores, getStoreById, updateStore, deleteStore, activateStore, deactivateStore, stockIn, stockOut, getStoreInventory, getStoreTransactions, getProjectInventory, assignPersonnel, removePersonnel, assignSiteIncharge, assignProjectManager, getStorePermissions, setStorePermissions, deleteStorePermission, };
+declare const cleanupEmptySectionStores: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+export { createStore, getStores, getStoreById, updateStore, deleteStore, activateStore, deactivateStore, stockIn, stockOut, getStoreInventory, getStoreTransactions, getProjectInventory, assignPersonnel, removePersonnel, assignSiteIncharge, assignProjectManager, getStorePermissions, setStorePermissions, deleteStorePermission, cleanupEmptySectionStores, };

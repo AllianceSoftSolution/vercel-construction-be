@@ -10,7 +10,8 @@ import { sendNotificationToUserSafe } from "../utils/notification";
 import prisma from "../utils/prisma";
 
 const createSection = catchAsync(async (req, res, next) => {
-  const { name, description, projectId, storePermissions } = req.body;
+  const { name, description, projectId, createStore, storePermissions } = req.body;
+  // createStore: boolean — only create the SECTION_STORE when explicitly requested
   // storePermissions: Array<{ userId, canViewStock, canRequestMaterials, canApproveMaterials, canAddStock, canTransferStock }>
   const userId = req.user.id;
 
@@ -30,7 +31,7 @@ const createSection = catchAsync(async (req, res, next) => {
   // Generate automatic section code
   const code = await generateSectionCode(projectId);
 
-  // Create section + SECTION_STORE + permissions in one transaction
+  // Create section and optionally SECTION_STORE + permissions in one transaction
   const createdSection = await prisma.$transaction(async (tx) => {
     const section = await tx.section.create({
       data: {
@@ -42,31 +43,33 @@ const createSection = catchAsync(async (req, res, next) => {
       },
     });
 
-    // Always auto-create the SECTION_STORE for this section
-    const sectionStore = await tx.store.create({
-      data: {
-        name: `Section Store - ${section.code}`,
-        type: "SECTION_STORE",
-        sectionId: section.id,
-        createdBy: userId,
-      },
-    });
-
-    // Create permissions if provided
-    if (Array.isArray(storePermissions) && storePermissions.length > 0) {
-      await tx.storePermission.createMany({
-        data: storePermissions.map((p: any) => ({
-          storeId: sectionStore.id,
-          userId: p.userId,
-          canViewStock: p.canViewStock ?? true,
-          canRequestMaterials: p.canRequestMaterials ?? false,
-          canApproveMaterials: p.canApproveMaterials ?? false,
-          canAddStock: p.canAddStock ?? false,
-          canTransferStock: p.canTransferStock ?? false,
+    // Only create the SECTION_STORE when the admin explicitly opts in
+    if (createStore === true) {
+      const sectionStore = await tx.store.create({
+        data: {
+          name: `Section Store - ${section.code}`,
+          type: "SECTION_STORE",
+          sectionId: section.id,
           createdBy: userId,
-        })),
-        skipDuplicates: true,
+        },
       });
+
+      // Create permissions if provided
+      if (Array.isArray(storePermissions) && storePermissions.length > 0) {
+        await tx.storePermission.createMany({
+          data: storePermissions.map((p: any) => ({
+            storeId: sectionStore.id,
+            userId: p.userId,
+            canViewStock: p.canViewStock ?? true,
+            canRequestMaterials: p.canRequestMaterials ?? false,
+            canApproveMaterials: p.canApproveMaterials ?? false,
+            canAddStock: p.canAddStock ?? false,
+            canTransferStock: p.canTransferStock ?? false,
+            createdBy: userId,
+          })),
+          skipDuplicates: true,
+        });
+      }
     }
 
     return section;

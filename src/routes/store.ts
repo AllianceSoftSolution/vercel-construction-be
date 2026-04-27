@@ -19,6 +19,7 @@ import {
   getStorePermissions,
   setStorePermissions,
   deleteStorePermission,
+  cleanupEmptySectionStores,
 } from "../controllers/store.controller";
 import protect from "../middlewares/auth.middleware";
 
@@ -62,5 +63,8 @@ router.get("/project/:projectId/inventory", protect, getProjectInventory);
 router.get("/:storeId/permissions", protect, adminOnly, getStorePermissions);
 router.put("/:storeId/permissions", protect, adminOnly, setStorePermissions);
 router.delete("/:storeId/permissions/:userId", protect, adminOnly, deleteStorePermission);
+
+// One-time cleanup: delete empty auto-created section stores
+router.delete("/cleanup/empty-section-stores", protect, adminOnly, cleanupEmptySectionStores);
 
 export default router;
