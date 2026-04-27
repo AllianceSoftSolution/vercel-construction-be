@@ -571,7 +571,7 @@ const createAccountantAssignment = (0, catchAsync_1.default)(async (req, res, ne
     });
     const currentSectionIds = currentAssignments.map((a) => a.sectionId);
     const toAssign = validSectionIds.filter((id) => !currentSectionIds.includes(id));
-    const toUnassign = currentAssignments.filter((a) => !validSectionIds.includes(a.sectionId));
+    const toUnassign = currentAssignments.filter((a) => a.sectionId !== null && !validSectionIds.includes(a.sectionId));
     const createdAssignments = await Promise.all(toAssign.map((sectionId) => prisma_1.default.accountantAssignment.create({
         data: {
             userId,

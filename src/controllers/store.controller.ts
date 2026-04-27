@@ -1848,6 +1848,82 @@ const assignProjectManager = catchAsync(async (req, res, next) => {
   });
 });
 
+// ─── Store Permissions ─────────────────────────────────────────────────────────
+
+const getStorePermissions = catchAsync(async (req, res, next) => {
+  const { storeId } = req.params;
+
+  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  if (!store) return next(new AppError("Store not found", 404));
+
+  const permissions = await prisma.storePermission.findMany({
+    where: { storeId },
+    include: {
+      user: {
+        select: { id: true, name: true, email: true, role: true },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  res.json({ message: "Store permissions retrieved", permissions });
+});
+
+const setStorePermissions = catchAsync(async (req, res, next) => {
+  const { storeId } = req.params;
+  const { permissions } = req.body; // array of { userId, canViewStock, canRequestMaterials, canApproveMaterials, canAddStock, canTransferStock }
+  const adminId = req.user.id;
+
+  if (!Array.isArray(permissions)) {
+    return next(new AppError("permissions must be an array", 400));
+  }
+
+  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  if (!store) return next(new AppError("Store not found", 404));
+
+  const results = await prisma.$transaction(
+    permissions.map((p) =>
+      prisma.storePermission.upsert({
+        where: { userId_storeId: { userId: p.userId, storeId } },
+        create: {
+          storeId,
+          userId: p.userId,
+          canViewStock: p.canViewStock ?? true,
+          canRequestMaterials: p.canRequestMaterials ?? false,
+          canApproveMaterials: p.canApproveMaterials ?? false,
+          canAddStock: p.canAddStock ?? false,
+          canTransferStock: p.canTransferStock ?? false,
+          createdBy: adminId,
+        },
+        update: {
+          canViewStock: p.canViewStock ?? true,
+          canRequestMaterials: p.canRequestMaterials ?? false,
+          canApproveMaterials: p.canApproveMaterials ?? false,
+          canAddStock: p.canAddStock ?? false,
+          canTransferStock: p.canTransferStock ?? false,
+        },
+      })
+    )
+  );
+
+  res.json({ message: "Store permissions saved successfully", permissions: results });
+});
+
+const deleteStorePermission = catchAsync(async (req, res, next) => {
+  const { storeId, userId } = req.params;
+
+  const perm = await prisma.storePermission.findUnique({
+    where: { userId_storeId: { userId, storeId } },
+  });
+  if (!perm) return next(new AppError("Permission record not found", 404));
+
+  await prisma.storePermission.delete({
+    where: { userId_storeId: { userId, storeId } },
+  });
+
+  res.json({ message: "Store permission removed" });
+});
+
 export {
   createStore,
   getStores,
@@ -1865,4 +1941,7 @@ export {
   removePersonnel,
   assignSiteIncharge,
   assignProjectManager,
+  getStorePermissions,
+  setStorePermissions,
+  deleteStorePermission,
 };

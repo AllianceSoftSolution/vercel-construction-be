@@ -190,9 +190,32 @@ export const addVendorPayment = catchAsync(
 export const getVendorPayments = catchAsync(
   async (req: Request, res: Response) => {
     const { vendorId } = req.query;
+    const user = req.user;
+
+    const where: any = { vendorId: vendorId as string };
+
+    // Head Accountant: scope payments to their assigned projects
+    if (user?.role === "ACCOUNTANT" && user.isHead) {
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true, sectionId: null },
+        select: { projectId: true },
+      });
+      const assignedProjectIds = assignments.map((a) => a.projectId);
+      where.projectId = { in: assignedProjectIds };
+    } else if (user?.role === "ACCOUNTANT" && !user.isHead) {
+      // Section Accountant: scope to their section payments
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { sectionId: true },
+      });
+      const sectionIds = assignments
+        .map((a) => a.sectionId)
+        .filter((id): id is string => !!id);
+      where.sectionId = { in: sectionIds };
+    }
 
     const payments = await prisma.vendorPayment.findMany({
-      where: { vendorId: vendorId as string },
+      where,
       orderBy: { createdAt: "desc" },
     });
 
@@ -260,14 +283,27 @@ export const getAllVendorAccounts = catchAsync(
     const skip = (Number(page) - 1) * Number(limit);
     const user = req.user;
 
-    // Detect section accountant and pre-load their assigned sections
+    // Detect accountant scope
     let userSectionIds: string[] | null = null;
-    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
-      const assignments = await prisma.accountantAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: { sectionId: true },
-      });
-      userSectionIds = assignments.map((a) => a.sectionId);
+    let headAccountantProjectIds: string[] | null = null;
+    if (user?.role === "ACCOUNTANT") {
+      if (user.isHead) {
+        // Head Accountant: scope to assigned projects
+        const assignments = await prisma.accountantAssignment.findMany({
+          where: { userId: user.id, isActive: true, sectionId: null },
+          select: { projectId: true },
+        });
+        headAccountantProjectIds = assignments.map((a) => a.projectId);
+      } else {
+        // Section Accountant: scope to assigned sections
+        const assignments = await prisma.accountantAssignment.findMany({
+          where: { userId: user.id, isActive: true },
+          select: { sectionId: true },
+        });
+        userSectionIds = assignments
+          .map((a) => a.sectionId)
+          .filter((id): id is string => !!id);
+      }
     }
 
     let where: any = {};
@@ -319,18 +355,104 @@ export const getAllVendorAccounts = catchAsync(
 
     // Resolve the transaction filter based on role + query params
     const isSectionScoped = userSectionIds !== null;
+    const isHeadScoped = headAccountantProjectIds !== null;
     const hasProjectFilter = Boolean(projectId);
 
-    if (hasProjectFilter || isSectionScoped) {
+    // Head accountant: treat their assigned projects as an implicit project filter
+    // If they also pass a projectId, further narrow to that project (if allowed)
+    const effectiveProjectIds: string[] | null = isHeadScoped
+      ? headAccountantProjectIds!.length > 0
+        ? hasProjectFilter
+          ? headAccountantProjectIds!.includes(projectId as string)
+            ? [projectId as string]
+            : [] // requested project not in their scope
+          : headAccountantProjectIds!
+        : [] // no assignments — empty
+      : null;
+
+    if (hasProjectFilter || isSectionScoped || isHeadScoped) {
+      const resolvedProjectId =
+        isHeadScoped && effectiveProjectIds!.length === 1
+          ? effectiveProjectIds![0]
+          : hasProjectFilter
+          ? (projectId as string)
+          : null;
+
+      // If head scoped with multiple or zero projects, build OR filter across all assigned projects
+      if (isHeadScoped && effectiveProjectIds!.length !== 1) {
+        if (effectiveProjectIds!.length === 0) {
+          // No accessible projects — return empty
+          return res.status(200).json({
+            status: "success",
+            data: [],
+            pagination: { page: Number(page), limit: Number(limit), total: 0, pages: 0 },
+            summary: { totalVendors: 0, totalCredited: 0, totalDebited: 0, totalBalance: 0, vendorsWithOverdue: 0, vendorsWithAdvance: 0 },
+          });
+        }
+        // Multiple projects: build a combined filter
+        const multiProjectPOs = await prisma.purchaseOrder.findMany({
+          where: { projectId: { in: effectiveProjectIds! }, isDeleted: false },
+          select: { id: true },
+        });
+        const multiPOIds = multiProjectPOs.map((po) => po.id);
+        const multiTransactionFilter = {
+          OR: [
+            { purchaseOrderId: { in: multiPOIds } },
+            { projectId: { in: effectiveProjectIds! } },
+          ],
+        };
+        const multiVendorFilter = { OR: [{ purchaseOrderId: { in: multiPOIds } }, { projectId: { in: effectiveProjectIds! } }] };
+
+        const vendorAccountsMulti = await prisma.vendorAccount.findMany({
+          where: { ...where, transactions: { some: multiVendorFilter } },
+          include: {
+            vendor: { select: { id: true, name: true, contactPerson: true, email: true, phone: true, address: true, isActive: true } },
+            transactions: { where: multiTransactionFilter, orderBy: { createdAt: "desc" } },
+          },
+          skip,
+          take: Number(limit),
+          orderBy: { lastUpdated: "desc" },
+        });
+
+        const vendorMetrics = vendorAccountsMulti
+          .map((account) => {
+            const credited = account.transactions.filter((t) => t.type === "CREDIT").reduce((s, t) => s + Number(t.amount), 0);
+            const debited = account.transactions.filter((t) => t.type === "DEBIT").reduce((s, t) => s + Number(t.amount), 0);
+            const balance = credited - debited;
+            return { id: account.id, vendorId: account.vendorId, vendor: account.vendor, totalCredited: credited, totalDebited: debited, balance, paidAmount: debited, remainingAmount: balance, overdueAmount: balance > 0 ? balance : 0, advanceAmount: balance < 0 ? Math.abs(balance) : 0, lastUpdated: account.lastUpdated, recentTransactions: account.transactions.slice(0, 5), hasOverdueAmount: balance > 0, hasAdvanceAmount: balance < 0, isBalanced: balance === 0 };
+          })
+          .filter((a) => a.totalCredited > 0 || a.totalDebited > 0);
+
+        const totalMulti = await prisma.vendorAccount.count({ where: { ...where, transactions: { some: multiVendorFilter } } });
+        return res.status(200).json({
+          status: "success",
+          data: vendorMetrics,
+          pagination: { page: Number(page), limit: Number(limit), total: totalMulti, pages: Math.ceil(totalMulti / Number(limit)) },
+          summary: { totalVendors: totalMulti, totalCredited: vendorMetrics.reduce((s, a) => s + a.totalCredited, 0), totalDebited: vendorMetrics.reduce((s, a) => s + a.totalDebited, 0), totalBalance: vendorMetrics.reduce((s, a) => s + a.balance, 0), vendorsWithOverdue: vendorMetrics.filter((a) => a.hasOverdueAmount).length, vendorsWithAdvance: vendorMetrics.filter((a) => a.hasAdvanceAmount).length },
+        });
+      }
+    }
+
+    if (hasProjectFilter || isSectionScoped || (isHeadScoped && effectiveProjectIds!.length === 1)) {
       // Build section/project scoped transaction filter
       const transactionFilter = await buildScopedTransactionFilter(
-        hasProjectFilter ? (projectId as string) : null,
+        isHeadScoped && effectiveProjectIds!.length === 1
+          ? effectiveProjectIds![0]
+          : hasProjectFilter
+          ? (projectId as string)
+          : null,
         userSectionIds
       );
 
       // Get PO IDs again for vendor filtering (same logic, reuse filter)
       const poWhere: any = { isDeleted: false };
-      if (hasProjectFilter) poWhere.projectId = projectId as string;
+      const resolvedSingleProjectId =
+        isHeadScoped && effectiveProjectIds!.length === 1
+          ? effectiveProjectIds![0]
+          : hasProjectFilter
+          ? (projectId as string)
+          : null;
+      if (resolvedSingleProjectId) poWhere.projectId = resolvedSingleProjectId;
       if (isSectionScoped) poWhere.sectionId = { in: userSectionIds };
       const scopedPOs = await prisma.purchaseOrder.findMany({
         where: poWhere,
@@ -346,8 +468,8 @@ export const getAllVendorAccounts = catchAsync(
       };
       if (isSectionScoped) {
         vendorTransactionSome.OR.push({ sectionId: { in: userSectionIds! } });
-      } else if (hasProjectFilter) {
-        vendorTransactionSome.OR.push({ projectId: projectId as string });
+      } else if (resolvedSingleProjectId) {
+        vendorTransactionSome.OR.push({ projectId: resolvedSingleProjectId });
       }
 
       // Get all vendor accounts that have scoped transactions
@@ -582,17 +704,30 @@ export const getPayablesSummary = catchAsync(
     let poWhere: any = { isDeleted: false, totalAmount: { not: null } };
     let paymentWhere: any = {};
 
-    // Section accountant: scope to their assigned sections only
-    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
-      const assignments = await prisma.accountantAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: { sectionId: true },
-      });
-      const sectionIds = assignments.map((a) => a.sectionId);
-      poWhere.sectionId = { in: sectionIds };
-      paymentWhere.sectionId = { in: sectionIds };
+    if (user?.role === "ACCOUNTANT") {
+      if (user.isHead) {
+        // Head Accountant: scope to assigned projects
+        const assignments = await prisma.accountantAssignment.findMany({
+          where: { userId: user.id, isActive: true, sectionId: null },
+          select: { projectId: true },
+        });
+        const assignedProjectIds = assignments.map((a) => a.projectId);
+        poWhere.projectId = { in: assignedProjectIds };
+        paymentWhere.projectId = { in: assignedProjectIds };
+      } else {
+        // Section Accountant: scope to their assigned sections only
+        const assignments = await prisma.accountantAssignment.findMany({
+          where: { userId: user.id, isActive: true },
+          select: { sectionId: true },
+        });
+        const sectionIds = assignments
+          .map((a) => a.sectionId)
+          .filter((id): id is string => !!id);
+        poWhere.sectionId = { in: sectionIds };
+        paymentWhere.sectionId = { in: sectionIds };
+      }
     }
-    // Admin and Head Accountant: no filter — see everything
+    // Admin: no filter — see everything
 
     const [poResult, paymentResult] = await Promise.all([
       prisma.purchaseOrder.aggregate({
@@ -627,23 +762,36 @@ export const getPayablesSummaryByProject = catchAsync(
     let paymentGroupWhere: any = { projectId: { not: null } };
     let projectIds: string[] | null = null;
 
-    // Section accountant: scope to sections they are assigned to
-    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
-      const assignments = await prisma.accountantAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: { sectionId: true },
-      });
-      const sectionIds = assignments.map((a) => a.sectionId);
-      poGroupWhere.sectionId = { in: sectionIds };
-      paymentGroupWhere.sectionId = { in: sectionIds };
+    if (user?.role === "ACCOUNTANT") {
+      if (user.isHead) {
+        // Head Accountant: scope to assigned projects
+        const assignments = await prisma.accountantAssignment.findMany({
+          where: { userId: user.id, isActive: true, sectionId: null },
+          select: { projectId: true },
+        });
+        projectIds = [...new Set(assignments.map((a) => a.projectId))];
+        poGroupWhere.projectId = { in: projectIds };
+        paymentGroupWhere.projectId = { in: projectIds };
+      } else {
+        // Section Accountant: scope to sections they are assigned to
+        const assignments = await prisma.accountantAssignment.findMany({
+          where: { userId: user.id, isActive: true },
+          select: { sectionId: true },
+        });
+        const sectionIds = assignments
+          .map((a) => a.sectionId)
+          .filter((id): id is string => !!id);
+        poGroupWhere.sectionId = { in: sectionIds };
+        paymentGroupWhere.sectionId = { in: sectionIds };
 
-      const sections = await prisma.section.findMany({
-        where: { id: { in: sectionIds } },
-        select: { projectId: true },
-      });
-      projectIds = [...new Set(sections.map((s) => s.projectId))];
+        const sections = await prisma.section.findMany({
+          where: { id: { in: sectionIds } },
+          select: { projectId: true },
+        });
+        projectIds = [...new Set(sections.map((s) => s.projectId))];
+      }
     }
-    // Admin and Head Accountant: no filter — see all projects
+    // Admin: no filter — see all projects
 
     const [poTotals, paymentTotals, projects] = await Promise.all([
       prisma.purchaseOrder.groupBy({

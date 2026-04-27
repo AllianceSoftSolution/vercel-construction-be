@@ -16,6 +16,9 @@ import {
   removePersonnel,
   assignSiteIncharge,
   assignProjectManager,
+  getStorePermissions,
+  setStorePermissions,
+  deleteStorePermission,
 } from "../controllers/store.controller";
 import protect from "../middlewares/auth.middleware";
 
@@ -54,5 +57,10 @@ router.get("/:storeId/transactions", protect, getStoreTransactions);
 
 // Project inventory route
 router.get("/project/:projectId/inventory", protect, getProjectInventory);
+
+// Store permissions routes
+router.get("/:storeId/permissions", protect, adminOnly, getStorePermissions);
+router.put("/:storeId/permissions", protect, adminOnly, setStorePermissions);
+router.delete("/:storeId/permissions/:userId", protect, adminOnly, deleteStorePermission);
 
 export default router;

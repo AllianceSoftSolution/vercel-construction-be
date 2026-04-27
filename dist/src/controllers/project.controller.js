@@ -119,7 +119,7 @@ const getProjects = (0, catchAsync_1.default)(async (req, res) => {
             select: { projectId: true, sectionId: true },
         });
         const projectIds = [...new Set(assignments.map((a) => a.projectId))];
-        assignedSectionIds = assignments.map((a) => a.sectionId);
+        assignedSectionIds = assignments.map((a) => a.sectionId).filter((id) => id !== null);
         defaultFilters.id = { in: projectIds };
     }
     const queryOptions = (0, buildQueryOptions_1.buildQueryOptions)(filterOptions, defaultFilters, searchableFields);
@@ -249,7 +249,7 @@ const getProjectById = (0, catchAsync_1.default)(async (req, res, next) => {
             where: { userId: user.id, isActive: true, projectId: id },
             select: { sectionId: true },
         });
-        assignedSectionIds = assignments.map((a) => a.sectionId);
+        assignedSectionIds = assignments.map((a) => a.sectionId).filter((id) => id !== null);
     }
     const project = await prisma_1.default.project.findUnique({
         where: { id },
@@ -553,7 +553,7 @@ const getProjectById = (0, catchAsync_1.default)(async (req, res, next) => {
     });
     project.accountantAssignments.forEach((assignment) => {
         if (user.role === "ADMIN" ||
-            assignedSectionIds.includes(assignment.section.id)) {
+            (assignment.section && assignedSectionIds.includes(assignment.section.id))) {
             addMember(assignment.user, {
                 type: "Accountant",
                 section: assignment.section,

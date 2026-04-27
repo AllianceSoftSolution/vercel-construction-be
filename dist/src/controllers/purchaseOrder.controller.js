@@ -164,6 +164,17 @@ exports.getPurchaseOrders = (0, catchAsync_1.default)(async (req, res) => {
     }
     else if (user.role === "ACCOUNTANT") {
         if (user.isHead) {
+            const assignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId: user.id, isActive: true, sectionId: null },
+                select: { projectId: true },
+            });
+            const assignedProjectIds = assignments.map((a) => a.projectId);
+            if (assignedProjectIds.length > 0) {
+                where.projectId = { in: assignedProjectIds };
+            }
+            else {
+                where.projectId = { in: [] };
+            }
         }
         else {
             const assignments = await prisma_1.default.accountantAssignment.findMany({

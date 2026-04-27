@@ -10,7 +10,8 @@ import { sendNotificationToUserSafe } from "../utils/notification";
 import prisma from "../utils/prisma";
 
 const createSection = catchAsync(async (req, res, next) => {
-  const { name, description, projectId } = req.body;
+  const { name, description, projectId, storePermissions } = req.body;
+  // storePermissions: Array<{ userId, canViewStock, canRequestMaterials, canApproveMaterials, canAddStock, canTransferStock }>
   const userId = req.user.id;
 
   if (!name || !projectId) {
@@ -29,15 +30,46 @@ const createSection = catchAsync(async (req, res, next) => {
   // Generate automatic section code
   const code = await generateSectionCode(projectId);
 
-  // Create section only (stores are created manually from Store Creation tab)
-  const createdSection = await prisma.section.create({
-    data: {
-      name,
-      code,
-      description,
-      projectId,
-      createdBy: userId,
-    },
+  // Create section + SECTION_STORE + permissions in one transaction
+  const createdSection = await prisma.$transaction(async (tx) => {
+    const section = await tx.section.create({
+      data: {
+        name,
+        code,
+        description,
+        projectId,
+        createdBy: userId,
+      },
+    });
+
+    // Always auto-create the SECTION_STORE for this section
+    const sectionStore = await tx.store.create({
+      data: {
+        name: `Section Store - ${section.code}`,
+        type: "SECTION_STORE",
+        sectionId: section.id,
+        createdBy: userId,
+      },
+    });
+
+    // Create permissions if provided
+    if (Array.isArray(storePermissions) && storePermissions.length > 0) {
+      await tx.storePermission.createMany({
+        data: storePermissions.map((p: any) => ({
+          storeId: sectionStore.id,
+          userId: p.userId,
+          canViewStock: p.canViewStock ?? true,
+          canRequestMaterials: p.canRequestMaterials ?? false,
+          canApproveMaterials: p.canApproveMaterials ?? false,
+          canAddStock: p.canAddStock ?? false,
+          canTransferStock: p.canTransferStock ?? false,
+          createdBy: userId,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return section;
   });
 
   // Fetch the section with all details

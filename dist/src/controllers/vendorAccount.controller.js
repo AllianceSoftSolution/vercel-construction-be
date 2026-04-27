@@ -147,8 +147,28 @@ exports.addVendorPayment = (0, catchAsync_1.default)(async (req, res, next) => {
 });
 exports.getVendorPayments = (0, catchAsync_1.default)(async (req, res) => {
     const { vendorId } = req.query;
+    const user = req.user;
+    const where = { vendorId: vendorId };
+    if (user?.role === "ACCOUNTANT" && user.isHead) {
+        const assignments = await prisma_1.default.accountantAssignment.findMany({
+            where: { userId: user.id, isActive: true, sectionId: null },
+            select: { projectId: true },
+        });
+        const assignedProjectIds = assignments.map((a) => a.projectId);
+        where.projectId = { in: assignedProjectIds };
+    }
+    else if (user?.role === "ACCOUNTANT" && !user.isHead) {
+        const assignments = await prisma_1.default.accountantAssignment.findMany({
+            where: { userId: user.id, isActive: true },
+            select: { sectionId: true },
+        });
+        const sectionIds = assignments
+            .map((a) => a.sectionId)
+            .filter((id) => !!id);
+        where.sectionId = { in: sectionIds };
+    }
     const payments = await prisma_1.default.vendorPayment.findMany({
-        where: { vendorId: vendorId },
+        where,
         orderBy: { createdAt: "desc" },
     });
     res.status(200).json({
@@ -198,12 +218,24 @@ exports.getAllVendorAccounts = (0, catchAsync_1.default)(async (req, res) => {
     const skip = (Number(page) - 1) * Number(limit);
     const user = req.user;
     let userSectionIds = null;
-    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
-        const assignments = await prisma_1.default.accountantAssignment.findMany({
-            where: { userId: user.id, isActive: true },
-            select: { sectionId: true },
-        });
-        userSectionIds = assignments.map((a) => a.sectionId);
+    let headAccountantProjectIds = null;
+    if (user?.role === "ACCOUNTANT") {
+        if (user.isHead) {
+            const assignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId: user.id, isActive: true, sectionId: null },
+                select: { projectId: true },
+            });
+            headAccountantProjectIds = assignments.map((a) => a.projectId);
+        }
+        else {
+            const assignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId: user.id, isActive: true },
+                select: { sectionId: true },
+            });
+            userSectionIds = assignments
+                .map((a) => a.sectionId)
+                .filter((id) => !!id);
+        }
     }
     let where = {};
     if (search) {
@@ -242,12 +274,80 @@ exports.getAllVendorAccounts = (0, catchAsync_1.default)(async (req, res) => {
         return filter;
     };
     const isSectionScoped = userSectionIds !== null;
+    const isHeadScoped = headAccountantProjectIds !== null;
     const hasProjectFilter = Boolean(projectId);
-    if (hasProjectFilter || isSectionScoped) {
-        const transactionFilter = await buildScopedTransactionFilter(hasProjectFilter ? projectId : null, userSectionIds);
+    const effectiveProjectIds = isHeadScoped
+        ? headAccountantProjectIds.length > 0
+            ? hasProjectFilter
+                ? headAccountantProjectIds.includes(projectId)
+                    ? [projectId]
+                    : []
+                : headAccountantProjectIds
+            : []
+        : null;
+    if (hasProjectFilter || isSectionScoped || isHeadScoped) {
+        if (isHeadScoped && effectiveProjectIds.length !== 1) {
+            if (effectiveProjectIds.length === 0) {
+                return res.status(200).json({
+                    status: "success",
+                    data: [],
+                    pagination: { page: Number(page), limit: Number(limit), total: 0, pages: 0 },
+                    summary: { totalVendors: 0, totalCredited: 0, totalDebited: 0, totalBalance: 0, vendorsWithOverdue: 0, vendorsWithAdvance: 0 },
+                });
+            }
+            const multiProjectPOs = await prisma_1.default.purchaseOrder.findMany({
+                where: { projectId: { in: effectiveProjectIds }, isDeleted: false },
+                select: { id: true },
+            });
+            const multiPOIds = multiProjectPOs.map((po) => po.id);
+            const multiTransactionFilter = {
+                OR: [
+                    { purchaseOrderId: { in: multiPOIds } },
+                    { projectId: { in: effectiveProjectIds } },
+                ],
+            };
+            const multiVendorFilter = { OR: [{ purchaseOrderId: { in: multiPOIds } }, { projectId: { in: effectiveProjectIds } }] };
+            const vendorAccountsMulti = await prisma_1.default.vendorAccount.findMany({
+                where: { ...where, transactions: { some: multiVendorFilter } },
+                include: {
+                    vendor: { select: { id: true, name: true, contactPerson: true, email: true, phone: true, address: true, isActive: true } },
+                    transactions: { where: multiTransactionFilter, orderBy: { createdAt: "desc" } },
+                },
+                skip,
+                take: Number(limit),
+                orderBy: { lastUpdated: "desc" },
+            });
+            const vendorMetrics = vendorAccountsMulti
+                .map((account) => {
+                const credited = account.transactions.filter((t) => t.type === "CREDIT").reduce((s, t) => s + Number(t.amount), 0);
+                const debited = account.transactions.filter((t) => t.type === "DEBIT").reduce((s, t) => s + Number(t.amount), 0);
+                const balance = credited - debited;
+                return { id: account.id, vendorId: account.vendorId, vendor: account.vendor, totalCredited: credited, totalDebited: debited, balance, paidAmount: debited, remainingAmount: balance, overdueAmount: balance > 0 ? balance : 0, advanceAmount: balance < 0 ? Math.abs(balance) : 0, lastUpdated: account.lastUpdated, recentTransactions: account.transactions.slice(0, 5), hasOverdueAmount: balance > 0, hasAdvanceAmount: balance < 0, isBalanced: balance === 0 };
+            })
+                .filter((a) => a.totalCredited > 0 || a.totalDebited > 0);
+            const totalMulti = await prisma_1.default.vendorAccount.count({ where: { ...where, transactions: { some: multiVendorFilter } } });
+            return res.status(200).json({
+                status: "success",
+                data: vendorMetrics,
+                pagination: { page: Number(page), limit: Number(limit), total: totalMulti, pages: Math.ceil(totalMulti / Number(limit)) },
+                summary: { totalVendors: totalMulti, totalCredited: vendorMetrics.reduce((s, a) => s + a.totalCredited, 0), totalDebited: vendorMetrics.reduce((s, a) => s + a.totalDebited, 0), totalBalance: vendorMetrics.reduce((s, a) => s + a.balance, 0), vendorsWithOverdue: vendorMetrics.filter((a) => a.hasOverdueAmount).length, vendorsWithAdvance: vendorMetrics.filter((a) => a.hasAdvanceAmount).length },
+            });
+        }
+    }
+    if (hasProjectFilter || isSectionScoped || (isHeadScoped && effectiveProjectIds.length === 1)) {
+        const transactionFilter = await buildScopedTransactionFilter(isHeadScoped && effectiveProjectIds.length === 1
+            ? effectiveProjectIds[0]
+            : hasProjectFilter
+                ? projectId
+                : null, userSectionIds);
         const poWhere = { isDeleted: false };
-        if (hasProjectFilter)
-            poWhere.projectId = projectId;
+        const resolvedSingleProjectId = isHeadScoped && effectiveProjectIds.length === 1
+            ? effectiveProjectIds[0]
+            : hasProjectFilter
+                ? projectId
+                : null;
+        if (resolvedSingleProjectId)
+            poWhere.projectId = resolvedSingleProjectId;
         if (isSectionScoped)
             poWhere.sectionId = { in: userSectionIds };
         const scopedPOs = await prisma_1.default.purchaseOrder.findMany({
@@ -263,8 +363,8 @@ exports.getAllVendorAccounts = (0, catchAsync_1.default)(async (req, res) => {
         if (isSectionScoped) {
             vendorTransactionSome.OR.push({ sectionId: { in: userSectionIds } });
         }
-        else if (hasProjectFilter) {
-            vendorTransactionSome.OR.push({ projectId: projectId });
+        else if (resolvedSingleProjectId) {
+            vendorTransactionSome.OR.push({ projectId: resolvedSingleProjectId });
         }
         const vendorAccountsWithProjectTransactions = await prisma_1.default.vendorAccount.findMany({
             where: {
@@ -399,7 +499,7 @@ exports.getAllVendorAccounts = (0, catchAsync_1.default)(async (req, res) => {
         };
     });
     const total = await prisma_1.default.vendorAccount.count({ where });
-    res.status(200).json({
+    return res.status(200).json({
         status: "success",
         data: vendorAccountsWithMetrics,
         pagination: {
@@ -422,14 +522,27 @@ exports.getPayablesSummary = (0, catchAsync_1.default)(async (req, res) => {
     const user = req.user;
     let poWhere = { isDeleted: false, totalAmount: { not: null } };
     let paymentWhere = {};
-    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
-        const assignments = await prisma_1.default.accountantAssignment.findMany({
-            where: { userId: user.id, isActive: true },
-            select: { sectionId: true },
-        });
-        const sectionIds = assignments.map((a) => a.sectionId);
-        poWhere.sectionId = { in: sectionIds };
-        paymentWhere.sectionId = { in: sectionIds };
+    if (user?.role === "ACCOUNTANT") {
+        if (user.isHead) {
+            const assignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId: user.id, isActive: true, sectionId: null },
+                select: { projectId: true },
+            });
+            const assignedProjectIds = assignments.map((a) => a.projectId);
+            poWhere.projectId = { in: assignedProjectIds };
+            paymentWhere.projectId = { in: assignedProjectIds };
+        }
+        else {
+            const assignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId: user.id, isActive: true },
+                select: { sectionId: true },
+            });
+            const sectionIds = assignments
+                .map((a) => a.sectionId)
+                .filter((id) => !!id);
+            poWhere.sectionId = { in: sectionIds };
+            paymentWhere.sectionId = { in: sectionIds };
+        }
     }
     const [poResult, paymentResult] = await Promise.all([
         prisma_1.default.purchaseOrder.aggregate({
@@ -454,19 +567,32 @@ exports.getPayablesSummaryByProject = (0, catchAsync_1.default)(async (req, res)
     let poGroupWhere = { isDeleted: false, totalAmount: { not: null } };
     let paymentGroupWhere = { projectId: { not: null } };
     let projectIds = null;
-    if (user?.role === "ACCOUNTANT" && !user?.isHead) {
-        const assignments = await prisma_1.default.accountantAssignment.findMany({
-            where: { userId: user.id, isActive: true },
-            select: { sectionId: true },
-        });
-        const sectionIds = assignments.map((a) => a.sectionId);
-        poGroupWhere.sectionId = { in: sectionIds };
-        paymentGroupWhere.sectionId = { in: sectionIds };
-        const sections = await prisma_1.default.section.findMany({
-            where: { id: { in: sectionIds } },
-            select: { projectId: true },
-        });
-        projectIds = [...new Set(sections.map((s) => s.projectId))];
+    if (user?.role === "ACCOUNTANT") {
+        if (user.isHead) {
+            const assignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId: user.id, isActive: true, sectionId: null },
+                select: { projectId: true },
+            });
+            projectIds = [...new Set(assignments.map((a) => a.projectId))];
+            poGroupWhere.projectId = { in: projectIds };
+            paymentGroupWhere.projectId = { in: projectIds };
+        }
+        else {
+            const assignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId: user.id, isActive: true },
+                select: { sectionId: true },
+            });
+            const sectionIds = assignments
+                .map((a) => a.sectionId)
+                .filter((id) => !!id);
+            poGroupWhere.sectionId = { in: sectionIds };
+            paymentGroupWhere.sectionId = { in: sectionIds };
+            const sections = await prisma_1.default.section.findMany({
+                where: { id: { in: sectionIds } },
+                select: { projectId: true },
+            });
+            projectIds = [...new Set(sections.map((s) => s.projectId))];
+        }
     }
     const [poTotals, paymentTotals, projects] = await Promise.all([
         prisma_1.default.purchaseOrder.groupBy({

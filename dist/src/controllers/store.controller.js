@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.assignProjectManager = exports.assignSiteIncharge = exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
+exports.deleteStorePermission = exports.setStorePermissions = exports.getStorePermissions = exports.assignProjectManager = exports.assignSiteIncharge = exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const buildQueryOptions_1 = require("../utils/buildQueryOptions");
@@ -1495,4 +1495,67 @@ const assignProjectManager = (0, catchAsync_1.default)(async (req, res, next) =>
     });
 });
 exports.assignProjectManager = assignProjectManager;
+const getStorePermissions = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { storeId } = req.params;
+    const store = await prisma_1.default.store.findUnique({ where: { id: storeId } });
+    if (!store)
+        return next(new appError_1.default("Store not found", 404));
+    const permissions = await prisma_1.default.storePermission.findMany({
+        where: { storeId },
+        include: {
+            user: {
+                select: { id: true, name: true, email: true, role: true },
+            },
+        },
+        orderBy: { createdAt: "asc" },
+    });
+    res.json({ message: "Store permissions retrieved", permissions });
+});
+exports.getStorePermissions = getStorePermissions;
+const setStorePermissions = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { storeId } = req.params;
+    const { permissions } = req.body;
+    const adminId = req.user.id;
+    if (!Array.isArray(permissions)) {
+        return next(new appError_1.default("permissions must be an array", 400));
+    }
+    const store = await prisma_1.default.store.findUnique({ where: { id: storeId } });
+    if (!store)
+        return next(new appError_1.default("Store not found", 404));
+    const results = await prisma_1.default.$transaction(permissions.map((p) => prisma_1.default.storePermission.upsert({
+        where: { userId_storeId: { userId: p.userId, storeId } },
+        create: {
+            storeId,
+            userId: p.userId,
+            canViewStock: p.canViewStock ?? true,
+            canRequestMaterials: p.canRequestMaterials ?? false,
+            canApproveMaterials: p.canApproveMaterials ?? false,
+            canAddStock: p.canAddStock ?? false,
+            canTransferStock: p.canTransferStock ?? false,
+            createdBy: adminId,
+        },
+        update: {
+            canViewStock: p.canViewStock ?? true,
+            canRequestMaterials: p.canRequestMaterials ?? false,
+            canApproveMaterials: p.canApproveMaterials ?? false,
+            canAddStock: p.canAddStock ?? false,
+            canTransferStock: p.canTransferStock ?? false,
+        },
+    })));
+    res.json({ message: "Store permissions saved successfully", permissions: results });
+});
+exports.setStorePermissions = setStorePermissions;
+const deleteStorePermission = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { storeId, userId } = req.params;
+    const perm = await prisma_1.default.storePermission.findUnique({
+        where: { userId_storeId: { userId, storeId } },
+    });
+    if (!perm)
+        return next(new appError_1.default("Permission record not found", 404));
+    await prisma_1.default.storePermission.delete({
+        where: { userId_storeId: { userId, storeId } },
+    });
+    res.json({ message: "Store permission removed" });
+});
+exports.deleteStorePermission = deleteStorePermission;
 //# sourceMappingURL=store.controller.js.map

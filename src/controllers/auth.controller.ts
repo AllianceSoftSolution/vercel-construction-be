@@ -29,7 +29,7 @@ import prisma from "../utils/prisma";
 setupOTPCleanup();
 
 const registerUser = catchAsync(async (req, res, next) => {
-  const { email, name, role, isHead = false, notes } = req.body;
+  const { email, name, role, isHead = false, notes, projectIds } = req.body;
 
   // Check if user already exists
   const userCount = await prisma.user.count();
@@ -61,6 +61,22 @@ const registerUser = catchAsync(async (req, res, next) => {
         )
       );
     }
+
+    // Head Accountant must be assigned to at least one project at creation time
+    if (role === "ACCOUNTANT") {
+      if (
+        !projectIds ||
+        !Array.isArray(projectIds) ||
+        projectIds.length === 0
+      ) {
+        return next(
+          new AppError(
+            "projectIds[] is required when creating a Head Accountant. Assign at least one project.",
+            400
+          )
+        );
+      }
+    }
   }
 
   // Check if user already exists by email
@@ -82,28 +98,46 @@ const registerUser = catchAsync(async (req, res, next) => {
   // Hash password
   const hashedPassword = await bcrypt.hash(generatedPassword, 12);
 
-  const user = await prisma.user.create({
-    data: {
-      email,
-      password: hashedPassword,
-      name,
-      employeeId,
-      role,
-      isHead,
-      createdBy,
-      ...(notes && { notes }),
-    },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      employeeId: true,
-      role: true,
-      isHead: true,
-      isActive: true,
-      createdAt: true,
-      notes: true,
-    },
+  const user = await prisma.$transaction(async (tx) => {
+    const created = await tx.user.create({
+      data: {
+        email,
+        password: hashedPassword,
+        name,
+        employeeId,
+        role,
+        isHead,
+        createdBy,
+        ...(notes && { notes }),
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        employeeId: true,
+        role: true,
+        isHead: true,
+        isActive: true,
+        createdAt: true,
+        notes: true,
+      },
+    });
+
+    // For Head Accountant: create project-level (sectionId = null) assignments
+    if (isHead && role === "ACCOUNTANT" && projectIds?.length) {
+      await tx.accountantAssignment.createMany({
+        data: (projectIds as string[]).map((pid: string) => ({
+          userId: created.id,
+          projectId: pid,
+          sectionId: null,
+          isActive: true,
+          createdBy: createdBy ?? created.id,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    return created;
   });
 
   // Send welcome email
@@ -835,7 +869,7 @@ export const removeDeviceToken = catchAsync(async (req, res, next) => {
 // Change user role (Admin only)
 const changeUserRole = catchAsync(async (req, res, next) => {
   const { id } = req.params;
-  const { newRole, isHead = false } = req.body;
+  const { newRole, isHead = false, projectIds } = req.body;
   const adminId = req.user.id;
 
   // Check if current user is admin
@@ -870,6 +904,22 @@ const changeUserRole = catchAsync(async (req, res, next) => {
           400
         )
       );
+    }
+
+    // Head Accountant must be assigned to at least one project
+    if (newRole === "ACCOUNTANT") {
+      if (
+        !projectIds ||
+        !Array.isArray(projectIds) ||
+        projectIds.length === 0
+      ) {
+        return next(
+          new AppError(
+            "projectIds[] is required when setting isHead: true for an Accountant. Assign at least one project.",
+            400
+          )
+        );
+      }
     }
   }
 
@@ -906,23 +956,47 @@ const changeUserRole = catchAsync(async (req, res, next) => {
 
   // If role is not changing, just update isHead if needed
   if (user.role === newRole) {
-    if (user.isHead !== isHead) {
-      const updatedUser = await prisma.user.update({
-        where: { id },
-        data: {
-          isHead,
-          updatedBy: adminId,
-          updatedAt: new Date(),
-        },
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          role: true,
-          isHead: true,
-          isActive: true,
-          updatedAt: true,
-        },
+    if (user.isHead !== isHead || isHead) {
+      const updatedUser = await prisma.$transaction(async (tx) => {
+        // Deactivate all existing assignments first when toggling isHead
+        if (newRole === "ACCOUNTANT") {
+          await tx.accountantAssignment.updateMany({
+            where: { userId: id, isActive: true },
+            data: { isActive: false },
+          });
+
+          // Re-create project-level assignments if becoming head accountant
+          if (isHead && projectIds?.length) {
+            await tx.accountantAssignment.createMany({
+              data: (projectIds as string[]).map((pid: string) => ({
+                userId: id,
+                projectId: pid,
+                sectionId: null,
+                isActive: true,
+                createdBy: adminId,
+              })),
+              skipDuplicates: true,
+            });
+          }
+        }
+
+        return tx.user.update({
+          where: { id },
+          data: {
+            isHead,
+            updatedBy: adminId,
+            updatedAt: new Date(),
+          },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            isHead: true,
+            isActive: true,
+            updatedAt: true,
+          },
+        });
       });
 
       return res.json({
@@ -1092,6 +1166,20 @@ const changeUserRole = catchAsync(async (req, res, next) => {
         updatedAt: true,
       },
     });
+
+    // For Head Accountant: create project-level assignments
+    if (isHead && newRole === "ACCOUNTANT" && (projectIds as string[])?.length) {
+      await tx.accountantAssignment.createMany({
+        data: (projectIds as string[]).map((pid: string) => ({
+          userId: id,
+          projectId: pid,
+          sectionId: null,
+          isActive: true,
+          createdBy: adminId,
+        })),
+        skipDuplicates: true,
+      });
+    }
 
     return { updatedUser, cmStores };
   });

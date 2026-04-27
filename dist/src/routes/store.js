@@ -32,5 +32,8 @@ router.post("/:storeId/stock-out", auth_middleware_1.default, store_controller_1
 router.get("/:storeId/inventory", auth_middleware_1.default, store_controller_1.getStoreInventory);
 router.get("/:storeId/transactions", auth_middleware_1.default, store_controller_1.getStoreTransactions);
 router.get("/project/:projectId/inventory", auth_middleware_1.default, store_controller_1.getProjectInventory);
+router.get("/:storeId/permissions", auth_middleware_1.default, adminOnly, store_controller_1.getStorePermissions);
+router.put("/:storeId/permissions", auth_middleware_1.default, adminOnly, store_controller_1.setStorePermissions);
+router.delete("/:storeId/permissions/:userId", auth_middleware_1.default, adminOnly, store_controller_1.deleteStorePermission);
 exports.default = router;
 //# sourceMappingURL=store.js.map

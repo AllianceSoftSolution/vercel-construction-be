@@ -123,6 +123,7 @@ model User {
   deviceTokens               DeviceToken[]
   materialCaps               MaterialCap[] @relation("MaterialCapCreator")
   materialCapsUpdated        MaterialCap[] @relation("MaterialCapUpdater")
+  storePermissions           StorePermission[]
 
   @@map("users")
 }
@@ -251,14 +252,14 @@ model AccountantAssignment {
   id        String   @id @default(cuid())
   userId    String
   projectId String
-  sectionId String
+  sectionId String?  // null for project-level (isHead) assignments; required for section-level assignments
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   createdBy String
   
   user      User     @relation(fields: [userId], references: [id])
   project   Project  @relation(fields: [projectId], references: [id])
-  section   Section  @relation(fields: [sectionId], references: [id])
+  section   Section? @relation(fields: [sectionId], references: [id])
   
   @@unique([userId, projectId, sectionId])
   @@map("accountant_assignments")
@@ -290,8 +291,29 @@ model Store {
   transactions             StoreTransaction[]
   fulfillmentsFrom         DemandFulfillment[] @relation("FulfillmentFromStore")
   fulfillmentsTo           DemandFulfillment[] @relation("FulfillmentToStore")
+  permissions              StorePermission[]
 
   @@map("stores")
+}
+
+model StorePermission {
+  id                  String   @id @default(cuid())
+  storeId             String
+  userId              String
+  canViewStock        Boolean  @default(true)
+  canRequestMaterials Boolean  @default(false)
+  canApproveMaterials Boolean  @default(false)
+  canAddStock         Boolean  @default(false)
+  canTransferStock    Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  createdBy           String
+
+  store Store @relation(fields: [storeId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@unique([userId, storeId])
+  @@map("store_permissions")
 }
 
 model Material {

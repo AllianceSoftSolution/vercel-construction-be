@@ -19,7 +19,7 @@ const constants_1 = require("../constants");
 const prisma_1 = __importDefault(require("../utils/prisma"));
 (0, otpUtils_1.setupOTPCleanup)();
 const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { email, name, role, isHead = false, notes } = req.body;
+    const { email, name, role, isHead = false, notes, projectIds } = req.body;
     const userCount = await prisma_1.default.user.count();
     let createdBy = null;
     if (userCount > 0) {
@@ -38,6 +38,13 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
         if (role !== "ACCOUNTANT" && role !== "STORE_INCHARGE") {
             return next(new appError_1.default("isHead can only be set for ACCOUNTANT and STORE_INCHARGE roles", 400));
         }
+        if (role === "ACCOUNTANT") {
+            if (!projectIds ||
+                !Array.isArray(projectIds) ||
+                projectIds.length === 0) {
+                return next(new appError_1.default("projectIds[] is required when creating a Head Accountant. Assign at least one project.", 400));
+            }
+        }
     }
     const existingUser = await prisma_1.default.user.findFirst({
         where: { email },
@@ -49,28 +56,43 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
     const generatedPassword = (0, helpers_1.randomPassword)(10);
     console.log(`Generated password for ${email}:`, generatedPassword);
     const hashedPassword = await bcryptjs_1.default.hash(generatedPassword, 12);
-    const user = await prisma_1.default.user.create({
-        data: {
-            email,
-            password: hashedPassword,
-            name,
-            employeeId,
-            role,
-            isHead,
-            createdBy,
-            ...(notes && { notes }),
-        },
-        select: {
-            id: true,
-            email: true,
-            name: true,
-            employeeId: true,
-            role: true,
-            isHead: true,
-            isActive: true,
-            createdAt: true,
-            notes: true,
-        },
+    const user = await prisma_1.default.$transaction(async (tx) => {
+        const created = await tx.user.create({
+            data: {
+                email,
+                password: hashedPassword,
+                name,
+                employeeId,
+                role,
+                isHead,
+                createdBy,
+                ...(notes && { notes }),
+            },
+            select: {
+                id: true,
+                email: true,
+                name: true,
+                employeeId: true,
+                role: true,
+                isHead: true,
+                isActive: true,
+                createdAt: true,
+                notes: true,
+            },
+        });
+        if (isHead && role === "ACCOUNTANT" && projectIds?.length) {
+            await tx.accountantAssignment.createMany({
+                data: projectIds.map((pid) => ({
+                    userId: created.id,
+                    projectId: pid,
+                    sectionId: null,
+                    isActive: true,
+                    createdBy: createdBy ?? created.id,
+                })),
+                skipDuplicates: true,
+            });
+        }
+        return created;
     });
     try {
         const emailer = new email_1.Email();
@@ -634,7 +656,7 @@ exports.removeDeviceToken = (0, catchAsync_1.default)(async (req, res, next) => 
 });
 const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
-    const { newRole, isHead = false } = req.body;
+    const { newRole, isHead = false, projectIds } = req.body;
     const adminId = req.user.id;
     if (req.user.role !== "ADMIN") {
         return next(new appError_1.default("Only admins can change user roles", 403));
@@ -656,6 +678,13 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
     if (isHead) {
         if (newRole !== "ACCOUNTANT" && newRole !== "STORE_INCHARGE") {
             return next(new appError_1.default("isHead can only be set for ACCOUNTANT and STORE_INCHARGE roles", 400));
+        }
+        if (newRole === "ACCOUNTANT") {
+            if (!projectIds ||
+                !Array.isArray(projectIds) ||
+                projectIds.length === 0) {
+                return next(new appError_1.default("projectIds[] is required when setting isHead: true for an Accountant. Assign at least one project.", 400));
+            }
         }
     }
     const user = await prisma_1.default.user.findUnique({
@@ -683,23 +712,43 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new appError_1.default("Cannot change your own role", 400));
     }
     if (user.role === newRole) {
-        if (user.isHead !== isHead) {
-            const updatedUser = await prisma_1.default.user.update({
-                where: { id },
-                data: {
-                    isHead,
-                    updatedBy: adminId,
-                    updatedAt: new Date(),
-                },
-                select: {
-                    id: true,
-                    email: true,
-                    name: true,
-                    role: true,
-                    isHead: true,
-                    isActive: true,
-                    updatedAt: true,
-                },
+        if (user.isHead !== isHead || isHead) {
+            const updatedUser = await prisma_1.default.$transaction(async (tx) => {
+                if (newRole === "ACCOUNTANT") {
+                    await tx.accountantAssignment.updateMany({
+                        where: { userId: id, isActive: true },
+                        data: { isActive: false },
+                    });
+                    if (isHead && projectIds?.length) {
+                        await tx.accountantAssignment.createMany({
+                            data: projectIds.map((pid) => ({
+                                userId: id,
+                                projectId: pid,
+                                sectionId: null,
+                                isActive: true,
+                                createdBy: adminId,
+                            })),
+                            skipDuplicates: true,
+                        });
+                    }
+                }
+                return tx.user.update({
+                    where: { id },
+                    data: {
+                        isHead,
+                        updatedBy: adminId,
+                        updatedAt: new Date(),
+                    },
+                    select: {
+                        id: true,
+                        email: true,
+                        name: true,
+                        role: true,
+                        isHead: true,
+                        isActive: true,
+                        updatedAt: true,
+                    },
+                });
             });
             return res.json({
                 message: "User isHead status updated successfully",
@@ -847,6 +896,18 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
                 updatedAt: true,
             },
         });
+        if (isHead && newRole === "ACCOUNTANT" && projectIds?.length) {
+            await tx.accountantAssignment.createMany({
+                data: projectIds.map((pid) => ({
+                    userId: id,
+                    projectId: pid,
+                    sectionId: null,
+                    isActive: true,
+                    createdBy: adminId,
+                })),
+                skipDuplicates: true,
+            });
+        }
         return { updatedUser, cmStores };
     });
     await (0, notification_1.sendNotificationToUserSafe)({
