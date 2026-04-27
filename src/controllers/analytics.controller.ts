@@ -85,7 +85,7 @@ const getUserAccessibleSections = async (userId: string, userRole: string) => {
             where: { userId, isActive: true },
             select: { sectionId: true },
           });
-        sectionIds = accountantAssignments.map((a) => a.sectionId);
+        sectionIds = accountantAssignments.map((a) => a.sectionId).filter((id): id is string => id !== null);
       }
       break;
   }

@@ -712,7 +712,7 @@ const createAccountantAssignment = catchAsync(async (req, res, next) => {
   );
   // Sections to unassign (previously assigned but not in new list)
   const toUnassign = currentAssignments.filter(
-    (a) => !validSectionIds.includes(a.sectionId)
+    (a) => a.sectionId !== null && !validSectionIds.includes(a.sectionId)
   );
 
   // Assign new sections

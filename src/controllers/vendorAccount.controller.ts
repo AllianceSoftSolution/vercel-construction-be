@@ -371,13 +371,6 @@ export const getAllVendorAccounts = catchAsync(
       : null;
 
     if (hasProjectFilter || isSectionScoped || isHeadScoped) {
-      const resolvedProjectId =
-        isHeadScoped && effectiveProjectIds!.length === 1
-          ? effectiveProjectIds![0]
-          : hasProjectFilter
-          ? (projectId as string)
-          : null;
-
       // If head scoped with multiple or zero projects, build OR filter across all assigned projects
       if (isHeadScoped && effectiveProjectIds!.length !== 1) {
         if (effectiveProjectIds!.length === 0) {
@@ -660,7 +653,7 @@ export const getAllVendorAccounts = catchAsync(
 
     const total = await prisma.vendorAccount.count({ where });
 
-    res.status(200).json({
+    return res.status(200).json({
       status: "success",
       data: vendorAccountsWithMetrics,
       pagination: {
