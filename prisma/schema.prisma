@@ -288,7 +288,9 @@ model Store {
 
   storeInchargeAssignments StoreInchargeAssignment[]
   inventory                StoreInventory[]
-  transactions             StoreTransaction[]
+  transactions             StoreTransaction[]  @relation("TransactionStore")
+  transactionsFrom         StoreTransaction[]  @relation("TransactionFromStore")
+  transactionsTo           StoreTransaction[]  @relation("TransactionToStore")
   fulfillmentsFrom         DemandFulfillment[] @relation("FulfillmentFromStore")
   fulfillmentsTo           DemandFulfillment[] @relation("FulfillmentToStore")
   permissions              StorePermission[]
@@ -507,9 +509,13 @@ model StoreTransaction {
   notes         String?
   transactionDate DateTime @default(now())
   createdBy     String
+  fromStoreId   String?  // Source store (for OUT/TRANSFER — where it came from)
+  toStoreId     String?  // Destination store (for IN/TRANSFER — where it went)
 
-  store         Store @relation(fields: [storeId], references: [id])
-  user          User  @relation(fields: [createdBy], references: [id])
+  store         Store  @relation("TransactionStore", fields: [storeId], references: [id])
+  fromStore     Store? @relation("TransactionFromStore", fields: [fromStoreId], references: [id])
+  toStore       Store? @relation("TransactionToStore", fields: [toStoreId], references: [id])
+  user          User   @relation(fields: [createdBy], references: [id])
 
   @@map("store_transactions")
 }

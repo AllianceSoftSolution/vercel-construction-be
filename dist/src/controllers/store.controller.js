@@ -485,7 +485,17 @@ const getStoreById = (0, catchAsync_1.default)(async (req, res, next) => {
                     },
                 },
             },
-            transactions: true,
+            transactions: {
+                orderBy: { transactionDate: "desc" },
+                include: {
+                    fromStore: {
+                        select: { id: true, name: true, type: true },
+                    },
+                    toStore: {
+                        select: { id: true, name: true, type: true },
+                    },
+                },
+            },
         },
     });
     if (!store) {
@@ -835,7 +845,7 @@ const stockIn = (0, catchAsync_1.default)(async (req, res, next) => {
 exports.stockIn = stockIn;
 const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
     const { storeId } = req.params;
-    const { materialId, quantity, demandReferenceNumber, notes, stockOutType = "DEMAND", } = req.body;
+    const { materialId, quantity, demandReferenceNumber, toStoreId, notes, stockOutType = "DEMAND", } = req.body;
     const userId = req.user.id;
     if (!materialId || !quantity) {
         return next(new appError_1.default("Material ID and quantity are required", 400));
@@ -937,6 +947,7 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
                 reference: demandReferenceNumber || stockOutType.toUpperCase(),
                 notes: notes || `${stockOutType} stock out`,
                 createdBy: userId,
+                toStoreId: toStoreId || null,
             },
         });
         if (demandReferenceNumber && stockOutType === "DEMAND") {

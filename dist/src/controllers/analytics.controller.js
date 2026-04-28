@@ -61,11 +61,16 @@ const getUserAccessibleSections = async (userId, userRole) => {
             break;
         case "ACCOUNTANT":
             if (user?.isHead) {
-                const allAccountantSections = await prisma_1.default.section.findMany({
-                    where: { isDeleted: false },
+                const headAccountantAssignments = await prisma_1.default.accountantAssignment.findMany({
+                    where: { userId, isActive: true },
+                    select: { projectId: true },
+                });
+                const headProjectIds = Array.from(new Set(headAccountantAssignments.map((a) => a.projectId)));
+                const headProjectSections = await prisma_1.default.section.findMany({
+                    where: { projectId: { in: headProjectIds }, isDeleted: false },
                     select: { id: true },
                 });
-                sectionIds = allAccountantSections.map((s) => s.id);
+                sectionIds = headProjectSections.map((s) => s.id);
             }
             else {
                 const accountantAssignments = await prisma_1.default.accountantAssignment.findMany({
@@ -133,23 +138,15 @@ const getUserAccessibleProjects = async (userId, userRole) => {
                     .map((a) => a.store.section.projectId);
             }
             break;
-        case "ACCOUNTANT":
-            if (user?.isHead) {
-                const allAccountantProjects = await prisma_1.default.project.findMany({
-                    where: { isDeleted: false },
-                    select: { id: true },
-                });
-                projectIds = allAccountantProjects.map((p) => p.id);
-            }
-            else {
-                const accountantProjectAssignments = await prisma_1.default.accountantAssignment.findMany({
-                    where: { userId, isActive: true },
-                    select: { projectId: true },
-                });
-                const uniqueProjectIds = new Set(accountantProjectAssignments.map((a) => a.projectId));
-                projectIds = Array.from(uniqueProjectIds);
-            }
+        case "ACCOUNTANT": {
+            const accountantProjectAssignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId, isActive: true },
+                select: { projectId: true },
+            });
+            const uniqueProjectIds = new Set(accountantProjectAssignments.map((a) => a.projectId));
+            projectIds = Array.from(uniqueProjectIds);
             break;
+        }
     }
     return projectIds;
 };

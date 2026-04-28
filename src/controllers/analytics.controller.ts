@@ -72,12 +72,20 @@ const getUserAccessibleSections = async (userId: string, userRole: string) => {
 
     case "ACCOUNTANT":
       if (user?.isHead) {
-        // Head Accountant sees all sections
-        const allAccountantSections = await prisma.section.findMany({
-          where: { isDeleted: false },
+        // Head Accountant: only sections in their assigned projects
+        const headAccountantAssignments =
+          await prisma.accountantAssignment.findMany({
+            where: { userId, isActive: true },
+            select: { projectId: true },
+          });
+        const headProjectIds = Array.from(
+          new Set(headAccountantAssignments.map((a) => a.projectId))
+        );
+        const headProjectSections = await prisma.section.findMany({
+          where: { projectId: { in: headProjectIds }, isDeleted: false },
           select: { id: true },
         });
-        sectionIds = allAccountantSections.map((s) => s.id);
+        sectionIds = headProjectSections.map((s) => s.id);
       } else {
         // Section Accountant: only their assigned sections
         const accountantAssignments =
@@ -165,27 +173,19 @@ const getUserAccessibleProjects = async (userId: string, userRole: string) => {
       }
       break;
 
-    case "ACCOUNTANT":
-      if (user?.isHead) {
-        // Head Accountant sees all projects
-        const allAccountantProjects = await prisma.project.findMany({
-          where: { isDeleted: false },
-          select: { id: true },
+    case "ACCOUNTANT": {
+      // Both Head and Section Accountants: only their assigned projects
+      const accountantProjectAssignments =
+        await prisma.accountantAssignment.findMany({
+          where: { userId, isActive: true },
+          select: { projectId: true },
         });
-        projectIds = allAccountantProjects.map((p) => p.id);
-      } else {
-        // Section Accountant: only their assigned projects
-        const accountantProjectAssignments =
-          await prisma.accountantAssignment.findMany({
-            where: { userId, isActive: true },
-            select: { projectId: true },
-          });
-        const uniqueProjectIds = new Set(
-          accountantProjectAssignments.map((a) => a.projectId)
-        );
-        projectIds = Array.from(uniqueProjectIds) as string[];
-      }
+      const uniqueProjectIds = new Set(
+        accountantProjectAssignments.map((a) => a.projectId)
+      );
+      projectIds = Array.from(uniqueProjectIds) as string[];
       break;
+    }
   }
 
   return projectIds;

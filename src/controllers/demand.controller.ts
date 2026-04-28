@@ -130,14 +130,27 @@ const getDemands = catchAsync(async (req, res) => {
     // No filter, see all
   } else if (user.role === "ACCOUNTANT") {
     if (user.isHead) {
-      // Head Accountant sees all demands across all sections — no filter
+      // Head Accountant: scope to sections within their assigned projects
+      const assignments = await prisma.accountantAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { projectId: true },
+      });
+      const projectIds = Array.from(new Set(assignments.map((a) => a.projectId)));
+      const projectSections = await prisma.section.findMany({
+        where: { projectId: { in: projectIds }, isDeleted: false },
+        select: { id: true },
+      });
+      const sectionIds = projectSections.map((s) => s.id);
+      defaultFilters.sectionId = { in: sectionIds };
     } else {
       // Section Accountant: scope strictly to their assigned section(s)
       const assignments = await prisma.accountantAssignment.findMany({
         where: { userId: user.id, isActive: true },
         select: { sectionId: true },
       });
-      const sectionIds = assignments.map((a) => a.sectionId);
+      const sectionIds = assignments
+        .map((a) => a.sectionId)
+        .filter((id): id is string => !!id);
       defaultFilters.sectionId = { in: sectionIds };
     }
   } else if (user.role === "SITE_INCHARGE") {
@@ -341,9 +354,18 @@ const getDemandById = catchAsync(async (req, res, next) => {
       });
       assigned = !!assignment;
     } else if (user.role === "ACCOUNTANT") {
-      // If user is head accountant, they can access all demands
       if (user.isHead) {
-        assigned = true;
+        // Head Accountant: check the demand's section belongs to one of their assigned projects
+        const demandSection = await prisma.section.findUnique({
+          where: { id: sectionId },
+          select: { projectId: true },
+        });
+        if (demandSection) {
+          const projectAssignment = await prisma.accountantAssignment.findFirst({
+            where: { userId: user.id, projectId: demandSection.projectId, isActive: true },
+          });
+          assigned = !!projectAssignment;
+        }
       } else {
         // Regular accountant - only assigned sections
         const assignment = await prisma.accountantAssignment.findFirst({
@@ -1189,9 +1211,9 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
       },
     });
 
-    // Create store transactions
+    // Create store transactions (with linked store tracking)
     await Promise.all([
-      // Head store transaction (OUT)
+      // Head store transaction (OUT) — record which CM store received it
       tx.storeTransaction.create({
         data: {
           storeId: fromStoreId,
@@ -1201,9 +1223,10 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
           reference: demand.referenceNumber,
           notes: notes || `Fulfilled demand ${demand.referenceNumber}`,
           createdBy: userId,
+          toStoreId: toStoreId,
         },
       }),
-      // CM store transaction (IN)
+      // CM store transaction (IN) — record which head store it came from
       tx.storeTransaction.create({
         data: {
           storeId: toStoreId,
@@ -1215,6 +1238,7 @@ const fulfillDemand = catchAsync(async (req, res, next) => {
             notes ||
             `Received from demand fulfillment ${demand.referenceNumber}`,
           createdBy: userId,
+          fromStoreId: fromStoreId,
         },
       }),
     ]);

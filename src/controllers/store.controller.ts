@@ -559,7 +559,17 @@ const getStoreById = catchAsync(async (req, res, next) => {
           },
         },
       },
-      transactions: true,
+      transactions: {
+        orderBy: { transactionDate: "desc" },
+        include: {
+          fromStore: {
+            select: { id: true, name: true, type: true },
+          },
+          toStore: {
+            select: { id: true, name: true, type: true },
+          },
+        },
+      },
     },
   });
 
@@ -939,7 +949,7 @@ const stockIn = catchAsync(async (req, res, next) => {
       },
     });
 
-    // Create store transaction record
+    // Create store transaction record (track PO reference as source for IN)
     const transaction = await tx.storeTransaction.create({
       data: {
         storeId,
@@ -949,6 +959,7 @@ const stockIn = catchAsync(async (req, res, next) => {
         reference: poReferenceNumber || stockInType.toUpperCase(),
         notes: notes || `${stockInType} stock in`,
         createdBy: userId,
+        // fromStoreId intentionally null for external PO deliveries (source is a vendor, not a store)
       },
     });
 
@@ -993,6 +1004,7 @@ const stockOut = catchAsync(async (req, res, next) => {
     materialId,
     quantity,
     demandReferenceNumber, // Optional - for demand-based stock out
+    toStoreId,            // Optional - destination store for TRANSFER type
     notes,
     stockOutType = "DEMAND", // DEMAND, TRANSFER, MANUAL, LOSS
   } = req.body;
@@ -1140,7 +1152,7 @@ const stockOut = catchAsync(async (req, res, next) => {
       },
     });
 
-    // Create store transaction record
+    // Create store transaction record (track destination store for traceability)
     const transaction = await tx.storeTransaction.create({
       data: {
         storeId,
@@ -1150,6 +1162,7 @@ const stockOut = catchAsync(async (req, res, next) => {
         reference: demandReferenceNumber || stockOutType.toUpperCase(),
         notes: notes || `${stockOutType} stock out`,
         createdBy: userId,
+        toStoreId: toStoreId || null, // Optional: which store received this stock
       },
     });
 

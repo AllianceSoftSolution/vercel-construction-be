@@ -99,13 +99,26 @@ const getDemands = (0, catchAsync_1.default)(async (req, res) => {
     }
     else if (user.role === "ACCOUNTANT") {
         if (user.isHead) {
+            const assignments = await prisma_1.default.accountantAssignment.findMany({
+                where: { userId: user.id, isActive: true },
+                select: { projectId: true },
+            });
+            const projectIds = Array.from(new Set(assignments.map((a) => a.projectId)));
+            const projectSections = await prisma_1.default.section.findMany({
+                where: { projectId: { in: projectIds }, isDeleted: false },
+                select: { id: true },
+            });
+            const sectionIds = projectSections.map((s) => s.id);
+            defaultFilters.sectionId = { in: sectionIds };
         }
         else {
             const assignments = await prisma_1.default.accountantAssignment.findMany({
                 where: { userId: user.id, isActive: true },
                 select: { sectionId: true },
             });
-            const sectionIds = assignments.map((a) => a.sectionId);
+            const sectionIds = assignments
+                .map((a) => a.sectionId)
+                .filter((id) => !!id);
             defaultFilters.sectionId = { in: sectionIds };
         }
     }
@@ -283,7 +296,16 @@ const getDemandById = (0, catchAsync_1.default)(async (req, res, next) => {
         }
         else if (user.role === "ACCOUNTANT") {
             if (user.isHead) {
-                assigned = true;
+                const demandSection = await prisma_1.default.section.findUnique({
+                    where: { id: sectionId },
+                    select: { projectId: true },
+                });
+                if (demandSection) {
+                    const projectAssignment = await prisma_1.default.accountantAssignment.findFirst({
+                        where: { userId: user.id, projectId: demandSection.projectId, isActive: true },
+                    });
+                    assigned = !!projectAssignment;
+                }
             }
             else {
                 const assignment = await prisma_1.default.accountantAssignment.findFirst({
@@ -983,6 +1005,7 @@ const fulfillDemand = (0, catchAsync_1.default)(async (req, res, next) => {
                     reference: demand.referenceNumber,
                     notes: notes || `Fulfilled demand ${demand.referenceNumber}`,
                     createdBy: userId,
+                    toStoreId: toStoreId,
                 },
             }),
             tx.storeTransaction.create({
@@ -995,6 +1018,7 @@ const fulfillDemand = (0, catchAsync_1.default)(async (req, res, next) => {
                     notes: notes ||
                         `Received from demand fulfillment ${demand.referenceNumber}`,
                     createdBy: userId,
+                    fromStoreId: fromStoreId,
                 },
             }),
         ]);
