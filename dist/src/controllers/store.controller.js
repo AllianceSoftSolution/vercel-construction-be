@@ -235,12 +235,30 @@ const getStores = (0, catchAsync_1.default)(async (req, res) => {
         }
     }
     else if (user.role === "STORE_INCHARGE") {
-        const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
-            where: { userId: user.id, isActive: true },
-            select: { storeId: true },
-        });
-        const storeIds = assignments.map((a) => a.storeId);
-        defaultFilters.id = { in: storeIds };
+        if (user.isHead) {
+            const headAssignments = await prisma_1.default.headStoreInchargeAssignment.findMany({
+                where: { userId: user.id, isActive: true },
+                select: { projectId: true },
+            });
+            const projectIds = headAssignments.map((a) => a.projectId);
+            const projectSections = await prisma_1.default.section.findMany({
+                where: { projectId: { in: projectIds }, isDeleted: false },
+                select: { id: true },
+            });
+            const sectionIds = projectSections.map((s) => s.id);
+            defaultFilters.OR = [
+                { projectId: { in: projectIds } },
+                { sectionId: { in: sectionIds } },
+            ];
+        }
+        else {
+            const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
+                where: { userId: user.id, isActive: true },
+                select: { storeId: true },
+            });
+            const storeIds = assignments.map((a) => a.storeId);
+            defaultFilters.id = { in: storeIds };
+        }
     }
     else if (user.role === "ACCOUNTANT") {
         const assignments = await prisma_1.default.accountantAssignment.findMany({
@@ -325,10 +343,34 @@ const getStoreById = (0, catchAsync_1.default)(async (req, res, next) => {
     if (user.role !== "ADMIN") {
         let assigned = false;
         if (user.role === "STORE_INCHARGE") {
-            const assignment = await prisma_1.default.storeInchargeAssignment.findFirst({
-                where: { userId: user.id, storeId: id, isActive: true },
-            });
-            assigned = !!assignment;
+            if (user.isHead) {
+                const store = await prisma_1.default.store.findUnique({
+                    where: { id },
+                    select: { projectId: true, sectionId: true },
+                });
+                if (store) {
+                    let projectId = store.projectId;
+                    if (!projectId && store.sectionId) {
+                        const section = await prisma_1.default.section.findUnique({
+                            where: { id: store.sectionId },
+                            select: { projectId: true },
+                        });
+                        projectId = section?.projectId ?? null;
+                    }
+                    if (projectId) {
+                        const headAssignment = await prisma_1.default.headStoreInchargeAssignment.findFirst({
+                            where: { userId: user.id, projectId, isActive: true },
+                        });
+                        assigned = !!headAssignment;
+                    }
+                }
+            }
+            else {
+                const assignment = await prisma_1.default.storeInchargeAssignment.findFirst({
+                    where: { userId: user.id, storeId: id, isActive: true },
+                });
+                assigned = !!assignment;
+            }
         }
         else if (user.role === "SITE_INCHARGE") {
             const store = await prisma_1.default.store.findUnique({
@@ -750,9 +792,26 @@ const stockIn = (0, catchAsync_1.default)(async (req, res, next) => {
     const isStoreIncharge = store.storeInchargeAssignments.some((assignment) => assignment.user.id === userId);
     const currentUser = await prisma_1.default.user.findUnique({
         where: { id: userId },
-        select: { role: true },
+        select: { role: true, isHead: true },
     });
-    if (!isStoreIncharge && currentUser?.role !== "ADMIN") {
+    let isHeadStoreIncharge = false;
+    if (currentUser?.role === "STORE_INCHARGE" && currentUser.isHead) {
+        let projectId = store.projectId;
+        if (!projectId && store.sectionId) {
+            const section = await prisma_1.default.section.findUnique({
+                where: { id: store.sectionId },
+                select: { projectId: true },
+            });
+            projectId = section?.projectId ?? null;
+        }
+        if (projectId) {
+            const headAssignment = await prisma_1.default.headStoreInchargeAssignment.findFirst({
+                where: { userId, projectId, isActive: true },
+            });
+            isHeadStoreIncharge = !!headAssignment;
+        }
+    }
+    if (!isStoreIncharge && !isHeadStoreIncharge && currentUser?.role !== "ADMIN") {
         return next(new appError_1.default("Only assigned store incharges can perform stock-in operations", 403));
     }
     const material = await prisma_1.default.material.findUnique({
@@ -875,9 +934,26 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
     const isStoreIncharge = store.storeInchargeAssignments.some((assignment) => assignment.user.id === userId);
     const currentUser = await prisma_1.default.user.findUnique({
         where: { id: userId },
-        select: { role: true },
+        select: { role: true, isHead: true },
     });
-    if (!isStoreIncharge && currentUser?.role !== "ADMIN") {
+    let isHeadStoreIncharge = false;
+    if (currentUser?.role === "STORE_INCHARGE" && currentUser.isHead) {
+        let projectId = store.projectId;
+        if (!projectId && store.sectionId) {
+            const section = await prisma_1.default.section.findUnique({
+                where: { id: store.sectionId },
+                select: { projectId: true },
+            });
+            projectId = section?.projectId ?? null;
+        }
+        if (projectId) {
+            const headAssignment = await prisma_1.default.headStoreInchargeAssignment.findFirst({
+                where: { userId, projectId, isActive: true },
+            });
+            isHeadStoreIncharge = !!headAssignment;
+        }
+    }
+    if (!isStoreIncharge && !isHeadStoreIncharge && currentUser?.role !== "ADMIN") {
         return next(new appError_1.default("Only assigned store incharges can perform stock-out operations", 403));
     }
     const material = await prisma_1.default.material.findUnique({

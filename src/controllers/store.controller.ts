@@ -291,13 +291,32 @@ const getStores = catchAsync(async (req, res) => {
       defaultFilters.OR = cmStoreFilter;
     }
   } else if (user.role === "STORE_INCHARGE") {
-    // All store incharges (including head) only see stores they are explicitly assigned to
-    const assignments = await prisma.storeInchargeAssignment.findMany({
-      where: { userId: user.id, isActive: true },
-      select: { storeId: true },
-    });
-    const storeIds = assignments.map((a) => a.storeId);
-    defaultFilters.id = { in: storeIds };
+    if (user.isHead) {
+      // Head Store Incharge: sees all stores in their assigned projects
+      const headAssignments = await prisma.headStoreInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { projectId: true },
+      });
+      const projectIds = headAssignments.map((a) => a.projectId);
+      // Stores belonging to the assigned projects (HEAD_STORE) or sections within those projects
+      const projectSections = await prisma.section.findMany({
+        where: { projectId: { in: projectIds }, isDeleted: false },
+        select: { id: true },
+      });
+      const sectionIds = projectSections.map((s) => s.id);
+      defaultFilters.OR = [
+        { projectId: { in: projectIds } },
+        { sectionId: { in: sectionIds } },
+      ];
+    } else {
+      // Regular store incharges only see stores explicitly assigned to them
+      const assignments = await prisma.storeInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { storeId: true },
+      });
+      const storeIds = assignments.map((a) => a.storeId);
+      defaultFilters.id = { in: storeIds };
+    }
   } else if (user.role === "ACCOUNTANT") {
     // All accountants (including head) only see stores in sections they are explicitly assigned to
     const assignments = await prisma.accountantAssignment.findMany({
@@ -401,11 +420,35 @@ const getStoreById = catchAsync(async (req, res, next) => {
   if (user.role !== "ADMIN") {
     let assigned = false;
     if (user.role === "STORE_INCHARGE") {
-      // All store incharges need explicit assignment to access a store
-      const assignment = await prisma.storeInchargeAssignment.findFirst({
-        where: { userId: user.id, storeId: id, isActive: true },
-      });
-      assigned = !!assignment;
+      if (user.isHead) {
+        // Head Store Incharge: check if store belongs to one of their assigned projects
+        const store = await prisma.store.findUnique({
+          where: { id },
+          select: { projectId: true, sectionId: true },
+        });
+        if (store) {
+          let projectId = store.projectId;
+          if (!projectId && store.sectionId) {
+            const section = await prisma.section.findUnique({
+              where: { id: store.sectionId },
+              select: { projectId: true },
+            });
+            projectId = section?.projectId ?? null;
+          }
+          if (projectId) {
+            const headAssignment = await prisma.headStoreInchargeAssignment.findFirst({
+              where: { userId: user.id, projectId, isActive: true },
+            });
+            assigned = !!headAssignment;
+          }
+        }
+      } else {
+        // Regular store incharges need explicit assignment
+        const assignment = await prisma.storeInchargeAssignment.findFirst({
+          where: { userId: user.id, storeId: id, isActive: true },
+        });
+        assigned = !!assignment;
+      }
     } else if (user.role === "SITE_INCHARGE") {
       // Site incharge can access if assigned to the section of this store
       const store = await prisma.store.findUnique({
@@ -868,10 +911,29 @@ const stockIn = catchAsync(async (req, res, next) => {
 
   const currentUser = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true },
+    select: { role: true, isHead: true },
   });
 
-  if (!isStoreIncharge && currentUser?.role !== "ADMIN") {
+  // Head Store Incharge: check project-level access
+  let isHeadStoreIncharge = false;
+  if (currentUser?.role === "STORE_INCHARGE" && currentUser.isHead) {
+    let projectId = store.projectId;
+    if (!projectId && store.sectionId) {
+      const section = await prisma.section.findUnique({
+        where: { id: store.sectionId },
+        select: { projectId: true },
+      });
+      projectId = section?.projectId ?? null;
+    }
+    if (projectId) {
+      const headAssignment = await prisma.headStoreInchargeAssignment.findFirst({
+        where: { userId, projectId, isActive: true },
+      });
+      isHeadStoreIncharge = !!headAssignment;
+    }
+  }
+
+  if (!isStoreIncharge && !isHeadStoreIncharge && currentUser?.role !== "ADMIN") {
     return next(
       new AppError(
         "Only assigned store incharges can perform stock-in operations",
@@ -1049,10 +1111,29 @@ const stockOut = catchAsync(async (req, res, next) => {
 
   const currentUser = await prisma.user.findUnique({
     where: { id: userId },
-    select: { role: true },
+    select: { role: true, isHead: true },
   });
 
-  if (!isStoreIncharge && currentUser?.role !== "ADMIN") {
+  // Head Store Incharge: check project-level access
+  let isHeadStoreIncharge = false;
+  if (currentUser?.role === "STORE_INCHARGE" && currentUser.isHead) {
+    let projectId = store.projectId;
+    if (!projectId && store.sectionId) {
+      const section = await prisma.section.findUnique({
+        where: { id: store.sectionId },
+        select: { projectId: true },
+      });
+      projectId = section?.projectId ?? null;
+    }
+    if (projectId) {
+      const headAssignment = await prisma.headStoreInchargeAssignment.findFirst({
+        where: { userId, projectId, isActive: true },
+      });
+      isHeadStoreIncharge = !!headAssignment;
+    }
+  }
+
+  if (!isStoreIncharge && !isHeadStoreIncharge && currentUser?.role !== "ADMIN") {
     return next(
       new AppError(
         "Only assigned store incharges can perform stock-out operations",

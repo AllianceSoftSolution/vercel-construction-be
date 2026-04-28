@@ -38,11 +38,11 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
         if (role !== "ACCOUNTANT" && role !== "STORE_INCHARGE") {
             return next(new appError_1.default("isHead can only be set for ACCOUNTANT and STORE_INCHARGE roles", 400));
         }
-        if (role === "ACCOUNTANT") {
+        if (role === "ACCOUNTANT" || role === "STORE_INCHARGE") {
             if (!projectIds ||
                 !Array.isArray(projectIds) ||
                 projectIds.length === 0) {
-                return next(new appError_1.default("projectIds[] is required when creating a Head Accountant. Assign at least one project.", 400));
+                return next(new appError_1.default("projectIds[] is required when creating a Head Accountant or Head Store Incharge. Assign at least one project.", 400));
             }
         }
     }
@@ -56,24 +56,14 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
                     where: { id: existingUser.id },
                     data: { role: "ACCOUNTANT", isHead: true },
                     select: {
-                        id: true,
-                        email: true,
-                        name: true,
-                        employeeId: true,
-                        role: true,
-                        isHead: true,
-                        isActive: true,
-                        createdAt: true,
-                        notes: true,
+                        id: true, email: true, name: true, employeeId: true,
+                        role: true, isHead: true, isActive: true, createdAt: true, notes: true,
                     },
                 });
                 await tx.accountantAssignment.createMany({
                     data: projectIds.map((pid) => ({
-                        userId: existingUser.id,
-                        projectId: pid,
-                        sectionId: null,
-                        isActive: true,
-                        createdBy: createdBy ?? existingUser.id,
+                        userId: existingUser.id, projectId: pid, sectionId: null,
+                        isActive: true, createdBy: createdBy ?? existingUser.id,
                     })),
                     skipDuplicates: true,
                 });
@@ -81,6 +71,30 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
             });
             return res.status(200).json({
                 message: "Existing user updated and assigned as Head Accountant successfully",
+                user: updatedUser,
+            });
+        }
+        if (isHead && role === "STORE_INCHARGE" && Array.isArray(projectIds) && projectIds.length > 0) {
+            const updatedUser = await prisma_1.default.$transaction(async (tx) => {
+                const updated = await tx.user.update({
+                    where: { id: existingUser.id },
+                    data: { role: "STORE_INCHARGE", isHead: true },
+                    select: {
+                        id: true, email: true, name: true, employeeId: true,
+                        role: true, isHead: true, isActive: true, createdAt: true, notes: true,
+                    },
+                });
+                await tx.headStoreInchargeAssignment.createMany({
+                    data: projectIds.map((pid) => ({
+                        userId: existingUser.id, projectId: pid,
+                        isActive: true, createdBy: createdBy ?? existingUser.id,
+                    })),
+                    skipDuplicates: true,
+                });
+                return updated;
+            });
+            return res.status(200).json({
+                message: "Existing user updated and assigned as Head Store Incharge successfully",
                 user: updatedUser,
             });
         }
@@ -120,6 +134,17 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
                     userId: created.id,
                     projectId: pid,
                     sectionId: null,
+                    isActive: true,
+                    createdBy: createdBy ?? created.id,
+                })),
+                skipDuplicates: true,
+            });
+        }
+        if (isHead && role === "STORE_INCHARGE" && projectIds?.length) {
+            await tx.headStoreInchargeAssignment.createMany({
+                data: projectIds.map((pid) => ({
+                    userId: created.id,
+                    projectId: pid,
                     isActive: true,
                     createdBy: createdBy ?? created.id,
                 })),
@@ -713,11 +738,11 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
         if (newRole !== "ACCOUNTANT" && newRole !== "STORE_INCHARGE") {
             return next(new appError_1.default("isHead can only be set for ACCOUNTANT and STORE_INCHARGE roles", 400));
         }
-        if (newRole === "ACCOUNTANT") {
+        if (newRole === "ACCOUNTANT" || newRole === "STORE_INCHARGE") {
             if (!projectIds ||
                 !Array.isArray(projectIds) ||
                 projectIds.length === 0) {
-                return next(new appError_1.default("projectIds[] is required when setting isHead: true for an Accountant. Assign at least one project.", 400));
+                return next(new appError_1.default("projectIds[] is required when setting isHead: true for an Accountant or Store Incharge. Assign at least one project.", 400));
             }
         }
     }
@@ -756,11 +781,23 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
                     if (isHead && projectIds?.length) {
                         await tx.accountantAssignment.createMany({
                             data: projectIds.map((pid) => ({
-                                userId: id,
-                                projectId: pid,
-                                sectionId: null,
-                                isActive: true,
-                                createdBy: adminId,
+                                userId: id, projectId: pid, sectionId: null,
+                                isActive: true, createdBy: adminId,
+                            })),
+                            skipDuplicates: true,
+                        });
+                    }
+                }
+                if (newRole === "STORE_INCHARGE") {
+                    await tx.headStoreInchargeAssignment.updateMany({
+                        where: { userId: id, isActive: true },
+                        data: { isActive: false },
+                    });
+                    if (isHead && projectIds?.length) {
+                        await tx.headStoreInchargeAssignment.createMany({
+                            data: projectIds.map((pid) => ({
+                                userId: id, projectId: pid,
+                                isActive: true, createdBy: adminId,
                             })),
                             skipDuplicates: true,
                         });
@@ -810,6 +847,10 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
             data: { isActive: false },
         });
         await tx.storeInchargeAssignment.updateMany({
+            where: { userId: id, isActive: true },
+            data: { isActive: false },
+        });
+        await tx.headStoreInchargeAssignment.updateMany({
             where: { userId: id, isActive: true },
             data: { isActive: false },
         });
@@ -936,6 +977,17 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
                     userId: id,
                     projectId: pid,
                     sectionId: null,
+                    isActive: true,
+                    createdBy: adminId,
+                })),
+                skipDuplicates: true,
+            });
+        }
+        if (isHead && newRole === "STORE_INCHARGE" && projectIds?.length) {
+            await tx.headStoreInchargeAssignment.createMany({
+                data: projectIds.map((pid) => ({
+                    userId: id,
+                    projectId: pid,
                     isActive: true,
                     createdBy: adminId,
                 })),
