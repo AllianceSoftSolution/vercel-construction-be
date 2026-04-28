@@ -50,13 +50,21 @@ const getUserAccessibleSections = async (userId: string, userRole: string) => {
       break;
 
     case "STORE_INCHARGE":
-      // If user is head store incharge, they can see all sections
+      // Head store incharge: only sections within assigned projects
       if (user?.isHead) {
-        const allSections = await prisma.section.findMany({
-          where: { isDeleted: false },
+        const headStoreAssignments =
+          await prisma.headStoreInchargeAssignment.findMany({
+            where: { userId, isActive: true },
+            select: { projectId: true },
+          });
+        const headProjectIds = Array.from(
+          new Set(headStoreAssignments.map((a) => a.projectId))
+        );
+        const assignedProjectSections = await prisma.section.findMany({
+          where: { projectId: { in: headProjectIds }, isDeleted: false },
           select: { id: true },
         });
-        sectionIds = allSections.map((s) => s.id);
+        sectionIds = assignedProjectSections.map((s) => s.id);
       } else {
         // Regular store incharge - only assigned stores
         const storeInchargeAssignments =
@@ -151,13 +159,14 @@ const getUserAccessibleProjects = async (userId: string, userRole: string) => {
       break;
 
     case "STORE_INCHARGE":
-      // If user is head store incharge, they can see all projects
+      // Head store incharge: only explicitly assigned projects
       if (user?.isHead) {
-        const allProjects = await prisma.project.findMany({
-          where: { isDeleted: false },
-          select: { id: true },
-        });
-        projectIds = allProjects.map((p) => p.id);
+        const headStoreAssignments =
+          await prisma.headStoreInchargeAssignment.findMany({
+            where: { userId, isActive: true },
+            select: { projectId: true },
+          });
+        projectIds = headStoreAssignments.map((a) => a.projectId);
       } else {
         // Regular store incharge - only assigned stores' projects
         const storeInchargeAssignments =

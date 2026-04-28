@@ -43,11 +43,16 @@ const getUserAccessibleSections = async (userId, userRole) => {
             break;
         case "STORE_INCHARGE":
             if (user?.isHead) {
-                const allSections = await prisma_1.default.section.findMany({
-                    where: { isDeleted: false },
+                const headStoreAssignments = await prisma_1.default.headStoreInchargeAssignment.findMany({
+                    where: { userId, isActive: true },
+                    select: { projectId: true },
+                });
+                const headProjectIds = Array.from(new Set(headStoreAssignments.map((a) => a.projectId)));
+                const assignedProjectSections = await prisma_1.default.section.findMany({
+                    where: { projectId: { in: headProjectIds }, isDeleted: false },
                     select: { id: true },
                 });
-                sectionIds = allSections.map((s) => s.id);
+                sectionIds = assignedProjectSections.map((s) => s.id);
             }
             else {
                 const storeInchargeAssignments = await prisma_1.default.storeInchargeAssignment.findMany({
@@ -120,11 +125,11 @@ const getUserAccessibleProjects = async (userId, userRole) => {
             break;
         case "STORE_INCHARGE":
             if (user?.isHead) {
-                const allProjects = await prisma_1.default.project.findMany({
-                    where: { isDeleted: false },
-                    select: { id: true },
+                const headStoreAssignments = await prisma_1.default.headStoreInchargeAssignment.findMany({
+                    where: { userId, isActive: true },
+                    select: { projectId: true },
                 });
-                projectIds = allProjects.map((p) => p.id);
+                projectIds = headStoreAssignments.map((a) => a.projectId);
             }
             else {
                 const storeInchargeAssignments = await prisma_1.default.storeInchargeAssignment.findMany({
