@@ -12,10 +12,11 @@ declare const getStoreTransactions: (req: import("express").Request, res: import
 declare const getProjectInventory: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const assignPersonnel: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const removePersonnel: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
+declare const removeSpecificPersonnel: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const assignSiteIncharge: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const assignProjectManager: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const getStorePermissions: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const setStorePermissions: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const deleteStorePermission: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
 declare const cleanupEmptySectionStores: (req: import("express").Request, res: import("express").Response, next: import("express").NextFunction) => void;
-export { createStore, getStores, getStoreById, updateStore, deleteStore, activateStore, deactivateStore, stockIn, stockOut, getStoreInventory, getStoreTransactions, getProjectInventory, assignPersonnel, removePersonnel, assignSiteIncharge, assignProjectManager, getStorePermissions, setStorePermissions, deleteStorePermission, cleanupEmptySectionStores, };
+export { createStore, getStores, getStoreById, updateStore, deleteStore, activateStore, deactivateStore, stockIn, stockOut, getStoreInventory, getStoreTransactions, getProjectInventory, assignPersonnel, removePersonnel, removeSpecificPersonnel, assignSiteIncharge, assignProjectManager, getStorePermissions, setStorePermissions, deleteStorePermission, cleanupEmptySectionStores, };

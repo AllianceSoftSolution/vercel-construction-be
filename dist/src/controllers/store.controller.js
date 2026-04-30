@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cleanupEmptySectionStores = exports.deleteStorePermission = exports.setStorePermissions = exports.getStorePermissions = exports.assignProjectManager = exports.assignSiteIncharge = exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
+exports.cleanupEmptySectionStores = exports.deleteStorePermission = exports.setStorePermissions = exports.getStorePermissions = exports.assignProjectManager = exports.assignSiteIncharge = exports.removeSpecificPersonnel = exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const buildQueryOptions_1 = require("../utils/buildQueryOptions");
@@ -1427,10 +1427,12 @@ const assignPersonnel = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!userToAssign) {
         return next(new appError_1.default("User not found", 404));
     }
-    await prisma_1.default.storeInchargeAssignment.updateMany({
-        where: { storeId, isActive: true },
-        data: { isActive: false },
+    const existing = await prisma_1.default.storeInchargeAssignment.findUnique({
+        where: { userId_storeId: { userId, storeId } },
     });
+    if (existing?.isActive) {
+        return next(new appError_1.default("This user is already assigned to this store", 400));
+    }
     await prisma_1.default.storeInchargeAssignment.upsert({
         where: { userId_storeId: { userId, storeId } },
         update: { isActive: true },
@@ -1441,6 +1443,10 @@ const assignPersonnel = (0, catchAsync_1.default)(async (req, res, next) => {
         data: { assignedUserId: userId, updatedBy: actorId },
         include: {
             assignedUser: { select: { id: true, name: true, email: true, role: true } },
+            storeInchargeAssignments: {
+                where: { isActive: true },
+                include: { user: { select: { id: true, name: true, email: true, role: true } } },
+            },
         },
     });
     res.json({
@@ -1470,6 +1476,38 @@ const removePersonnel = (0, catchAsync_1.default)(async (req, res, next) => {
     });
 });
 exports.removePersonnel = removePersonnel;
+const removeSpecificPersonnel = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { storeId, userId } = req.params;
+    const actorId = req.user.id;
+    const store = await prisma_1.default.store.findUnique({ where: { id: storeId } });
+    if (!store || store.isDeleted) {
+        return next(new appError_1.default("Store not found", 404));
+    }
+    await prisma_1.default.storeInchargeAssignment.updateMany({
+        where: { storeId, userId, isActive: true },
+        data: { isActive: false },
+    });
+    const remaining = await prisma_1.default.storeInchargeAssignment.findFirst({
+        where: { storeId, isActive: true },
+        select: { userId: true },
+        orderBy: { createdAt: "asc" },
+    });
+    const updatedStore = await prisma_1.default.store.update({
+        where: { id: storeId },
+        data: { assignedUserId: remaining?.userId ?? null, updatedBy: actorId },
+        include: {
+            storeInchargeAssignments: {
+                where: { isActive: true },
+                include: { user: { select: { id: true, name: true, email: true, role: true } } },
+            },
+        },
+    });
+    res.json({
+        message: "Personnel assignment removed successfully",
+        store: updatedStore,
+    });
+});
+exports.removeSpecificPersonnel = removeSpecificPersonnel;
 const assignSiteIncharge = (0, catchAsync_1.default)(async (req, res, next) => {
     const { storeId } = req.params;
     const { userId } = req.body;

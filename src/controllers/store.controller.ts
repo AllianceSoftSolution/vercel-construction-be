@@ -1749,25 +1749,31 @@ const assignPersonnel = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  // Deactivate any existing active assignments for the store
-  await prisma.storeInchargeAssignment.updateMany({
-    where: { storeId, isActive: true },
-    data: { isActive: false },
+  // Check if this user is already actively assigned to avoid duplicates
+  const existing = await prisma.storeInchargeAssignment.findUnique({
+    where: { userId_storeId: { userId, storeId } },
   });
+  if (existing?.isActive) {
+    return next(new AppError("This user is already assigned to this store", 400));
+  }
 
-  // Create new assignment
+  // Add (or reactivate) the assignment — do NOT deactivate other assignments
   await prisma.storeInchargeAssignment.upsert({
     where: { userId_storeId: { userId, storeId } },
     update: { isActive: true },
     create: { userId, storeId, createdBy: actorId },
   });
 
-  // Also persist on the store itself for quick access
+  // Update assignedUserId on the store to the latest assigned user
   const updatedStore = await prisma.store.update({
     where: { id: storeId },
     data: { assignedUserId: userId, updatedBy: actorId },
     include: {
       assignedUser: { select: { id: true, name: true, email: true, role: true } },
+      storeInchargeAssignments: {
+        where: { isActive: true },
+        include: { user: { select: { id: true, name: true, email: true, role: true } } },
+      },
     },
   });
 
@@ -1796,6 +1802,46 @@ const removePersonnel = catchAsync(async (req, res, next) => {
   const updatedStore = await prisma.store.update({
     where: { id: storeId },
     data: { assignedUserId: null, updatedBy: actorId },
+  });
+
+  res.json({
+    message: "Personnel assignment removed successfully",
+    store: updatedStore,
+  });
+});
+
+// Remove a specific user's assignment from a store
+const removeSpecificPersonnel = catchAsync(async (req, res, next) => {
+  const { storeId, userId } = req.params;
+  const actorId = req.user.id;
+
+  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  if (!store || store.isDeleted) {
+    return next(new AppError("Store not found", 404));
+  }
+
+  // Deactivate this specific assignment
+  await prisma.storeInchargeAssignment.updateMany({
+    where: { storeId, userId, isActive: true },
+    data: { isActive: false },
+  });
+
+  // Find the next active assignment to keep assignedUserId consistent
+  const remaining = await prisma.storeInchargeAssignment.findFirst({
+    where: { storeId, isActive: true },
+    select: { userId: true },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const updatedStore = await prisma.store.update({
+    where: { id: storeId },
+    data: { assignedUserId: remaining?.userId ?? null, updatedBy: actorId },
+    include: {
+      storeInchargeAssignments: {
+        where: { isActive: true },
+        include: { user: { select: { id: true, name: true, email: true, role: true } } },
+      },
+    },
   });
 
   res.json({
@@ -2065,6 +2111,7 @@ export {
   getProjectInventory,
   assignPersonnel,
   removePersonnel,
+  removeSpecificPersonnel,
   assignSiteIncharge,
   assignProjectManager,
   getStorePermissions,

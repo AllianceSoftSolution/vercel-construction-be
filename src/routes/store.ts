@@ -14,6 +14,7 @@ import {
   getProjectInventory,
   assignPersonnel,
   removePersonnel,
+  removeSpecificPersonnel,
   assignSiteIncharge,
   assignProjectManager,
   getStorePermissions,
@@ -47,6 +48,7 @@ router.patch("/:id/deactivate", protect, adminOnly, deactivateStore);
 // Personnel assignment routes
 router.patch("/:storeId/assign", protect, adminOnly, assignPersonnel);
 router.delete("/:storeId/assign", protect, adminOnly, removePersonnel);
+router.delete("/:storeId/assign/:userId", protect, adminOnly, removeSpecificPersonnel);
 router.post("/:storeId/assign-site-incharge", protect, adminOnly, assignSiteIncharge);
 router.post("/:storeId/assign-project-manager", protect, adminOnly, assignProjectManager);
 

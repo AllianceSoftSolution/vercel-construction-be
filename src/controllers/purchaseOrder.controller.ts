@@ -56,7 +56,8 @@ async function updateDemandStatus(demandId: string) {
   if (
     newStatus !== demand.status ||
     newFulfilledQuantity !== Number(demand.quantityFulfilled || 0) ||
-    newRemainingQuantity !== Number(demand.quantityRemaining || demandQuantity)
+    newRemainingQuantity !== Number(demand.quantityRemaining || demandQuantity) ||
+    totalPOQuantity !== Number(demand.poQuantity ?? -1)
   ) {
     await prisma.demand.update({
       where: { id: demandId },
@@ -64,6 +65,7 @@ async function updateDemandStatus(demandId: string) {
         status: newStatus,
         quantityFulfilled: newFulfilledQuantity,
         quantityRemaining: newRemainingQuantity,
+        poQuantity: totalPOQuantity,
         updatedBy: demand.createdBy, // Keep the original creator
       },
     });
