@@ -23,6 +23,7 @@ import {
   cleanupEmptySectionStores,
 } from "../controllers/store.controller";
 import protect from "../middlewares/auth.middleware";
+import { s3UploadMiddleware } from "../middlewares/s3UploadMiddleware";
 
 const router = express.Router();
 
@@ -46,7 +47,13 @@ router.patch("/:id/activate", protect, adminOnly, activateStore);
 router.patch("/:id/deactivate", protect, adminOnly, deactivateStore);
 
 // Personnel assignment routes
-router.patch("/:storeId/assign", protect, adminOnly, assignPersonnel);
+router.patch(
+  "/:storeId/assign",
+  protect,
+  adminOnly,
+  s3UploadMiddleware([{ name: "utilityFile", maxCount: 1 }]),
+  assignPersonnel
+);
 router.delete("/:storeId/assign", protect, adminOnly, removePersonnel);
 router.delete("/:storeId/assign/:userId", protect, adminOnly, removeSpecificPersonnel);
 router.post("/:storeId/assign-site-incharge", protect, adminOnly, assignSiteIncharge);

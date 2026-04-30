@@ -1757,11 +1757,14 @@ const assignPersonnel = catchAsync(async (req, res, next) => {
     return next(new AppError("This user is already assigned to this store", 400));
   }
 
+  // Get uploaded utility file URL (if any)
+  const utilityFileUrl = (req as any).filesFromS3?.utilityFile as string | undefined;
+
   // Add (or reactivate) the assignment — do NOT deactivate other assignments
   await prisma.storeInchargeAssignment.upsert({
     where: { userId_storeId: { userId, storeId } },
-    update: { isActive: true },
-    create: { userId, storeId, createdBy: actorId },
+    update: { isActive: true, ...(utilityFileUrl ? { utilityFile: utilityFileUrl } : {}) },
+    create: { userId, storeId, createdBy: actorId, ...(utilityFileUrl ? { utilityFile: utilityFileUrl } : {}) },
   });
 
   // Update assignedUserId on the store to the latest assigned user

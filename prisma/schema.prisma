@@ -236,12 +236,13 @@ model ConstructionManagerAssignment {
 }
 
 model StoreInchargeAssignment {
-  id        String   @id @default(cuid())
-  userId    String
-  storeId   String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  createdBy String
+  id          String   @id @default(cuid())
+  userId      String
+  storeId     String
+  isActive    Boolean  @default(true)
+  utilityFile String?
+  createdAt   DateTime @default(now())
+  createdBy   String
   
   user      User     @relation(fields: [userId], references: [id])
   store     Store    @relation(fields: [storeId], references: [id])

@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = __importDefault(require("express"));
 const store_controller_1 = require("../controllers/store.controller");
 const auth_middleware_1 = __importDefault(require("../middlewares/auth.middleware"));
+const s3UploadMiddleware_1 = require("../middlewares/s3UploadMiddleware");
 const router = express_1.default.Router();
 const adminOnly = (req, res, next) => {
     if (!req.user || req.user.role !== "ADMIN") {
@@ -23,7 +24,7 @@ router.put("/:id", auth_middleware_1.default, adminOnly, store_controller_1.upda
 router.delete("/:id", auth_middleware_1.default, adminOnly, store_controller_1.deleteStore);
 router.patch("/:id/activate", auth_middleware_1.default, adminOnly, store_controller_1.activateStore);
 router.patch("/:id/deactivate", auth_middleware_1.default, adminOnly, store_controller_1.deactivateStore);
-router.patch("/:storeId/assign", auth_middleware_1.default, adminOnly, store_controller_1.assignPersonnel);
+router.patch("/:storeId/assign", auth_middleware_1.default, adminOnly, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "utilityFile", maxCount: 1 }]), store_controller_1.assignPersonnel);
 router.delete("/:storeId/assign", auth_middleware_1.default, adminOnly, store_controller_1.removePersonnel);
 router.delete("/:storeId/assign/:userId", auth_middleware_1.default, adminOnly, store_controller_1.removeSpecificPersonnel);
 router.post("/:storeId/assign-site-incharge", auth_middleware_1.default, adminOnly, store_controller_1.assignSiteIncharge);
