@@ -716,14 +716,19 @@ const createAccountantAssignment = catchAsync(async (req, res, next) => {
     (a) => a.sectionId !== null && !validSectionIds.includes(a.sectionId)
   );
 
-  // Assign new sections
+  // Assign new sections (upsert to handle previously-deactivated records)
   const createdAssignments = await Promise.all(
     toAssign.map((sectionId) =>
-      prisma.accountantAssignment.create({
-        data: {
+      prisma.accountantAssignment.upsert({
+        where: { userId_projectId_sectionId: { userId, projectId, sectionId } },
+        create: {
           userId,
           projectId,
           sectionId,
+          createdBy: currentUserId,
+        },
+        update: {
+          isActive: true,
           createdBy: currentUserId,
         },
         include: {
