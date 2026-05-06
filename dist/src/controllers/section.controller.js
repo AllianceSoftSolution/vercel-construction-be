@@ -487,6 +487,28 @@ const getSectionById = (0, catchAsync_1.default)(async (req, res, next) => {
         };
     });
     const headStore = section.stores.find((s) => s.type === "HEAD_STORE");
+    const projectLevelAccountantAssignments = await prisma_1.default.accountantAssignment.findMany({
+        where: {
+            projectId: section.projectId,
+            sectionId: null,
+            isActive: true,
+        },
+        include: {
+            user: {
+                select: {
+                    id: true,
+                    name: true,
+                    email: true,
+                    role: true,
+                },
+            },
+        },
+    });
+    const sectionAccountantUserIds = new Set(section.accountantAssignments.map((a) => a.user.id));
+    const combinedAccountantAssignments = [
+        ...section.accountantAssignments,
+        ...projectLevelAccountantAssignments.filter((a) => !sectionAccountantUserIds.has(a.user.id)),
+    ];
     const response = {
         id: section.id,
         name: section.name,
@@ -527,7 +549,7 @@ const getSectionById = (0, catchAsync_1.default)(async (req, res, next) => {
             };
         })),
         associatedSiteIncharges: section.siteInchargeAssignments,
-        associatedAccountants: section.accountantAssignments,
+        associatedAccountants: combinedAccountantAssignments,
         recentDemands: section.demands,
         totalAmountSpent: sectionPOs._sum.totalAmount || 0,
         materialCapAnalytics: materialCapAnalytics,

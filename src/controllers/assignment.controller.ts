@@ -372,11 +372,19 @@ const createConstructionManagerAssignment = catchAsync(
 
     // Create assignment and optionally create section store in a transaction
     const result = await prisma.$transaction(async (tx) => {
-      // Create the CM assignment
-      const assignment = await tx.constructionManagerAssignment.create({
-        data: {
+      // Upsert the CM assignment to handle re-assignment after previous unassignment
+      const assignment = await tx.constructionManagerAssignment.upsert({
+        where: {
+          userId_sectionId: { userId, sectionId },
+        },
+        create: {
           userId,
           sectionId,
+          createdBy: currentUserId,
+          isActive: true,
+        },
+        update: {
+          isActive: true,
           createdBy: currentUserId,
         },
         include: {
@@ -1192,7 +1200,15 @@ const getSectionsWithAccountantAssignmentStatus = catchAsync(
       },
       select: { sectionId: true },
     });
-    const assignedSectionIds = new Set(userAssignments.map((a) => a.sectionId));
+
+    // Check if user has a project-level (null sectionId) assignment — head accountant
+    const hasProjectLevelAssignment = userAssignments.some(
+      (a) => a.sectionId === null
+    );
+
+    const assignedSectionIds = new Set(
+      userAssignments.map((a) => a.sectionId).filter((id) => id !== null)
+    );
 
     // Get all assignments for other accountants in this project
     const otherAssignments = await prisma.accountantAssignment.findMany({
@@ -1208,9 +1224,11 @@ const getSectionsWithAccountantAssignmentStatus = catchAsync(
     );
 
     // Add assignedToCurrentUser and assignedToOther fields
+    // For head accountants with a project-level assignment, mark all sections as assigned
     const result = sections.map((section) => ({
       ...section,
-      assignedToCurrentUser: assignedSectionIds.has(section.id),
+      assignedToCurrentUser:
+        hasProjectLevelAssignment || assignedSectionIds.has(section.id),
       assignedToOther: otherAssignedSectionIds.has(section.id),
     }));
 

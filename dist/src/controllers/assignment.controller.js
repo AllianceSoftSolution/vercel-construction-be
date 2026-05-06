@@ -287,10 +287,18 @@ const createConstructionManagerAssignment = (0, catchAsync_1.default)(async (req
         },
     });
     const result = await prisma_1.default.$transaction(async (tx) => {
-        const assignment = await tx.constructionManagerAssignment.create({
-            data: {
+        const assignment = await tx.constructionManagerAssignment.upsert({
+            where: {
+                userId_sectionId: { userId, sectionId },
+            },
+            create: {
                 userId,
                 sectionId,
+                createdBy: currentUserId,
+                isActive: true,
+            },
+            update: {
+                isActive: true,
                 createdBy: currentUserId,
             },
             include: {
@@ -961,7 +969,8 @@ const getSectionsWithAccountantAssignmentStatus = (0, catchAsync_1.default)(asyn
         },
         select: { sectionId: true },
     });
-    const assignedSectionIds = new Set(userAssignments.map((a) => a.sectionId));
+    const hasProjectLevelAssignment = userAssignments.some((a) => a.sectionId === null);
+    const assignedSectionIds = new Set(userAssignments.map((a) => a.sectionId).filter((id) => id !== null));
     const otherAssignments = await prisma_1.default.accountantAssignment.findMany({
         where: {
             projectId: projectId,
@@ -973,7 +982,7 @@ const getSectionsWithAccountantAssignmentStatus = (0, catchAsync_1.default)(asyn
     const otherAssignedSectionIds = new Set(otherAssignments.map((a) => a.sectionId));
     const result = sections.map((section) => ({
         ...section,
-        assignedToCurrentUser: assignedSectionIds.has(section.id),
+        assignedToCurrentUser: hasProjectLevelAssignment || assignedSectionIds.has(section.id),
         assignedToOther: otherAssignedSectionIds.has(section.id),
     }));
     res.json({

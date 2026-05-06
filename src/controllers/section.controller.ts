@@ -570,6 +570,36 @@ const getSectionById = catchAsync(async (req, res, next) => {
   // Find the head store (should be only one)
   const headStore = section.stores.find((s) => s.type === "HEAD_STORE");
 
+  // Fetch head accountants assigned at project level (sectionId = null) for this section's project
+  const projectLevelAccountantAssignments = await prisma.accountantAssignment.findMany({
+    where: {
+      projectId: section.projectId,
+      sectionId: null,
+      isActive: true,
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+        },
+      },
+    },
+  });
+
+  // Merge section-level and project-level accountants, avoiding duplicates
+  const sectionAccountantUserIds = new Set(
+    section.accountantAssignments.map((a) => a.user.id)
+  );
+  const combinedAccountantAssignments = [
+    ...section.accountantAssignments,
+    ...projectLevelAccountantAssignments.filter(
+      (a) => !sectionAccountantUserIds.has(a.user.id)
+    ),
+  ];
+
   // Prepare the response with organized data
   const response = {
     id: section.id,
@@ -616,7 +646,7 @@ const getSectionById = catchAsync(async (req, res, next) => {
       })
     ),
     associatedSiteIncharges: section.siteInchargeAssignments,
-    associatedAccountants: section.accountantAssignments,
+    associatedAccountants: combinedAccountantAssignments,
     recentDemands: section.demands,
     totalAmountSpent: sectionPOs._sum.totalAmount || 0,
     materialCapAnalytics: materialCapAnalytics,
