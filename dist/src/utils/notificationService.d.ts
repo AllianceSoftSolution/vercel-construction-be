@@ -6,13 +6,13 @@ export declare class NotificationService {
         section: {
             project: {
                 id: string;
-                name: string;
                 code: string;
+                name: string;
             };
         } & {
             id: string;
-            name: string;
             code: string;
+            name: string;
             description: string | null;
             isActive: boolean;
             isDeleted: boolean;
@@ -36,13 +36,13 @@ export declare class NotificationService {
         section: {
             project: {
                 id: string;
-                name: string;
                 code: string;
+                name: string;
             };
         } & {
             id: string;
-            name: string;
             code: string;
+            name: string;
             description: string | null;
             isActive: boolean;
             isDeleted: boolean;
