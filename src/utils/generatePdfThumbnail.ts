@@ -32,7 +32,7 @@ export async function generateThumbnailFromPDF(
         viewport,
     };
 
-    const renderTask = page.render(renderContext);
+    const renderTask = page.render(renderContext as any);
     await renderTask.promise;
 
     // 4. Convert canvas to buffer, resize, convert to JPEG
