@@ -894,17 +894,17 @@ exports.updatePOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!purchaseOrder.amountAddedAt) {
         return next(new appError_1.default("No amount has been added to this PO yet", 400));
     }
-    const now = new Date();
-    const amountAddedAt = new Date(purchaseOrder.amountAddedAt);
-    const hoursDiff = (now.getTime() - amountAddedAt.getTime()) / (1000 * 60 * 60);
-    if (hoursDiff > 24) {
-        return next(new appError_1.default("Cannot edit: 24-hour edit window has expired", 400));
-    }
     const user = req.user;
-    if (purchaseOrder.amountAddedBy !== user.id &&
-        user.role !== "ADMIN" &&
+    if (user.role !== "ADMIN" &&
         !(user.role === "ACCOUNTANT" && user.isHead)) {
-        return next(new appError_1.default("Only the user who added the amount can edit it (or admin/head accountant)", 403));
+        return next(new appError_1.default("Only head accountants and admins can edit PO amounts", 403));
+    }
+    if (user.role !== "ADMIN") {
+        const refTime = purchaseOrder.amountLastEditedAt ?? purchaseOrder.amountAddedAt;
+        const hoursDiff = (new Date().getTime() - new Date(refTime).getTime()) / (1000 * 60 * 60);
+        if (hoursDiff > 24) {
+            return next(new appError_1.default("Cannot edit: 24-hour edit window has expired", 400));
+        }
     }
     if (!unitPrice || unitPrice <= 0) {
         return next(new appError_1.default("Unit price must be greater than 0", 400));
@@ -917,6 +917,7 @@ exports.updatePOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
             unitPrice: new library_1.Decimal(unitPrice),
             totalAmount: new library_1.Decimal(newTotalAmount),
             updatedBy: user.id,
+            amountLastEditedAt: new Date(),
         };
         if (notes) {
             updateData.notes = notes;

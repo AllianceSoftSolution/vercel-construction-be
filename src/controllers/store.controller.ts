@@ -1021,6 +1021,7 @@ const stockIn = catchAsync(async (req, res, next) => {
         reference: poReferenceNumber || stockInType.toUpperCase(),
         notes: notes || `${stockInType} stock in`,
         createdBy: userId,
+        documentUrl: (req as any).filesFromS3?.document || null,
         // fromStoreId intentionally null for external PO deliveries (source is a vendor, not a store)
       },
     });
@@ -1244,6 +1245,7 @@ const stockOut = catchAsync(async (req, res, next) => {
         notes: notes || `${stockOutType} stock out`,
         createdBy: userId,
         toStoreId: toStoreId || null, // Optional: which store received this stock
+        documentUrl: (req as any).filesFromS3?.document || null,
       },
     });
 

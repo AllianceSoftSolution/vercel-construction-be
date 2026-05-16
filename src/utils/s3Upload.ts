@@ -25,7 +25,7 @@ export const uploadToS3 = async (
         ContentType: mimeType,
     };
 
-    await s3.putObject(params).promise();
+    const data = await s3.upload(params).promise();
 
-    return `https://${params.Bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+    return data.Location;
 };

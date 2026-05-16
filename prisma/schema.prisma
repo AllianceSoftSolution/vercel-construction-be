@@ -12,7 +12,9 @@ datasource db {
 
 // Enums
 enum UserRole {
+  SUPER_ADMIN
   ADMIN
+  SUB_ADMIN
   SITE_INCHARGE
   PROJECT_MANAGER
   CONSTRUCTION_MANAGER
@@ -477,10 +479,12 @@ model PurchaseOrder {
   unitPrice       Decimal? // NEW: price per unit
   totalAmount     Decimal? // NEW: total amount (quantity * unitPrice)
   proofOfBill     String?  // NEW: URL to vendor's bill/invoice
-  amountAddedBy   String?  // NEW: who added the amount
-  amountAddedAt   DateTime? // NEW: when amount was added
+  amountAddedBy     String?  // NEW: who added the amount
+  amountAddedAt     DateTime? // NEW: when amount was first added
+  amountLastEditedAt DateTime? // when amount was last edited (refreshes 24h window)
   notes           String?  // Optional notes, required when quantity exceeds demand
   status          POStatus @default(CREATED)
+  paymentStatus   PaymentStatus @default(PENDING)
   isDeleted       Boolean  @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
@@ -525,6 +529,7 @@ model StoreTransaction {
   quantity      Decimal
   reference     String?  // Reference to PO, Demand, etc.
   notes         String?
+  documentUrl   String?  // Optional attached document (image/pdf/doc)
   transactionDate DateTime @default(now())
   createdBy     String
   fromStoreId   String?  // Source store (for OUT/TRANSFER — where it came from)

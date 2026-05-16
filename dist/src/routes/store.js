@@ -29,8 +29,8 @@ router.delete("/:storeId/assign", auth_middleware_1.default, adminOnly, store_co
 router.delete("/:storeId/assign/:userId", auth_middleware_1.default, adminOnly, store_controller_1.removeSpecificPersonnel);
 router.post("/:storeId/assign-site-incharge", auth_middleware_1.default, adminOnly, store_controller_1.assignSiteIncharge);
 router.post("/:storeId/assign-project-manager", auth_middleware_1.default, adminOnly, store_controller_1.assignProjectManager);
-router.post("/:storeId/stock-in", auth_middleware_1.default, store_controller_1.stockIn);
-router.post("/:storeId/stock-out", auth_middleware_1.default, store_controller_1.stockOut);
+router.post("/:storeId/stock-in", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "document", maxCount: 1 }]), store_controller_1.stockIn);
+router.post("/:storeId/stock-out", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "document", maxCount: 1 }]), store_controller_1.stockOut);
 router.get("/:storeId/inventory", auth_middleware_1.default, store_controller_1.getStoreInventory);
 router.get("/:storeId/transactions", auth_middleware_1.default, store_controller_1.getStoreTransactions);
 router.get("/project/:projectId/inventory", auth_middleware_1.default, store_controller_1.getProjectInventory);

@@ -948,7 +948,9 @@ const changeUserRole = catchAsync(async (req, res, next) => {
 
   // Validate role
   const validRoles = [
+    "SUPER_ADMIN",
     "ADMIN",
+    "SUB_ADMIN",
     "SITE_INCHARGE",
     "PROJECT_MANAGER",
     "CONSTRUCTION_MANAGER",

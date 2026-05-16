@@ -27,7 +27,20 @@ const protect = async (req: AuthRequest, res: Response, next: NextFunction) => {
       return next(new AppError("User not found", 401));
     }
 
-    req.user = user; // Attach user to request
+    // SUB_ADMIN: read-only — block all mutating HTTP methods
+    if (user.role === "SUB_ADMIN" && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+      return next(new AppError("Sub-admin users have read-only access and cannot perform this action", 403));
+    }
+
+    // Normalise role for access-control throughout the app:
+    // SUPER_ADMIN → treated as ADMIN (full access)
+    // SUB_ADMIN   → treated as ADMIN for read (sees all data), blocked above for writes
+    if (user.role === "SUPER_ADMIN" || user.role === "SUB_ADMIN") {
+      req.user = { ...user, role: "ADMIN" };
+    } else {
+      req.user = user;
+    }
+
     next(); // Proceed to the next middleware
   } catch (error) {
     return next(new AppError("Invalid or expired token", 401));

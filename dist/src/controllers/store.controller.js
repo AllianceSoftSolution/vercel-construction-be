@@ -870,6 +870,7 @@ const stockIn = (0, catchAsync_1.default)(async (req, res, next) => {
                 reference: poReferenceNumber || stockInType.toUpperCase(),
                 notes: notes || `${stockInType} stock in`,
                 createdBy: userId,
+                documentUrl: req.filesFromS3?.document || null,
             },
         });
         if (poReferenceNumber && stockInType === "PO") {
@@ -1024,6 +1025,7 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
                 notes: notes || `${stockOutType} stock out`,
                 createdBy: userId,
                 toStoreId: toStoreId || null,
+                documentUrl: req.filesFromS3?.document || null,
             },
         });
         if (demandReferenceNumber && stockOutType === "DEMAND") {

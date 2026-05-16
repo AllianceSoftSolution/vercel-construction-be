@@ -1136,33 +1136,34 @@ export const updatePOAmount = catchAsync(
       );
     }
 
-    // Check if within 24 hours
-    const now = new Date();
-    const amountAddedAt = new Date(purchaseOrder.amountAddedAt);
-    const hoursDiff = (now.getTime() - amountAddedAt.getTime()) / (1000 * 60 * 60);
-
-    if (hoursDiff > 24) {
-      return next(
-        new AppError(
-          "Cannot edit: 24-hour edit window has expired",
-          400
-        )
-      );
-    }
-
-    // Check if user is the one who added the amount (or is admin/head accountant)
+    // Only admin or head accountant can edit PO amounts
     const user = req.user;
     if (
-      purchaseOrder.amountAddedBy !== user.id &&
       user.role !== "ADMIN" &&
       !(user.role === "ACCOUNTANT" && user.isHead)
     ) {
       return next(
         new AppError(
-          "Only the user who added the amount can edit it (or admin/head accountant)",
+          "Only head accountants and admins can edit PO amounts",
           403
         )
       );
+    }
+
+    // Check if within 24 hours.
+    // The window is based on the last edit time (amountLastEditedAt) if available,
+    // otherwise the original add time (amountAddedAt). Admins bypass this entirely.
+    if (user.role !== "ADMIN") {
+      const refTime = purchaseOrder.amountLastEditedAt ?? purchaseOrder.amountAddedAt;
+      const hoursDiff = (new Date().getTime() - new Date(refTime!).getTime()) / (1000 * 60 * 60);
+      if (hoursDiff > 24) {
+        return next(
+          new AppError(
+            "Cannot edit: 24-hour edit window has expired",
+            400
+          )
+        );
+      }
     }
 
     if (!unitPrice || unitPrice <= 0) {
@@ -1180,6 +1181,7 @@ export const updatePOAmount = catchAsync(
         unitPrice: new Decimal(unitPrice),
         totalAmount: new Decimal(newTotalAmount),
         updatedBy: user.id,
+        amountLastEditedAt: new Date(), // refresh the 24h edit window
       };
 
       if (notes) {

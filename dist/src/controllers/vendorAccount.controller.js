@@ -139,6 +139,41 @@ exports.addVendorPayment = (0, catchAsync_1.default)(async (req, res, next) => {
             balance,
         },
     });
+    if (projectId) {
+        const vendorProjectPOs = await prisma_1.default.purchaseOrder.findMany({
+            where: {
+                vendorId,
+                projectId: projectId,
+                totalAmount: { not: null },
+                isDeleted: false,
+                status: { not: "CANCELLED" },
+            },
+            select: { totalAmount: true },
+        });
+        const totalPOAmount = vendorProjectPOs.reduce((sum, po) => sum + Number(po.totalAmount || 0), 0);
+        const allProjectPayments = await prisma_1.default.vendorPayment.aggregate({
+            where: { vendorId, projectId: projectId },
+            _sum: { amount: true },
+        });
+        const totalPaidForProject = Number(allProjectPayments._sum.amount || 0);
+        let newPaymentStatus = "PENDING";
+        if (totalPOAmount > 0 && totalPaidForProject >= totalPOAmount) {
+            newPaymentStatus = "FULLY_PAID";
+        }
+        else if (totalPaidForProject > 0) {
+            newPaymentStatus = "PARTIALLY_PAID";
+        }
+        await prisma_1.default.purchaseOrder.updateMany({
+            where: {
+                vendorId,
+                projectId: projectId,
+                totalAmount: { not: null },
+                isDeleted: false,
+                status: { not: "CANCELLED" },
+            },
+            data: { paymentStatus: newPaymentStatus },
+        });
+    }
     res.status(201).json({
         status: "success",
         data: payment,

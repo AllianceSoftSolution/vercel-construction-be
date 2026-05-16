@@ -724,7 +724,9 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new appError_1.default("New role is required", 400));
     }
     const validRoles = [
+        "SUPER_ADMIN",
         "ADMIN",
+        "SUB_ADMIN",
         "SITE_INCHARGE",
         "PROJECT_MANAGER",
         "CONSTRUCTION_MANAGER",

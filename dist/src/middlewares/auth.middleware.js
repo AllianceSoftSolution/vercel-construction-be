@@ -18,7 +18,15 @@ const protect = async (req, res, next) => {
         if (!user) {
             return next(new appError_1.default("User not found", 401));
         }
-        req.user = user;
+        if (user.role === "SUB_ADMIN" && !["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+            return next(new appError_1.default("Sub-admin users have read-only access and cannot perform this action", 403));
+        }
+        if (user.role === "SUPER_ADMIN" || user.role === "SUB_ADMIN") {
+            req.user = { ...user, role: "ADMIN" };
+        }
+        else {
+            req.user = user;
+        }
         next();
     }
     catch (error) {

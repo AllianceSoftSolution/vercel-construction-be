@@ -21,8 +21,8 @@ const uploadToS3 = async (fileBuffer, fileName, mimeType, folder = 'uploads') =>
         Body: fileBuffer,
         ContentType: mimeType,
     };
-    await s3.putObject(params).promise();
-    return `https://${params.Bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+    const data = await s3.upload(params).promise();
+    return data.Location;
 };
 exports.uploadToS3 = uploadToS3;
 //# sourceMappingURL=s3Upload.js.map

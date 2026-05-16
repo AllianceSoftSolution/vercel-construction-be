@@ -60,8 +60,8 @@ router.post("/:storeId/assign-site-incharge", protect, adminOnly, assignSiteInch
 router.post("/:storeId/assign-project-manager", protect, adminOnly, assignProjectManager);
 
 // Stock management routes
-router.post("/:storeId/stock-in", protect, stockIn);
-router.post("/:storeId/stock-out", protect, stockOut);
+router.post("/:storeId/stock-in", protect, s3UploadMiddleware([{ name: "document", maxCount: 1 }]), stockIn);
+router.post("/:storeId/stock-out", protect, s3UploadMiddleware([{ name: "document", maxCount: 1 }]), stockOut);
 router.get("/:storeId/inventory", protect, getStoreInventory);
 router.get("/:storeId/transactions", protect, getStoreTransactions);
 
