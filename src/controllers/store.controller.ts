@@ -304,10 +304,23 @@ const getStores = catchAsync(async (req, res) => {
         select: { id: true },
       });
       const sectionIds = projectSections.map((s) => s.id);
-      defaultFilters.OR = [
+
+      // Also include stores directly assigned via assignPersonnel (storeInchargeAssignment)
+      // This handles HEAD stores assigned directly without a project-level headStoreInchargeAssignment
+      const directAssignments = await prisma.storeInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { storeId: true },
+      });
+      const directStoreIds = directAssignments.map((a) => a.storeId);
+
+      const orConditions: any[] = [
         { projectId: { in: projectIds } },
         { sectionId: { in: sectionIds } },
       ];
+      if (directStoreIds.length > 0) {
+        orConditions.push({ id: { in: directStoreIds } });
+      }
+      defaultFilters.OR = orConditions;
     } else {
       // Regular store incharges only see stores explicitly assigned to them
       const assignments = await prisma.storeInchargeAssignment.findMany({
@@ -422,6 +435,7 @@ const getStoreById = catchAsync(async (req, res, next) => {
     if (user.role === "STORE_INCHARGE") {
       if (user.isHead) {
         // Head Store Incharge: check if store belongs to one of their assigned projects
+        // OR if the store was directly assigned via assignPersonnel
         const store = await prisma.store.findUnique({
           where: { id },
           select: { projectId: true, sectionId: true },
@@ -440,6 +454,13 @@ const getStoreById = catchAsync(async (req, res, next) => {
               where: { userId: user.id, projectId, isActive: true },
             });
             assigned = !!headAssignment;
+          }
+          // Fallback: also check direct storeInchargeAssignment (assigned via assignPersonnel)
+          if (!assigned) {
+            const directAssignment = await prisma.storeInchargeAssignment.findFirst({
+              where: { userId: user.id, storeId: id, isActive: true },
+            });
+            assigned = !!directAssignment;
           }
         }
       } else {
@@ -865,20 +886,20 @@ const stockIn = catchAsync(async (req, res, next) => {
   const { storeId } = req.params;
   const {
     materialId,
-    quantity,
     poReferenceNumber, // Optional - for PO-based stock in
     notes,
     stockInType = "PO", // PO, INITIAL, TRANSFER, MANUAL
   } = req.body;
+  const quantity = parseFloat(req.body.quantity); // Parse to number — FormData sends strings
   const userId = req.user.id;
 
   // Validate required fields
-  if (!materialId || !quantity) {
+  if (!materialId || !req.body.quantity) {
     return next(new AppError("Material ID and quantity are required", 400));
   }
 
-  if (quantity <= 0) {
-    return next(new AppError("Quantity must be greater than 0", 400));
+  if (isNaN(quantity) || quantity <= 0) {
+    return next(new AppError("Quantity must be a valid number greater than 0", 400));
   }
 
   // Validate store exists and user has access
@@ -1065,21 +1086,21 @@ const stockOut = catchAsync(async (req, res, next) => {
   const { storeId } = req.params;
   const {
     materialId,
-    quantity,
     demandReferenceNumber, // Optional - for demand-based stock out
     toStoreId,            // Optional - destination store for TRANSFER type
     notes,
     stockOutType = "DEMAND", // DEMAND, TRANSFER, MANUAL, LOSS
   } = req.body;
+  const quantity = parseFloat(req.body.quantity); // Parse to number — FormData sends strings
   const userId = req.user.id;
 
   // Validate required fields
-  if (!materialId || !quantity) {
+  if (!materialId || !req.body.quantity) {
     return next(new AppError("Material ID and quantity are required", 400));
   }
 
-  if (quantity <= 0) {
-    return next(new AppError("Quantity must be greater than 0", 400));
+  if (isNaN(quantity) || quantity <= 0) {
+    return next(new AppError("Quantity must be a valid number greater than 0", 400));
   }
 
   // Validate store exists and user has access
@@ -1173,13 +1194,28 @@ const stockOut = catchAsync(async (req, res, next) => {
   }
 
   // Check if sufficient stock is available
-  if (currentInventory.available < quantity) {
+  // Use .toNumber() to safely compare Prisma Decimal with a JS number
+  if (currentInventory.available.toNumber() < quantity) {
     return next(
       new AppError(
         `Insufficient stock. Available: ${currentInventory.available}, Requested: ${quantity}`,
         400
       )
     );
+  }
+
+  // Validate destination store for TRANSFER
+  if (stockOutType === "TRANSFER") {
+    if (!toStoreId) {
+      return next(new AppError("toStoreId is required for TRANSFER stock out", 400));
+    }
+    const destStore = await prisma.store.findUnique({ where: { id: toStoreId } });
+    if (!destStore || destStore.isDeleted || !destStore.isActive) {
+      return next(new AppError("Destination store not found or inactive", 404));
+    }
+    if (destStore.id === storeId) {
+      return next(new AppError("Destination store cannot be the same as source store", 400));
+    }
   }
 
   // Validate demand reference if provided
@@ -1204,7 +1240,7 @@ const stockOut = catchAsync(async (req, res, next) => {
 
     // Check if remaining quantity is sufficient
     const remainingQuantity = demand.quantityRemaining || demand.quantity;
-    if (remainingQuantity < quantity) {
+    if (remainingQuantity.toNumber() < quantity) {
       return next(
         new AppError(
           `Requested quantity exceeds remaining demand quantity. Remaining: ${remainingQuantity}, Requested: ${quantity}`,
@@ -1249,6 +1285,40 @@ const stockOut = catchAsync(async (req, res, next) => {
       },
     });
 
+    // If TRANSFER: update destination store inventory and create an IN transaction there
+    if (stockOutType === "TRANSFER" && toStoreId) {
+      // Upsert destination store inventory (create if first transfer, increment if exists)
+      await tx.storeInventory.upsert({
+        where: { storeId_materialId: { storeId: toStoreId, materialId } },
+        update: {
+          stock: { increment: quantity },
+          available: { increment: quantity },
+        },
+        create: {
+          storeId: toStoreId,
+          materialId,
+          stock: quantity,
+          reserved: 0,
+          available: quantity,
+        },
+      });
+
+      // Create IN transaction on destination store so it appears in its incoming table
+      await tx.storeTransaction.create({
+        data: {
+          storeId: toStoreId,
+          materialId,
+          type: "IN",
+          quantity,
+          reference: "TRANSFER",
+          notes: notes || `Transfer from store`,
+          createdBy: userId,
+          fromStoreId: storeId,
+          documentUrl: (req as any).filesFromS3?.document || null,
+        },
+      });
+    }
+
     // Update demand status if it's a demand-based stock out
     if (demandReferenceNumber && stockOutType === "DEMAND") {
       const demand = await tx.demand.findFirst({
@@ -1258,7 +1328,7 @@ const stockOut = catchAsync(async (req, res, next) => {
       if (demand) {
         // Check if this will complete the demand
         const currentRemaining = demand.quantityRemaining || demand.quantity;
-        const willComplete = currentRemaining <= quantity;
+        const willComplete = currentRemaining.toNumber() <= quantity;
 
         await tx.demand.update({
           where: { id: demand.id },
@@ -2069,6 +2139,52 @@ const deleteStorePermission = catchAsync(async (req, res, next) => {
   res.json({ message: "Store permission removed" });
 });
 
+// ─── Incoming Transactions: stock that was transferred INTO this store ────────
+
+const getIncomingTransactions = catchAsync(async (req, res, next) => {
+  const { storeId } = req.params;
+  const { page = 1, limit = 50 } = req.query;
+  const user = req.user;
+
+  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  if (!store || store.isDeleted) {
+    return next(new AppError("Store not found", 404));
+  }
+
+  const hasAccess = await checkStoreAccess(user.id, user.role, store);
+  if (!hasAccess) {
+    return next(new AppError("Access denied: not assigned to this store", 403));
+  }
+
+  const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+  const where: any = { storeId, type: "IN", fromStoreId: { not: null } };
+
+  const [transactions, total] = await Promise.all([
+    prisma.storeTransaction.findMany({
+      where,
+      include: {
+        fromStore: { select: { id: true, name: true, type: true } },
+        user: { select: { id: true, name: true } },
+      },
+      orderBy: { transactionDate: "desc" },
+      skip,
+      take: parseInt(limit as string),
+    }),
+    prisma.storeTransaction.count({ where }),
+  ]);
+
+  res.json({
+    message: "Incoming transactions retrieved successfully",
+    transactions,
+    pagination: {
+      page: parseInt(page as string),
+      limit: parseInt(limit as string),
+      total,
+      pages: Math.ceil(total / parseInt(limit as string)),
+    },
+  });
+});
+
 // ─── Cleanup: delete SECTION_STORE entries that have no inventory ─────────────
 
 const cleanupEmptySectionStores = catchAsync(async (req, res) => {
@@ -2113,6 +2229,7 @@ export {
   stockOut,
   getStoreInventory,
   getStoreTransactions,
+  getIncomingTransactions,
   getProjectInventory,
   assignPersonnel,
   removePersonnel,

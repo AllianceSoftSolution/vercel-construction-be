@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cleanupEmptySectionStores = exports.deleteStorePermission = exports.setStorePermissions = exports.getStorePermissions = exports.assignProjectManager = exports.assignSiteIncharge = exports.removeSpecificPersonnel = exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
+exports.cleanupEmptySectionStores = exports.deleteStorePermission = exports.setStorePermissions = exports.getStorePermissions = exports.assignProjectManager = exports.assignSiteIncharge = exports.removeSpecificPersonnel = exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.getIncomingTransactions = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const buildQueryOptions_1 = require("../utils/buildQueryOptions");
@@ -246,10 +246,19 @@ const getStores = (0, catchAsync_1.default)(async (req, res) => {
                 select: { id: true },
             });
             const sectionIds = projectSections.map((s) => s.id);
-            defaultFilters.OR = [
+            const directAssignments = await prisma_1.default.storeInchargeAssignment.findMany({
+                where: { userId: user.id, isActive: true },
+                select: { storeId: true },
+            });
+            const directStoreIds = directAssignments.map((a) => a.storeId);
+            const orConditions = [
                 { projectId: { in: projectIds } },
                 { sectionId: { in: sectionIds } },
             ];
+            if (directStoreIds.length > 0) {
+                orConditions.push({ id: { in: directStoreIds } });
+            }
+            defaultFilters.OR = orConditions;
         }
         else {
             const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
@@ -362,6 +371,12 @@ const getStoreById = (0, catchAsync_1.default)(async (req, res, next) => {
                             where: { userId: user.id, projectId, isActive: true },
                         });
                         assigned = !!headAssignment;
+                    }
+                    if (!assigned) {
+                        const directAssignment = await prisma_1.default.storeInchargeAssignment.findFirst({
+                            where: { userId: user.id, storeId: id, isActive: true },
+                        });
+                        assigned = !!directAssignment;
                     }
                 }
             }
@@ -762,13 +777,14 @@ const deactivateStore = (0, catchAsync_1.default)(async (req, res, next) => {
 exports.deactivateStore = deactivateStore;
 const stockIn = (0, catchAsync_1.default)(async (req, res, next) => {
     const { storeId } = req.params;
-    const { materialId, quantity, poReferenceNumber, notes, stockInType = "PO", } = req.body;
+    const { materialId, poReferenceNumber, notes, stockInType = "PO", } = req.body;
+    const quantity = parseFloat(req.body.quantity);
     const userId = req.user.id;
-    if (!materialId || !quantity) {
+    if (!materialId || !req.body.quantity) {
         return next(new appError_1.default("Material ID and quantity are required", 400));
     }
-    if (quantity <= 0) {
-        return next(new appError_1.default("Quantity must be greater than 0", 400));
+    if (isNaN(quantity) || quantity <= 0) {
+        return next(new appError_1.default("Quantity must be a valid number greater than 0", 400));
     }
     const store = await prisma_1.default.store.findUnique({
         where: { id: storeId },
@@ -905,13 +921,14 @@ const stockIn = (0, catchAsync_1.default)(async (req, res, next) => {
 exports.stockIn = stockIn;
 const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
     const { storeId } = req.params;
-    const { materialId, quantity, demandReferenceNumber, toStoreId, notes, stockOutType = "DEMAND", } = req.body;
+    const { materialId, demandReferenceNumber, toStoreId, notes, stockOutType = "DEMAND", } = req.body;
+    const quantity = parseFloat(req.body.quantity);
     const userId = req.user.id;
-    if (!materialId || !quantity) {
+    if (!materialId || !req.body.quantity) {
         return next(new appError_1.default("Material ID and quantity are required", 400));
     }
-    if (quantity <= 0) {
-        return next(new appError_1.default("Quantity must be greater than 0", 400));
+    if (isNaN(quantity) || quantity <= 0) {
+        return next(new appError_1.default("Quantity must be a valid number greater than 0", 400));
     }
     const store = await prisma_1.default.store.findUnique({
         where: { id: storeId },
@@ -977,8 +994,20 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!currentInventory) {
         return next(new appError_1.default("No inventory found for this material in the store", 404));
     }
-    if (currentInventory.available < quantity) {
+    if (currentInventory.available.toNumber() < quantity) {
         return next(new appError_1.default(`Insufficient stock. Available: ${currentInventory.available}, Requested: ${quantity}`, 400));
+    }
+    if (stockOutType === "TRANSFER") {
+        if (!toStoreId) {
+            return next(new appError_1.default("toStoreId is required for TRANSFER stock out", 400));
+        }
+        const destStore = await prisma_1.default.store.findUnique({ where: { id: toStoreId } });
+        if (!destStore || destStore.isDeleted || !destStore.isActive) {
+            return next(new appError_1.default("Destination store not found or inactive", 404));
+        }
+        if (destStore.id === storeId) {
+            return next(new appError_1.default("Destination store cannot be the same as source store", 400));
+        }
     }
     if (demandReferenceNumber && stockOutType === "DEMAND") {
         const demand = await prisma_1.default.demand.findFirst({
@@ -994,7 +1023,7 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
             return next(new appError_1.default("Demand is not in appropriate status for stock out", 400));
         }
         const remainingQuantity = demand.quantityRemaining || demand.quantity;
-        if (remainingQuantity < quantity) {
+        if (remainingQuantity.toNumber() < quantity) {
             return next(new appError_1.default(`Requested quantity exceeds remaining demand quantity. Remaining: ${remainingQuantity}, Requested: ${quantity}`, 400));
         }
     }
@@ -1028,13 +1057,42 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
                 documentUrl: req.filesFromS3?.document || null,
             },
         });
+        if (stockOutType === "TRANSFER" && toStoreId) {
+            await tx.storeInventory.upsert({
+                where: { storeId_materialId: { storeId: toStoreId, materialId } },
+                update: {
+                    stock: { increment: quantity },
+                    available: { increment: quantity },
+                },
+                create: {
+                    storeId: toStoreId,
+                    materialId,
+                    stock: quantity,
+                    reserved: 0,
+                    available: quantity,
+                },
+            });
+            await tx.storeTransaction.create({
+                data: {
+                    storeId: toStoreId,
+                    materialId,
+                    type: "IN",
+                    quantity,
+                    reference: "TRANSFER",
+                    notes: notes || `Transfer from store`,
+                    createdBy: userId,
+                    fromStoreId: storeId,
+                    documentUrl: req.filesFromS3?.document || null,
+                },
+            });
+        }
         if (demandReferenceNumber && stockOutType === "DEMAND") {
             const demand = await tx.demand.findFirst({
                 where: { referenceNumber: demandReferenceNumber },
             });
             if (demand) {
                 const currentRemaining = demand.quantityRemaining || demand.quantity;
-                const willComplete = currentRemaining <= quantity;
+                const willComplete = currentRemaining.toNumber() <= quantity;
                 await tx.demand.update({
                     where: { id: demand.id },
                     data: {
@@ -1686,6 +1744,45 @@ const deleteStorePermission = (0, catchAsync_1.default)(async (req, res, next) =
     res.json({ message: "Store permission removed" });
 });
 exports.deleteStorePermission = deleteStorePermission;
+const getIncomingTransactions = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { storeId } = req.params;
+    const { page = 1, limit = 50 } = req.query;
+    const user = req.user;
+    const store = await prisma_1.default.store.findUnique({ where: { id: storeId } });
+    if (!store || store.isDeleted) {
+        return next(new appError_1.default("Store not found", 404));
+    }
+    const hasAccess = await checkStoreAccess(user.id, user.role, store);
+    if (!hasAccess) {
+        return next(new appError_1.default("Access denied: not assigned to this store", 403));
+    }
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const where = { storeId, type: "IN", fromStoreId: { not: null } };
+    const [transactions, total] = await Promise.all([
+        prisma_1.default.storeTransaction.findMany({
+            where,
+            include: {
+                fromStore: { select: { id: true, name: true, type: true } },
+                user: { select: { id: true, name: true } },
+            },
+            orderBy: { transactionDate: "desc" },
+            skip,
+            take: parseInt(limit),
+        }),
+        prisma_1.default.storeTransaction.count({ where }),
+    ]);
+    res.json({
+        message: "Incoming transactions retrieved successfully",
+        transactions,
+        pagination: {
+            page: parseInt(page),
+            limit: parseInt(limit),
+            total,
+            pages: Math.ceil(total / parseInt(limit)),
+        },
+    });
+});
+exports.getIncomingTransactions = getIncomingTransactions;
 const cleanupEmptySectionStores = (0, catchAsync_1.default)(async (req, res) => {
     const emptyStores = await prisma_1.default.store.findMany({
         where: {

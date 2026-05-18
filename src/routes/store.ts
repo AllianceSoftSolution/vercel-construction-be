@@ -11,6 +11,7 @@ import {
   stockOut,
   getStoreInventory,
   getStoreTransactions,
+  getIncomingTransactions,
   getProjectInventory,
   assignPersonnel,
   removePersonnel,
@@ -64,6 +65,7 @@ router.post("/:storeId/stock-in", protect, s3UploadMiddleware([{ name: "document
 router.post("/:storeId/stock-out", protect, s3UploadMiddleware([{ name: "document", maxCount: 1 }]), stockOut);
 router.get("/:storeId/inventory", protect, getStoreInventory);
 router.get("/:storeId/transactions", protect, getStoreTransactions);
+router.get("/:storeId/incoming", protect, getIncomingTransactions);
 
 // Project inventory route
 router.get("/project/:projectId/inventory", protect, getProjectInventory);

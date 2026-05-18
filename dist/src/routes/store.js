@@ -33,6 +33,7 @@ router.post("/:storeId/stock-in", auth_middleware_1.default, (0, s3UploadMiddlew
 router.post("/:storeId/stock-out", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "document", maxCount: 1 }]), store_controller_1.stockOut);
 router.get("/:storeId/inventory", auth_middleware_1.default, store_controller_1.getStoreInventory);
 router.get("/:storeId/transactions", auth_middleware_1.default, store_controller_1.getStoreTransactions);
+router.get("/:storeId/incoming", auth_middleware_1.default, store_controller_1.getIncomingTransactions);
 router.get("/project/:projectId/inventory", auth_middleware_1.default, store_controller_1.getProjectInventory);
 router.get("/:storeId/permissions", auth_middleware_1.default, adminOnly, store_controller_1.getStorePermissions);
 router.put("/:storeId/permissions", auth_middleware_1.default, adminOnly, store_controller_1.setStorePermissions);
