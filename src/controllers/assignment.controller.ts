@@ -71,14 +71,21 @@ const createSiteInchargeAssignment = catchAsync(async (req, res, next) => {
     (a) => !validSectionIds.includes(a.sectionId)
   );
 
-  // Assign new sections
+  // Assign new sections (upsert to handle previously-deactivated assignments)
   const createdAssignments = await Promise.all(
     toAssign.map((sectionId) =>
-      prisma.siteInchargeAssignment.create({
-        data: {
+      prisma.siteInchargeAssignment.upsert({
+        where: { userId_sectionId: { userId, sectionId } },
+        create: {
           userId,
           projectId,
           sectionId,
+          isActive: true,
+          createdBy: currentUserId,
+        },
+        update: {
+          isActive: true,
+          projectId,
           createdBy: currentUserId,
         },
         include: {
@@ -566,10 +573,16 @@ const createStoreInchargeAssignment = catchAsync(async (req, res, next) => {
     return next(new AppError("User is already assigned to this store", 400));
   }
 
-  const assignment = await prisma.storeInchargeAssignment.create({
-    data: {
+  const assignment = await prisma.storeInchargeAssignment.upsert({
+    where: { userId_storeId: { userId, storeId } },
+    create: {
       userId,
       storeId,
+      isActive: true,
+      createdBy: currentUserId,
+    },
+    update: {
+      isActive: true,
       createdBy: currentUserId,
     },
     include: {

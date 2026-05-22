@@ -47,11 +47,18 @@ const createSiteInchargeAssignment = (0, catchAsync_1.default)(async (req, res, 
     const currentSectionIds = currentAssignments.map((a) => a.sectionId);
     const toAssign = validSectionIds.filter((id) => !currentSectionIds.includes(id));
     const toUnassign = currentAssignments.filter((a) => !validSectionIds.includes(a.sectionId));
-    const createdAssignments = await Promise.all(toAssign.map((sectionId) => prisma_1.default.siteInchargeAssignment.create({
-        data: {
+    const createdAssignments = await Promise.all(toAssign.map((sectionId) => prisma_1.default.siteInchargeAssignment.upsert({
+        where: { userId_sectionId: { userId, sectionId } },
+        create: {
             userId,
             projectId,
             sectionId,
+            isActive: true,
+            createdBy: currentUserId,
+        },
+        update: {
+            isActive: true,
+            projectId,
             createdBy: currentUserId,
         },
         include: {
@@ -454,10 +461,16 @@ const createStoreInchargeAssignment = (0, catchAsync_1.default)(async (req, res,
     if (existingAssignment) {
         return next(new appError_1.default("User is already assigned to this store", 400));
     }
-    const assignment = await prisma_1.default.storeInchargeAssignment.create({
-        data: {
+    const assignment = await prisma_1.default.storeInchargeAssignment.upsert({
+        where: { userId_storeId: { userId, storeId } },
+        create: {
             userId,
             storeId,
+            isActive: true,
+            createdBy: currentUserId,
+        },
+        update: {
+            isActive: true,
             createdBy: currentUserId,
         },
         include: {
