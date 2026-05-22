@@ -258,7 +258,16 @@ const getStores = (0, catchAsync_1.default)(async (req, res) => {
             if (directStoreIds.length > 0) {
                 orConditions.push({ id: { in: directStoreIds } });
             }
-            defaultFilters.OR = orConditions;
+            if (defaultFilters.OR) {
+                defaultFilters.AND = [
+                    { OR: defaultFilters.OR },
+                    { OR: orConditions },
+                ];
+                delete defaultFilters.OR;
+            }
+            else {
+                defaultFilters.OR = orConditions;
+            }
         }
         else {
             const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
@@ -558,9 +567,21 @@ const getStoreById = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!store) {
         return next(new appError_1.default("Store not found", 404));
     }
+    let storeResponse = store;
+    if (user.role === "STORE_INCHARGE" && store.transactions?.length > 0) {
+        const authorizedIds = await getStoreInchargeAuthorizedStoreIds(user);
+        storeResponse = {
+            ...store,
+            transactions: store.transactions.map((txn) => ({
+                ...txn,
+                fromStore: txn.fromStore && authorizedIds.has(txn.fromStore.id) ? txn.fromStore : null,
+                toStore: txn.toStore && authorizedIds.has(txn.toStore.id) ? txn.toStore : null,
+            })),
+        };
+    }
     res.json({
         message: "Store retrieved successfully",
-        store,
+        store: storeResponse,
     });
 });
 exports.getStoreById = getStoreById;
@@ -1126,14 +1147,63 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
     await notificationService_1.NotificationService.notifyStoreTransaction(result.transaction.id);
 });
 exports.stockOut = stockOut;
-const checkStoreAccess = async (userId, userRole, store) => {
+const getStoreInchargeAuthorizedStoreIds = async (user) => {
+    const ids = new Set();
+    if (user.isHead) {
+        const headAssignments = await prisma_1.default.headStoreInchargeAssignment.findMany({
+            where: { userId: user.id, isActive: true },
+            select: { projectId: true },
+        });
+        const projectIds = headAssignments.map((a) => a.projectId);
+        if (projectIds.length > 0) {
+            const projectStores = await prisma_1.default.store.findMany({
+                where: {
+                    isDeleted: false,
+                    OR: [
+                        { projectId: { in: projectIds } },
+                        { section: { projectId: { in: projectIds } } },
+                    ],
+                },
+                select: { id: true },
+            });
+            projectStores.forEach((s) => ids.add(s.id));
+        }
+    }
+    const directAssignments = await prisma_1.default.storeInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { storeId: true },
+    });
+    directAssignments.forEach((a) => ids.add(a.storeId));
+    return ids;
+};
+const checkStoreAccess = async (user, store) => {
+    const userId = user.id;
+    const userRole = user.role;
     if (userRole === "ADMIN")
         return true;
     if (userRole === "STORE_INCHARGE") {
-        const assignment = await prisma_1.default.storeInchargeAssignment.findFirst({
+        const directAssignment = await prisma_1.default.storeInchargeAssignment.findFirst({
             where: { userId, storeId: store.id, isActive: true },
         });
-        return !!assignment;
+        if (directAssignment)
+            return true;
+        if (user.isHead) {
+            let projectId = store.projectId;
+            if (!projectId && store.sectionId) {
+                const section = await prisma_1.default.section.findUnique({
+                    where: { id: store.sectionId },
+                    select: { projectId: true },
+                });
+                projectId = section?.projectId ?? null;
+            }
+            if (projectId) {
+                const headAssignment = await prisma_1.default.headStoreInchargeAssignment.findFirst({
+                    where: { userId, projectId, isActive: true },
+                });
+                return !!headAssignment;
+            }
+        }
+        return false;
     }
     const getSectionIdFilter = async (roleFilter) => {
         if (store.sectionId) {
@@ -1184,7 +1254,7 @@ const getStoreInventory = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!store) {
         return next(new appError_1.default("Store not found", 404));
     }
-    const hasInventoryAccess = await checkStoreAccess(user.id, user.role, store);
+    const hasInventoryAccess = await checkStoreAccess(user, store);
     if (!hasInventoryAccess) {
         return next(new appError_1.default("Access denied: not assigned to this store", 403));
     }
@@ -1231,7 +1301,7 @@ const getStoreTransactions = (0, catchAsync_1.default)(async (req, res, next) =>
     if (!store) {
         return next(new appError_1.default("Store not found", 404));
     }
-    const hasTransactionAccess = await checkStoreAccess(user.id, user.role, store);
+    const hasTransactionAccess = await checkStoreAccess(user, store);
     if (!hasTransactionAccess) {
         return next(new appError_1.default("Access denied: not assigned to this store", 403));
     }
@@ -1292,6 +1362,34 @@ exports.getStoreTransactions = getStoreTransactions;
 const getProjectInventory = (0, catchAsync_1.default)(async (req, res, next) => {
     const { projectId } = req.params;
     const { sectionIds } = req.query;
+    const user = req.user;
+    if (user.role === "STORE_INCHARGE") {
+        let hasProjectAccess = false;
+        if (user.isHead) {
+            const headAssignment = await prisma_1.default.headStoreInchargeAssignment.findFirst({
+                where: { userId: user.id, projectId, isActive: true },
+            });
+            hasProjectAccess = !!headAssignment;
+        }
+        if (!hasProjectAccess) {
+            const directAssignment = await prisma_1.default.storeInchargeAssignment.findFirst({
+                where: {
+                    userId: user.id,
+                    isActive: true,
+                    store: {
+                        OR: [
+                            { projectId },
+                            { section: { projectId } },
+                        ],
+                    },
+                },
+            });
+            hasProjectAccess = !!directAssignment;
+        }
+        if (!hasProjectAccess) {
+            return next(new appError_1.default("Access denied: not assigned to this project", 403));
+        }
+    }
     const project = await prisma_1.default.project.findUnique({
         where: { id: projectId },
         include: {
@@ -1327,9 +1425,12 @@ const getProjectInventory = (0, catchAsync_1.default)(async (req, res, next) => 
     }
     const stores = await prisma_1.default.store.findMany({
         where: {
-            sectionId: { in: targetSectionIds },
             isDeleted: false,
             isActive: true,
+            OR: [
+                { sectionId: { in: targetSectionIds } },
+                { projectId, type: "HEAD_STORE" },
+            ],
         },
         include: {
             section: {
@@ -1752,12 +1853,17 @@ const getIncomingTransactions = (0, catchAsync_1.default)(async (req, res, next)
     if (!store || store.isDeleted) {
         return next(new appError_1.default("Store not found", 404));
     }
-    const hasAccess = await checkStoreAccess(user.id, user.role, store);
+    const hasAccess = await checkStoreAccess(user, store);
     if (!hasAccess) {
         return next(new appError_1.default("Access denied: not assigned to this store", 403));
     }
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const where = { storeId, type: "IN", fromStoreId: { not: null } };
+    if (user.role === "STORE_INCHARGE") {
+        const authorizedIds = await getStoreInchargeAuthorizedStoreIds(user);
+        where.fromStoreId =
+            authorizedIds.size > 0 ? { in: Array.from(authorizedIds) } : { in: [] };
+    }
     const [transactions, total] = await Promise.all([
         prisma_1.default.storeTransaction.findMany({
             where,

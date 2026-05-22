@@ -161,38 +161,51 @@ const createProjectManagerAssignment = (0, catchAsync_1.default)(async (req, res
     if (existingAssignment) {
         return next(new appError_1.default("User is already assigned to this section", 400));
     }
-    const assignment = await prisma_1.default.projectManagerAssignment.create({
-        data: {
-            userId,
-            projectId,
-            sectionId,
-            createdBy: currentUserId,
-        },
-        include: {
-            user: {
-                select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    role: true,
-                },
-            },
-            project: {
-                select: {
-                    id: true,
-                    name: true,
-                    code: true,
-                },
-            },
-            section: {
-                select: {
-                    id: true,
-                    name: true,
-                    code: true,
-                },
-            },
-        },
+    const inactiveAssignment = await prisma_1.default.projectManagerAssignment.findFirst({
+        where: { userId, sectionId, isActive: false },
     });
+    const assignment = inactiveAssignment
+        ? await prisma_1.default.projectManagerAssignment.update({
+            where: { id: inactiveAssignment.id },
+            data: { isActive: true },
+            include: {
+                user: { select: { id: true, name: true, email: true, role: true } },
+                project: { select: { id: true, name: true, code: true } },
+                section: { select: { id: true, name: true, code: true } },
+            },
+        })
+        : await prisma_1.default.projectManagerAssignment.create({
+            data: {
+                userId,
+                projectId,
+                sectionId,
+                createdBy: currentUserId,
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true,
+                    },
+                },
+                project: {
+                    select: {
+                        id: true,
+                        name: true,
+                        code: true,
+                    },
+                },
+                section: {
+                    select: {
+                        id: true,
+                        name: true,
+                        code: true,
+                    },
+                },
+            },
+        });
     res.status(201).json({
         message: "Project Manager assignment created successfully",
         assignment,
@@ -804,7 +817,6 @@ const deactivateAssignment = (0, catchAsync_1.default)(async (req, res, next) =>
             where: { id },
             data: {
                 isActive: false,
-                updatedBy: currentUserId,
             },
         });
         res.json({
