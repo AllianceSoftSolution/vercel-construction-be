@@ -812,6 +812,7 @@ exports.addPOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
                 amountAddedBy: req.user.id,
                 amountAddedAt: new Date(),
                 status: "CONFIRMED",
+                notes: notes || purchaseOrder.notes,
                 updatedBy: req.user.id,
             },
             include: {

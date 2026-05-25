@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.cleanupEmptySectionStores = exports.deleteStorePermission = exports.setStorePermissions = exports.getStorePermissions = exports.assignProjectManager = exports.assignSiteIncharge = exports.removeSpecificPersonnel = exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.getIncomingTransactions = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
+exports.cleanupEmptySectionStores = exports.deleteStorePermission = exports.setStorePermissions = exports.getStorePermissions = exports.assignProjectManager = exports.assignSiteIncharge = exports.removeSpecificPersonnel = exports.removePersonnel = exports.assignPersonnel = exports.getProjectInventory = exports.acceptIncomingTransaction = exports.getIncomingTransactions = exports.getStoreTransactions = exports.getStoreInventory = exports.stockOut = exports.stockIn = exports.deactivateStore = exports.activateStore = exports.deleteStore = exports.updateStore = exports.getStoreById = exports.getStores = exports.createStore = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const buildQueryOptions_1 = require("../utils/buildQueryOptions");
@@ -1359,6 +1359,45 @@ const getStoreTransactions = (0, catchAsync_1.default)(async (req, res, next) =>
     });
 });
 exports.getStoreTransactions = getStoreTransactions;
+const acceptIncomingTransaction = (0, catchAsync_1.default)(async (req, res, next) => {
+    const { storeId, transactionId } = req.params;
+    const { note } = req.body;
+    const user = req.user;
+    const store = await prisma_1.default.store.findUnique({ where: { id: storeId } });
+    if (!store || store.isDeleted) {
+        return next(new appError_1.default("Store not found", 404));
+    }
+    const hasAccess = await checkStoreAccess(user, store);
+    if (!hasAccess) {
+        return next(new appError_1.default("Access denied: not assigned to this store", 403));
+    }
+    const transaction = await prisma_1.default.storeTransaction.findUnique({
+        where: { id: transactionId },
+    });
+    if (!transaction ||
+        transaction.storeId !== storeId ||
+        transaction.type !== "IN" ||
+        !transaction.fromStoreId) {
+        return next(new appError_1.default("Incoming transfer transaction not found", 404));
+    }
+    const updatedNotes = note
+        ? transaction.notes
+            ? `${transaction.notes} | Received: ${note}`
+            : note
+        : transaction.notes;
+    const updatedTransaction = await prisma_1.default.storeTransaction.update({
+        where: { id: transactionId },
+        data: {
+            notes: updatedNotes,
+            documentUrl: req.filesFromS3?.document || transaction.documentUrl,
+        },
+    });
+    res.json({
+        message: "Incoming request accepted successfully",
+        transaction: updatedTransaction,
+    });
+});
+exports.acceptIncomingTransaction = acceptIncomingTransaction;
 const getProjectInventory = (0, catchAsync_1.default)(async (req, res, next) => {
     const { projectId } = req.params;
     const { sectionIds } = req.query;

@@ -1032,6 +1032,7 @@ export const addPOAmount = catchAsync(
           amountAddedBy: req.user.id,
           amountAddedAt: new Date(),
           status: "CONFIRMED", // Automatically change status to CONFIRMED
+          notes: notes || purchaseOrder.notes,
           updatedBy: req.user.id,
         },
         include: {

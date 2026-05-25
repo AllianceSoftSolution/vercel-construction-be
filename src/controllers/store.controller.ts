@@ -1660,6 +1660,54 @@ const getStoreTransactions = catchAsync(async (req, res, next) => {
   });
 });
 
+const acceptIncomingTransaction = catchAsync(async (req, res, next) => {
+  const { storeId, transactionId } = req.params;
+  const { note } = req.body;
+  const user = req.user;
+
+  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  if (!store || store.isDeleted) {
+    return next(new AppError("Store not found", 404));
+  }
+
+  const hasAccess = await checkStoreAccess(user, store);
+  if (!hasAccess) {
+    return next(new AppError("Access denied: not assigned to this store", 403));
+  }
+
+  const transaction = await prisma.storeTransaction.findUnique({
+    where: { id: transactionId },
+  });
+
+  if (
+    !transaction ||
+    transaction.storeId !== storeId ||
+    transaction.type !== "IN" ||
+    !transaction.fromStoreId
+  ) {
+    return next(new AppError("Incoming transfer transaction not found", 404));
+  }
+
+  const updatedNotes = note
+    ? transaction.notes
+      ? `${transaction.notes} | Received: ${note}`
+      : note
+    : transaction.notes;
+
+  const updatedTransaction = await prisma.storeTransaction.update({
+    where: { id: transactionId },
+    data: {
+      notes: updatedNotes,
+      documentUrl: (req as any).filesFromS3?.document || transaction.documentUrl,
+    },
+  });
+
+  res.json({
+    message: "Incoming request accepted successfully",
+    transaction: updatedTransaction,
+  });
+});
+
 const getProjectInventory = catchAsync(async (req, res, next) => {
   const { projectId } = req.params;
   const { sectionIds } = req.query; // Can be single sectionId or array of sectionIds
@@ -2361,6 +2409,7 @@ export {
   getStoreInventory,
   getStoreTransactions,
   getIncomingTransactions,
+  acceptIncomingTransaction,
   getProjectInventory,
   assignPersonnel,
   removePersonnel,

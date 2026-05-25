@@ -12,6 +12,7 @@ import {
   getStoreInventory,
   getStoreTransactions,
   getIncomingTransactions,
+  acceptIncomingTransaction,
   getProjectInventory,
   assignPersonnel,
   removePersonnel,
@@ -62,8 +63,7 @@ router.post("/:storeId/assign-project-manager", protect, adminOnly, assignProjec
 
 // Stock management routes
 router.post("/:storeId/stock-in", protect, s3UploadMiddleware([{ name: "document", maxCount: 1 }]), stockIn);
-router.post("/:storeId/stock-out", protect, s3UploadMiddleware([{ name: "document", maxCount: 1 }]), stockOut);
-router.get("/:storeId/inventory", protect, getStoreInventory);
+router.post("/:storeId/stock-out", protect, s3UploadMiddleware([{ name: "document", maxCount: 1 }]), stockOut);router.post('/:storeId/transactions/:transactionId/accept', protect, s3UploadMiddleware([{ name: "document", maxCount: 1 }]), acceptIncomingTransaction);router.get("/:storeId/inventory", protect, getStoreInventory);
 router.get("/:storeId/transactions", protect, getStoreTransactions);
 router.get("/:storeId/incoming", protect, getIncomingTransactions);
 
