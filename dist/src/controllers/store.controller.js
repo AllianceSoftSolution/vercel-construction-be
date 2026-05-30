@@ -870,8 +870,14 @@ const stockIn = (0, catchAsync_1.default)(async (req, res, next) => {
         if (!purchaseOrder) {
             return next(new appError_1.default("Purchase order not found", 404));
         }
-        if (!["CONFIRMED", "ORDER_PLACED", "IN_TRANSIT"].includes(purchaseOrder.status)) {
-            return next(new appError_1.default("Purchase order is not in appropriate status for stock in. Must be CONFIRMED, ORDER_PLACED, or IN_TRANSIT", 400));
+        if (![
+            "CREATED",
+            "CONFIRMED",
+            "ORDER_PLACED",
+            "IN_TRANSIT",
+            "IN_STORE",
+        ].includes(purchaseOrder.status)) {
+            return next(new appError_1.default("Purchase order is not in appropriate status for stock in. Must be CREATED, CONFIRMED, ORDER_PLACED, IN_TRANSIT, or IN_STORE", 400));
         }
     }
     const result = await prisma_1.default.$transaction(async (tx) => {
@@ -915,9 +921,22 @@ const stockIn = (0, catchAsync_1.default)(async (req, res, next) => {
                 where: { referenceNumber: poReferenceNumber },
             });
             if (po) {
+                const receivedQuantityResult = await tx.storeTransaction.aggregate({
+                    where: {
+                        reference: poReferenceNumber,
+                        type: "IN",
+                    },
+                    _sum: {
+                        quantity: true,
+                    },
+                });
+                const totalReceivedQuantity = Number(receivedQuantityResult._sum.quantity || 0);
+                const newStatus = totalReceivedQuantity >= Number(po.quantity)
+                    ? "COMPLETED"
+                    : "IN_STORE";
                 await tx.purchaseOrder.update({
                     where: { id: po.id },
-                    data: { status: "COMPLETED" },
+                    data: { status: newStatus },
                 });
             }
         }
