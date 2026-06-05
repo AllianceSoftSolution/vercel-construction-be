@@ -11,6 +11,7 @@ const buildQueryOptions_1 = require("../utils/buildQueryOptions");
 const notification_1 = require("../utils/notification");
 const notificationService_1 = require("../utils/notificationService");
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const storeInchargeAccess_1 = require("../utils/storeInchargeAccess");
 const createDemand = (0, catchAsync_1.default)(async (req, res, next) => {
     const { materialId, quantity, unit, sectionId, notes } = req.body;
     const userId = req.user.id;
@@ -148,33 +149,7 @@ const getDemands = (0, catchAsync_1.default)(async (req, res) => {
         defaultFilters.createdBy = user.id;
     }
     else if (user.role === "STORE_INCHARGE") {
-        const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
-            where: { userId: user.id, isActive: true },
-            select: {
-                store: {
-                    select: {
-                        sectionId: true,
-                        projectId: true,
-                        section: { select: { projectId: true } },
-                    },
-                },
-            },
-        });
-        const directSectionIds = assignments
-            .map((a) => a.store.sectionId)
-            .filter((id) => !!id);
-        const projectIds = Array.from(new Set(assignments
-            .map((a) => a.store.projectId || a.store.section?.projectId)
-            .filter((id) => !!id)));
-        let projectSectionIds = [];
-        if (projectIds.length > 0) {
-            const sections = await prisma_1.default.section.findMany({
-                where: { projectId: { in: projectIds }, isDeleted: false },
-                select: { id: true },
-            });
-            projectSectionIds = sections.map((s) => s.id);
-        }
-        const sectionIds = Array.from(new Set([...directSectionIds, ...projectSectionIds]));
+        const sectionIds = await (0, storeInchargeAccess_1.getStoreInchargeAccessibleSectionIds)(user);
         defaultFilters.sectionId = { in: sectionIds };
     }
     const queryOptions = (0, buildQueryOptions_1.buildQueryOptions)(filterOptions, defaultFilters, searchableFields);
@@ -289,10 +264,8 @@ const getDemandById = (0, catchAsync_1.default)(async (req, res, next) => {
             assigned = !!assignment;
         }
         else if (user.role === "STORE_INCHARGE") {
-            const assignment = await prisma_1.default.storeInchargeAssignment.findFirst({
-                where: { userId: user.id, isActive: true, store: { sectionId } },
-            });
-            assigned = !!assignment;
+            const accessibleSectionIds = await (0, storeInchargeAccess_1.getStoreInchargeAccessibleSectionIds)(user);
+            assigned = accessibleSectionIds.includes(sectionId);
         }
         else if (user.role === "ACCOUNTANT") {
             if (user.isHead) {

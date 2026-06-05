@@ -569,13 +569,15 @@ const getStoreById = (0, catchAsync_1.default)(async (req, res, next) => {
     }
     let storeResponse = store;
     if (user.role === "STORE_INCHARGE" && store.transactions?.length > 0) {
-        const authorizedIds = await getStoreInchargeAuthorizedStoreIds(user);
+        const visibleStoreIds = await getFlowVisibleStoreIds(user, store);
         storeResponse = {
             ...store,
             transactions: store.transactions.map((txn) => ({
                 ...txn,
-                fromStore: txn.fromStore && authorizedIds.has(txn.fromStore.id) ? txn.fromStore : null,
-                toStore: txn.toStore && authorizedIds.has(txn.toStore.id) ? txn.toStore : null,
+                fromStore: txn.fromStore && visibleStoreIds.has(txn.fromStore.id)
+                    ? txn.fromStore
+                    : null,
+                toStore: txn.toStore && visibleStoreIds.has(txn.toStore.id) ? txn.toStore : null,
             })),
         };
     }
@@ -1014,6 +1016,11 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!isStoreIncharge && !isHeadStoreIncharge && currentUser?.role !== "ADMIN") {
         return next(new appError_1.default("Only assigned store incharges can perform stock-out operations", 403));
     }
+    if (currentUser?.role === "STORE_INCHARGE" &&
+        !currentUser.isHead &&
+        toStoreId) {
+        return next(new appError_1.default("Section store incharges cannot transfer stock out", 403));
+    }
     const material = await prisma_1.default.material.findUnique({
         where: { id: materialId },
     });
@@ -1047,6 +1054,33 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
         }
         if (destStore.id === storeId) {
             return next(new appError_1.default("Destination store cannot be the same as source store", 400));
+        }
+        if (currentUser?.role === "STORE_INCHARGE") {
+            if (!currentUser.isHead) {
+                return next(new appError_1.default("Section store incharges cannot transfer stock out", 403));
+            }
+            const allowedTypes = ["HEAD_STORE", "SECTION_STORE"];
+            if (!allowedTypes.includes(store.type) ||
+                !allowedTypes.includes(destStore.type)) {
+                return next(new appError_1.default("Transfers are only allowed between head and section stores", 400));
+            }
+            const sourceProjectId = await getStoreProjectId(store);
+            const destProjectId = await getStoreProjectId(destStore);
+            if (!sourceProjectId ||
+                !destProjectId ||
+                sourceProjectId !== destProjectId) {
+                return next(new appError_1.default("Transfer destination must be in the same project as the source store", 400));
+            }
+            const headAssignment = await prisma_1.default.headStoreInchargeAssignment.findFirst({
+                where: { userId, projectId: sourceProjectId, isActive: true },
+            });
+            if (!headAssignment) {
+                return next(new appError_1.default("Not authorized to transfer between these stores", 403));
+            }
+            const projectStoreIds = await getProjectTransferStoreIds(sourceProjectId);
+            if (!projectStoreIds.has(storeId) || !projectStoreIds.has(toStoreId)) {
+                return next(new appError_1.default("Transfer is only allowed between stores in your assigned project", 403));
+            }
         }
     }
     if (demandReferenceNumber && stockOutType === "DEMAND") {
@@ -1166,6 +1200,39 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
     await notificationService_1.NotificationService.notifyStoreTransaction(result.transaction.id);
 });
 exports.stockOut = stockOut;
+const getStoreProjectId = async (store) => {
+    if (store.projectId)
+        return store.projectId;
+    if (store.sectionId) {
+        const section = await prisma_1.default.section.findUnique({
+            where: { id: store.sectionId },
+            select: { projectId: true },
+        });
+        return section?.projectId ?? null;
+    }
+    return null;
+};
+const getProjectTransferStoreIds = async (projectId) => {
+    const stores = await prisma_1.default.store.findMany({
+        where: {
+            isDeleted: false,
+            isActive: true,
+            type: { in: ["HEAD_STORE", "SECTION_STORE"] },
+            OR: [{ projectId }, { section: { projectId } }],
+        },
+        select: { id: true },
+    });
+    return new Set(stores.map((s) => s.id));
+};
+const getFlowVisibleStoreIds = async (user, store) => {
+    const visibleIds = await getStoreInchargeAuthorizedStoreIds(user);
+    const projectId = await getStoreProjectId(store);
+    if (projectId) {
+        const projectStoreIds = await getProjectTransferStoreIds(projectId);
+        projectStoreIds.forEach((id) => visibleIds.add(id));
+    }
+    return visibleIds;
+};
 const getStoreInchargeAuthorizedStoreIds = async (user) => {
     const ids = new Set();
     if (user.isHead) {
@@ -1918,9 +1985,9 @@ const getIncomingTransactions = (0, catchAsync_1.default)(async (req, res, next)
     const skip = (parseInt(page) - 1) * parseInt(limit);
     const where = { storeId, type: "IN", fromStoreId: { not: null } };
     if (user.role === "STORE_INCHARGE") {
-        const authorizedIds = await getStoreInchargeAuthorizedStoreIds(user);
+        const visibleStoreIds = await getFlowVisibleStoreIds(user, store);
         where.fromStoreId =
-            authorizedIds.size > 0 ? { in: Array.from(authorizedIds) } : { in: [] };
+            visibleStoreIds.size > 0 ? { in: Array.from(visibleStoreIds) } : { in: [] };
     }
     const [transactions, total] = await Promise.all([
         prisma_1.default.storeTransaction.findMany({

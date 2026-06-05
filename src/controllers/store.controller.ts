@@ -651,19 +651,21 @@ const getStoreById = catchAsync(async (req, res, next) => {
     return next(new AppError("Store not found", 404));
   }
 
-  // For STORE_INCHARGE: hide fromStore / toStore details for stores outside the user's
-  // authorised project scope so that cross-project store names are not leaked.
+  // For STORE_INCHARGE: hide fromStore / toStore details for stores outside the
+  // current store's project so cross-project names are not leaked.
   let storeResponse: any = store;
   if (user.role === "STORE_INCHARGE" && (store as any).transactions?.length > 0) {
-    const authorizedIds = await getStoreInchargeAuthorizedStoreIds(user);
+    const visibleStoreIds = await getFlowVisibleStoreIds(user, store);
     storeResponse = {
       ...store,
       transactions: (store as any).transactions.map((txn: any) => ({
         ...txn,
         fromStore:
-          txn.fromStore && authorizedIds.has(txn.fromStore.id) ? txn.fromStore : null,
+          txn.fromStore && visibleStoreIds.has(txn.fromStore.id)
+            ? txn.fromStore
+            : null,
         toStore:
-          txn.toStore && authorizedIds.has(txn.toStore.id) ? txn.toStore : null,
+          txn.toStore && visibleStoreIds.has(txn.toStore.id) ? txn.toStore : null,
       })),
     };
   }
@@ -1214,6 +1216,16 @@ const stockOut = catchAsync(async (req, res, next) => {
     );
   }
 
+  if (
+    currentUser?.role === "STORE_INCHARGE" &&
+    !currentUser.isHead &&
+    toStoreId
+  ) {
+    return next(
+      new AppError("Section store incharges cannot transfer stock out", 403)
+    );
+  }
+
   // Validate material exists
   const material = await prisma.material.findUnique({
     where: { id: materialId },
@@ -1265,6 +1277,61 @@ const stockOut = catchAsync(async (req, res, next) => {
     }
     if (destStore.id === storeId) {
       return next(new AppError("Destination store cannot be the same as source store", 400));
+    }
+
+    if (currentUser?.role === "STORE_INCHARGE") {
+      if (!currentUser.isHead) {
+        return next(
+          new AppError("Section store incharges cannot transfer stock out", 403)
+        );
+      }
+
+      const allowedTypes = ["HEAD_STORE", "SECTION_STORE"];
+      if (
+        !allowedTypes.includes(store.type) ||
+        !allowedTypes.includes(destStore.type)
+      ) {
+        return next(
+          new AppError(
+            "Transfers are only allowed between head and section stores",
+            400
+          )
+        );
+      }
+
+      const sourceProjectId = await getStoreProjectId(store);
+      const destProjectId = await getStoreProjectId(destStore);
+      if (
+        !sourceProjectId ||
+        !destProjectId ||
+        sourceProjectId !== destProjectId
+      ) {
+        return next(
+          new AppError(
+            "Transfer destination must be in the same project as the source store",
+            400
+          )
+        );
+      }
+
+      const headAssignment = await prisma.headStoreInchargeAssignment.findFirst({
+        where: { userId, projectId: sourceProjectId, isActive: true },
+      });
+      if (!headAssignment) {
+        return next(
+          new AppError("Not authorized to transfer between these stores", 403)
+        );
+      }
+
+      const projectStoreIds = await getProjectTransferStoreIds(sourceProjectId);
+      if (!projectStoreIds.has(storeId) || !projectStoreIds.has(toStoreId)) {
+        return next(
+          new AppError(
+            "Transfer is only allowed between stores in your assigned project",
+            403
+          )
+        );
+      }
     }
   }
 
@@ -1416,6 +1483,50 @@ const stockOut = catchAsync(async (req, res, next) => {
   // Use the new notification service for comprehensive notifications
   await NotificationService.notifyStoreTransaction(result.transaction.id);
 });
+
+const getStoreProjectId = async (store: {
+  projectId: string | null;
+  sectionId: string | null;
+}) => {
+  if (store.projectId) return store.projectId;
+  if (store.sectionId) {
+    const section = await prisma.section.findUnique({
+      where: { id: store.sectionId },
+      select: { projectId: true },
+    });
+    return section?.projectId ?? null;
+  }
+  return null;
+};
+
+const getProjectTransferStoreIds = async (projectId: string) => {
+  const stores = await prisma.store.findMany({
+    where: {
+      isDeleted: false,
+      isActive: true,
+      type: { in: ["HEAD_STORE", "SECTION_STORE"] },
+      OR: [{ projectId }, { section: { projectId } }],
+    },
+    select: { id: true },
+  });
+  return new Set(stores.map((s) => s.id));
+};
+
+// Store IDs whose names can appear in transfer flow columns for a given store.
+// Section incharges only have direct store assignments, but should still see
+// head/section store names within the same project on their transaction history.
+const getFlowVisibleStoreIds = async (
+  user: any,
+  store: { projectId: string | null; sectionId: string | null }
+) => {
+  const visibleIds = await getStoreInchargeAuthorizedStoreIds(user);
+  const projectId = await getStoreProjectId(store);
+  if (projectId) {
+    const projectStoreIds = await getProjectTransferStoreIds(projectId);
+    projectStoreIds.forEach((id) => visibleIds.add(id));
+  }
+  return visibleIds;
+};
 
 // Helper: Get all store IDs that a STORE_INCHARGE user is authorised to see.
 // Used to filter fromStore / toStore cross-references in transaction responses.
@@ -2353,12 +2464,11 @@ const getIncomingTransactions = catchAsync(async (req, res, next) => {
   const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
   const where: any = { storeId, type: "IN", fromStoreId: { not: null } };
 
-  // For STORE_INCHARGE: only show incoming transfers from stores within their authorised scope.
-  // This prevents cross-project store references from leaking through fromStore details.
+  // For STORE_INCHARGE: only show incoming transfers from stores in the same project.
   if (user.role === "STORE_INCHARGE") {
-    const authorizedIds = await getStoreInchargeAuthorizedStoreIds(user);
+    const visibleStoreIds = await getFlowVisibleStoreIds(user, store);
     where.fromStoreId =
-      authorizedIds.size > 0 ? { in: Array.from(authorizedIds) } : { in: [] };
+      visibleStoreIds.size > 0 ? { in: Array.from(visibleStoreIds) } : { in: [] };
   }
 
   const [transactions, total] = await Promise.all([

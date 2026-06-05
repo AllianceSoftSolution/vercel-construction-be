@@ -6,6 +6,7 @@ import { sendNotificationToUserSafe } from "../utils/notification";
 import { generatePOReferenceNumber } from "../utils/generateCode";
 import { NotificationService } from "../utils/notificationService";
 import prisma from "../utils/prisma";
+import { getStoreInchargeAccessibleSectionIds } from "../utils/storeInchargeAccess";
 
 // Helper to calculate total PO quantity for a demand
 async function getTotalPOQuantityForDemand(demandId: string) {
@@ -287,43 +288,7 @@ export const getPurchaseOrders = catchAsync(
         createdBy: user.id,
       };
     } else if (user.role === "STORE_INCHARGE") {
-      const assignments = await prisma.storeInchargeAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: {
-          store: {
-            select: {
-              sectionId: true,
-              projectId: true,
-              section: { select: { projectId: true } },
-            },
-          },
-        },
-      });
-
-      const directSectionIds = assignments
-        .map((a) => a.store.sectionId)
-        .filter((id): id is string => !!id);
-
-      const projectIds = Array.from(
-        new Set(
-          assignments
-            .map((a) => a.store.projectId || a.store.section?.projectId)
-            .filter((id): id is string => !!id)
-        )
-      );
-
-      let projectSectionIds: string[] = [];
-      if (projectIds.length > 0) {
-        const sections = await prisma.section.findMany({
-          where: { projectId: { in: projectIds }, isDeleted: false },
-          select: { id: true },
-        });
-        projectSectionIds = sections.map((s) => s.id);
-      }
-
-      const sectionIds = Array.from(
-        new Set([...directSectionIds, ...projectSectionIds])
-      );
+      const sectionIds = await getStoreInchargeAccessibleSectionIds(user);
       where.sectionId = { in: sectionIds };
     }
 
@@ -434,10 +399,9 @@ export const getPurchaseOrder = catchAsync(
         );
         assigned = !!assignment;
       } else if (user.role === "STORE_INCHARGE") {
-        const assignment = await prisma.storeInchargeAssignment.findFirst({
-          where: { userId: user.id, isActive: true, store: { sectionId } },
-        });
-        assigned = !!assignment;
+        const accessibleSectionIds =
+          await getStoreInchargeAccessibleSectionIds(user);
+        assigned = accessibleSectionIds.includes(sectionId);
       } else if (user.role === "ACCOUNTANT") {
         const assignment = await prisma.accountantAssignment.findFirst({
           where: { userId: user.id, sectionId, isActive: true },
@@ -696,11 +660,7 @@ export const getPurchaseOrdersByVendor = catchAsync(
         ? { equals: where.sectionId, in: sectionIds }
         : { in: sectionIds };
     } else if (user.role === "STORE_INCHARGE") {
-      const assignments = await prisma.storeInchargeAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: { store: { select: { sectionId: true } } },
-      });
-      const sectionIds = assignments.map((a) => a.store.sectionId);
+      const sectionIds = await getStoreInchargeAccessibleSectionIds(user);
       where.sectionId = where.sectionId
         ? { equals: where.sectionId, in: sectionIds }
         : { in: sectionIds };
@@ -797,11 +757,7 @@ export const getPurchaseOrderSummary = catchAsync(
         where.sectionId = { in: [] };
       }
     } else if (user.role === "STORE_INCHARGE") {
-      const assignments = await prisma.storeInchargeAssignment.findMany({
-        where: { userId: user.id, isActive: true },
-        select: { store: { select: { sectionId: true } } },
-      });
-      const sectionIds = assignments.map((a) => a.store.sectionId);
+      const sectionIds = await getStoreInchargeAccessibleSectionIds(user);
       if (!where.sectionId) {
         where.sectionId = { in: sectionIds };
       } else if (!sectionIds.includes(where.sectionId as string)) {

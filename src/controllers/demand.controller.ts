@@ -9,6 +9,7 @@ import {
 import { sendNotificationToUserSafe } from "../utils/notification";
 import { NotificationService } from "../utils/notificationService";
 import prisma from "../utils/prisma";
+import { getStoreInchargeAccessibleSectionIds } from "../utils/storeInchargeAccess";
 
 const createDemand = catchAsync(async (req, res, next) => {
   const { materialId, quantity, unit, sectionId, notes } = req.body;
@@ -177,43 +178,7 @@ const getDemands = catchAsync(async (req, res) => {
     // CMs should only see demands they created in their assigned sections
     defaultFilters.createdBy = user.id;
   } else if (user.role === "STORE_INCHARGE") {
-    const assignments = await prisma.storeInchargeAssignment.findMany({
-      where: { userId: user.id, isActive: true },
-      select: {
-        store: {
-          select: {
-            sectionId: true,
-            projectId: true,
-            section: { select: { projectId: true } },
-          },
-        },
-      },
-    });
-
-    const directSectionIds = assignments
-      .map((a) => a.store.sectionId)
-      .filter((id): id is string => !!id);
-
-    const projectIds = Array.from(
-      new Set(
-        assignments
-          .map((a) => a.store.projectId || a.store.section?.projectId)
-          .filter((id): id is string => !!id)
-      )
-    );
-
-    let projectSectionIds: string[] = [];
-    if (projectIds.length > 0) {
-      const sections = await prisma.section.findMany({
-        where: { projectId: { in: projectIds }, isDeleted: false },
-        select: { id: true },
-      });
-      projectSectionIds = sections.map((s) => s.id);
-    }
-
-    const sectionIds = Array.from(
-      new Set([...directSectionIds, ...projectSectionIds])
-    );
+    const sectionIds = await getStoreInchargeAccessibleSectionIds(user);
     defaultFilters.sectionId = { in: sectionIds };
   }
 
@@ -349,10 +314,9 @@ const getDemandById = catchAsync(async (req, res, next) => {
       });
       assigned = !!assignment;
     } else if (user.role === "STORE_INCHARGE") {
-      const assignment = await prisma.storeInchargeAssignment.findFirst({
-        where: { userId: user.id, isActive: true, store: { sectionId } },
-      });
-      assigned = !!assignment;
+      const accessibleSectionIds =
+        await getStoreInchargeAccessibleSectionIds(user);
+      assigned = accessibleSectionIds.includes(sectionId);
     } else if (user.role === "ACCOUNTANT") {
       if (user.isHead) {
         // Head Accountant: check the demand's section belongs to one of their assigned projects

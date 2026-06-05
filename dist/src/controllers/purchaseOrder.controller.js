@@ -11,6 +11,7 @@ const notification_1 = require("../utils/notification");
 const generateCode_1 = require("../utils/generateCode");
 const notificationService_1 = require("../utils/notificationService");
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const storeInchargeAccess_1 = require("../utils/storeInchargeAccess");
 async function getTotalPOQuantityForDemand(demandId) {
     const existingPOs = await prisma_1.default.purchaseOrder.findMany({
         where: {
@@ -216,33 +217,7 @@ exports.getPurchaseOrders = (0, catchAsync_1.default)(async (req, res) => {
         };
     }
     else if (user.role === "STORE_INCHARGE") {
-        const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
-            where: { userId: user.id, isActive: true },
-            select: {
-                store: {
-                    select: {
-                        sectionId: true,
-                        projectId: true,
-                        section: { select: { projectId: true } },
-                    },
-                },
-            },
-        });
-        const directSectionIds = assignments
-            .map((a) => a.store.sectionId)
-            .filter((id) => !!id);
-        const projectIds = Array.from(new Set(assignments
-            .map((a) => a.store.projectId || a.store.section?.projectId)
-            .filter((id) => !!id)));
-        let projectSectionIds = [];
-        if (projectIds.length > 0) {
-            const sections = await prisma_1.default.section.findMany({
-                where: { projectId: { in: projectIds }, isDeleted: false },
-                select: { id: true },
-            });
-            projectSectionIds = sections.map((s) => s.id);
-        }
-        const sectionIds = Array.from(new Set([...directSectionIds, ...projectSectionIds]));
+        const sectionIds = await (0, storeInchargeAccess_1.getStoreInchargeAccessibleSectionIds)(user);
         where.sectionId = { in: sectionIds };
     }
     const purchaseOrders = await prisma_1.default.purchaseOrder.findMany({
@@ -341,10 +316,8 @@ exports.getPurchaseOrder = (0, catchAsync_1.default)(async (req, res, next) => {
             assigned = !!assignment;
         }
         else if (user.role === "STORE_INCHARGE") {
-            const assignment = await prisma_1.default.storeInchargeAssignment.findFirst({
-                where: { userId: user.id, isActive: true, store: { sectionId } },
-            });
-            assigned = !!assignment;
+            const accessibleSectionIds = await (0, storeInchargeAccess_1.getStoreInchargeAccessibleSectionIds)(user);
+            assigned = accessibleSectionIds.includes(sectionId);
         }
         else if (user.role === "ACCOUNTANT") {
             const assignment = await prisma_1.default.accountantAssignment.findFirst({
@@ -537,11 +510,7 @@ exports.getPurchaseOrdersByVendor = (0, catchAsync_1.default)(async (req, res) =
             : { in: sectionIds };
     }
     else if (user.role === "STORE_INCHARGE") {
-        const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
-            where: { userId: user.id, isActive: true },
-            select: { store: { select: { sectionId: true } } },
-        });
-        const sectionIds = assignments.map((a) => a.store.sectionId);
+        const sectionIds = await (0, storeInchargeAccess_1.getStoreInchargeAccessibleSectionIds)(user);
         where.sectionId = where.sectionId
             ? { equals: where.sectionId, in: sectionIds }
             : { in: sectionIds };
@@ -636,11 +605,7 @@ exports.getPurchaseOrderSummary = (0, catchAsync_1.default)(async (req, res) => 
         }
     }
     else if (user.role === "STORE_INCHARGE") {
-        const assignments = await prisma_1.default.storeInchargeAssignment.findMany({
-            where: { userId: user.id, isActive: true },
-            select: { store: { select: { sectionId: true } } },
-        });
-        const sectionIds = assignments.map((a) => a.store.sectionId);
+        const sectionIds = await (0, storeInchargeAccess_1.getStoreInchargeAccessibleSectionIds)(user);
         if (!where.sectionId) {
             where.sectionId = { in: sectionIds };
         }
