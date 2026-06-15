@@ -974,9 +974,9 @@ export const getAccountantDashboard = catchAsync(
       data: {
         summary: {
           totalVendors,
-          totalAmountSpent: totalAmountSpent._sum.totalAmount || 0,
-          totalAmountPending: totalAmountPending._sum.balance || 0,
-          totalAmountPaid: totalAmountPaid._sum.totalDebited || 0,
+          totalAmountSpent: Number(totalAmountSpent._sum.totalAmount || 0),
+          totalAmountPending: Number(totalAmountPending._sum.balance || 0),
+          totalAmountPaid: Number(totalAmountPaid._sum.totalDebited || 0),
           assignedSections: accessibleSectionIds.length,
         },
         charts: {
@@ -987,10 +987,10 @@ export const getAccountantDashboard = catchAsync(
         },
         topVendorAccounts: vendorAccounts.map((account) => ({
           vendorId: account.vendorId,
-          vendorName: account.vendor.name,
-          balance: account.balance,
-          totalCredited: account.totalCredited,
-          totalDebited: account.totalDebited,
+          vendorName: account.vendor?.name || "Unknown",
+          balance: Number(account.balance || 0),
+          totalCredited: Number(account.totalCredited || 0),
+          totalDebited: Number(account.totalDebited || 0),
         })),
       },
     });
