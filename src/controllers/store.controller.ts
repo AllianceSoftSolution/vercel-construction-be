@@ -1402,25 +1402,8 @@ const stockOut = catchAsync(async (req, res, next) => {
       },
     });
 
-    // If TRANSFER: update destination store inventory and create an IN transaction there
+    // If TRANSFER: create a pending IN transaction at destination (stock applied on accept)
     if (stockOutType === "TRANSFER" && toStoreId) {
-      // Upsert destination store inventory (create if first transfer, increment if exists)
-      await tx.storeInventory.upsert({
-        where: { storeId_materialId: { storeId: toStoreId, materialId } },
-        update: {
-          stock: { increment: quantity },
-          available: { increment: quantity },
-        },
-        create: {
-          storeId: toStoreId,
-          materialId,
-          stock: quantity,
-          reserved: 0,
-          available: quantity,
-        },
-      });
-
-      // Create IN transaction on destination store so it appears in its incoming table
       await tx.storeTransaction.create({
         data: {
           storeId: toStoreId,
@@ -1817,9 +1800,19 @@ const acceptIncomingTransaction = catchAsync(async (req, res, next) => {
     !transaction ||
     transaction.storeId !== storeId ||
     transaction.type !== "IN" ||
-    !transaction.fromStoreId
+    !transaction.fromStoreId ||
+    transaction.reference !== "TRANSFER"
   ) {
     return next(new AppError("Incoming transfer transaction not found", 404));
+  }
+
+  if (transaction.acceptedAt) {
+    return next(new AppError("Incoming transfer already accepted", 400));
+  }
+
+  const quantity = Number(transaction.quantity);
+  if (!quantity || quantity <= 0) {
+    return next(new AppError("Invalid transfer quantity", 400));
   }
 
   const updatedNotes = note
@@ -1828,12 +1821,36 @@ const acceptIncomingTransaction = catchAsync(async (req, res, next) => {
       : note
     : transaction.notes;
 
-  const updatedTransaction = await prisma.storeTransaction.update({
-    where: { id: transactionId },
-    data: {
-      notes: updatedNotes,
-      documentUrl: (req as any).filesFromS3?.document || transaction.documentUrl,
-    },
+  const updatedTransaction = await prisma.$transaction(async (tx) => {
+    await tx.storeInventory.upsert({
+      where: {
+        storeId_materialId: {
+          storeId,
+          materialId: transaction.materialId,
+        },
+      },
+      update: {
+        stock: { increment: quantity },
+        available: { increment: quantity },
+      },
+      create: {
+        storeId,
+        materialId: transaction.materialId,
+        stock: quantity,
+        reserved: 0,
+        available: quantity,
+      },
+    });
+
+    return tx.storeTransaction.update({
+      where: { id: transactionId },
+      data: {
+        notes: updatedNotes,
+        documentUrl:
+          (req as any).filesFromS3?.document || transaction.documentUrl,
+        acceptedAt: new Date(),
+      },
+    });
   });
 
   res.json({

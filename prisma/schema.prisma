@@ -531,6 +531,7 @@ model StoreTransaction {
   notes         String?
   documentUrl   String?  // Optional attached document (image/pdf/doc)
   transactionDate DateTime @default(now())
+  acceptedAt      DateTime? // Set when incoming transfer is accepted at destination store
   createdBy     String
   fromStoreId   String?  // Source store (for OUT/TRANSFER — where it came from)
   toStoreId     String?  // Destination store (for IN/TRANSFER — where it went)

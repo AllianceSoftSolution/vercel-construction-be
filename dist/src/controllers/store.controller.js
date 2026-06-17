@@ -1132,20 +1132,6 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
             },
         });
         if (stockOutType === "TRANSFER" && toStoreId) {
-            await tx.storeInventory.upsert({
-                where: { storeId_materialId: { storeId: toStoreId, materialId } },
-                update: {
-                    stock: { increment: quantity },
-                    available: { increment: quantity },
-                },
-                create: {
-                    storeId: toStoreId,
-                    materialId,
-                    stock: quantity,
-                    reserved: 0,
-                    available: quantity,
-                },
-            });
             await tx.storeTransaction.create({
                 data: {
                     storeId: toStoreId,
@@ -1463,20 +1449,50 @@ const acceptIncomingTransaction = (0, catchAsync_1.default)(async (req, res, nex
     if (!transaction ||
         transaction.storeId !== storeId ||
         transaction.type !== "IN" ||
-        !transaction.fromStoreId) {
+        !transaction.fromStoreId ||
+        transaction.reference !== "TRANSFER") {
         return next(new appError_1.default("Incoming transfer transaction not found", 404));
+    }
+    if (transaction.acceptedAt) {
+        return next(new appError_1.default("Incoming transfer already accepted", 400));
+    }
+    const quantity = Number(transaction.quantity);
+    if (!quantity || quantity <= 0) {
+        return next(new appError_1.default("Invalid transfer quantity", 400));
     }
     const updatedNotes = note
         ? transaction.notes
             ? `${transaction.notes} | Received: ${note}`
             : note
         : transaction.notes;
-    const updatedTransaction = await prisma_1.default.storeTransaction.update({
-        where: { id: transactionId },
-        data: {
-            notes: updatedNotes,
-            documentUrl: req.filesFromS3?.document || transaction.documentUrl,
-        },
+    const updatedTransaction = await prisma_1.default.$transaction(async (tx) => {
+        await tx.storeInventory.upsert({
+            where: {
+                storeId_materialId: {
+                    storeId,
+                    materialId: transaction.materialId,
+                },
+            },
+            update: {
+                stock: { increment: quantity },
+                available: { increment: quantity },
+            },
+            create: {
+                storeId,
+                materialId: transaction.materialId,
+                stock: quantity,
+                reserved: 0,
+                available: quantity,
+            },
+        });
+        return tx.storeTransaction.update({
+            where: { id: transactionId },
+            data: {
+                notes: updatedNotes,
+                documentUrl: req.filesFromS3?.document || transaction.documentUrl,
+                acceptedAt: new Date(),
+            },
+        });
     });
     res.json({
         message: "Incoming request accepted successfully",
