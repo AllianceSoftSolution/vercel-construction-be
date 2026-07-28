@@ -7,12 +7,21 @@ exports.sendFirebaseNotification = sendFirebaseNotification;
 const firebase_admin_1 = __importDefault(require("firebase-admin"));
 const path_1 = __importDefault(require("path"));
 if (!firebase_admin_1.default.apps.length) {
-    const serviceAccountPath = path_1.default.isAbsolute("../config/radc-a6ce0-firebase-adminsdk-fbsvc-c5f458f8f6.json")
-        ? "../config/radc-a6ce0-firebase-adminsdk-fbsvc-c5f458f8f6.json"
-        : path_1.default.join(process.cwd(), "src/config/radc-a6ce0-firebase-adminsdk-fbsvc-c5f458f8f6.json");
-    firebase_admin_1.default.initializeApp({
-        credential: firebase_admin_1.default.credential.cert(serviceAccountPath),
-    });
+    const jsonFromEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+    if (jsonFromEnv) {
+        const serviceAccount = JSON.parse(jsonFromEnv);
+        firebase_admin_1.default.initializeApp({
+            credential: firebase_admin_1.default.credential.cert(serviceAccount),
+        });
+    }
+    else {
+        const serviceAccountPath = path_1.default.isAbsolute("../config/radc-a6ce0-firebase-adminsdk-fbsvc-c5f458f8f6.json")
+            ? "../config/radc-a6ce0-firebase-adminsdk-fbsvc-c5f458f8f6.json"
+            : path_1.default.join(process.cwd(), "src/config/radc-a6ce0-firebase-adminsdk-fbsvc-c5f458f8f6.json");
+        firebase_admin_1.default.initializeApp({
+            credential: firebase_admin_1.default.credential.cert(serviceAccountPath),
+        });
+    }
 }
 async function sendFirebaseNotification({ tokens, title, body, data = {}, }) {
     if (!tokens || tokens.length === 0)

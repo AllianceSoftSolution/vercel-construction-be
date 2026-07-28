@@ -15,29 +15,37 @@ const path_1 = __importDefault(require("path"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
 const PORT = Number(process.env.PORT) || 5000;
+const isVercel = Boolean(process.env.VERCEL);
 app.use(express_1.default.json());
 app.use((0, cors_1.default)());
 app.options("*", (0, cors_1.default)());
 app.use(express_1.default.urlencoded({ extended: true }));
 app.use((0, morgan_1.default)("dev"));
 (0, swagger_1.setupSwagger)(app);
-console.log("hi");
-const distPath = path_1.default.resolve(process.cwd(), "fe-dist");
-app.use(express_1.default.static(distPath));
-app.use("/api", routes_1.default);
-app.get(/^\/(?!api).*/, (req, res, next) => {
-    if (req.accepts("html")) {
-        res.sendFile(path_1.default.join(distPath, "index.html"));
-    }
-    else {
-        next();
-    }
-});
+if (!isVercel) {
+    const distPath = path_1.default.resolve(process.cwd(), "fe-dist");
+    app.use(express_1.default.static(distPath));
+    app.use("/api", routes_1.default);
+    app.get(/^\/(?!api).*/, (req, res, next) => {
+        if (req.accepts("html")) {
+            res.sendFile(path_1.default.join(distPath, "index.html"));
+        }
+        else {
+            next();
+        }
+    });
+}
+else {
+    app.use("/api", routes_1.default);
+}
 app.all("*", (req, _res, next) => {
     next(new appError_1.default(`Can't find ${req.originalUrl} on this server`, 404));
 });
 app.use(globalErrorHandler_1.default);
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
-});
+if (!isVercel) {
+    app.listen(PORT, "0.0.0.0", () => {
+        console.log(`Server running on port ${PORT}`);
+    });
+}
+exports.default = app;
 //# sourceMappingURL=index.js.map
