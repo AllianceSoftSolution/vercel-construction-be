@@ -27,6 +27,8 @@
   ],
   "exclude": [
     "node_modules",
-    "dist"
+    "dist",
+    "src/utils/generatePdfThumbnail.ts",
+    "src/utils/generateAndUploadThumbnail.ts"
   ]
 }
