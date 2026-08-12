@@ -8,6 +8,7 @@
     "postinstall": "prisma generate",
     "start": "node dist/src/index.js",
     "build": "rimraf dist && tsc",
+    "vercel-build": "prisma generate && npm run build",
     "ts.check": "tsc --project tsconfig.json",
     "add-build": "git add -f dist",
     "seed:questions": "ts-node prisma/seedQuestions.ts"
