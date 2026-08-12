@@ -132,18 +132,14 @@ exports.getSummary = (0, catchAsync_1.default)(async (req, res) => {
 });
 exports.getSummaryByProject = (0, catchAsync_1.default)(async (req, res) => {
     const user = req.user;
-    const accessWhere = await (0, pettyCashAccess_1.buildPettyCashAccessWhere)(user);
-    const projectIds = await prisma_1.default.pettyCashTransaction.findMany({
-        where: accessWhere,
-        select: { projectId: true },
-        distinct: ["projectId"],
-    });
+    const accessibleIds = await (0, pettyCashAccess_1.getAccessibleProjectIds)(user);
     const projects = await prisma_1.default.project.findMany({
         where: {
-            id: { in: projectIds.map((p) => p.projectId) },
+            id: { in: accessibleIds.length ? accessibleIds : ["__none__"] },
             isDeleted: false,
         },
         select: { id: true, name: true, code: true },
+        orderBy: { name: "asc" },
     });
     const result = await Promise.all(projects.map(async (project) => {
         const balances = await (0, pettyCashAccess_1.computeProjectBalances)(project.id);

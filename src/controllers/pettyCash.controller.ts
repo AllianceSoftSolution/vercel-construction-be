@@ -7,6 +7,7 @@ import {
   assertSectionAccess,
   buildPettyCashAccessWhere,
   computeProjectBalances,
+  getAccessibleProjectIds,
   getProjectAccountantProjectIds,
   getProjectPoolRemaining,
   getSectionAccountantSectionIds,
@@ -165,20 +166,15 @@ export const getSummary = catchAsync(async (req: Request, res: Response) => {
 export const getSummaryByProject = catchAsync(
   async (req: Request, res: Response) => {
     const user = req.user;
-    const accessWhere = await buildPettyCashAccessWhere(user);
-
-    const projectIds = await prisma.pettyCashTransaction.findMany({
-      where: accessWhere,
-      select: { projectId: true },
-      distinct: ["projectId"],
-    });
+    const accessibleIds = await getAccessibleProjectIds(user);
 
     const projects = await prisma.project.findMany({
       where: {
-        id: { in: projectIds.map((p) => p.projectId) },
+        id: { in: accessibleIds.length ? accessibleIds : ["__none__"] },
         isDeleted: false,
       },
       select: { id: true, name: true, code: true },
+      orderBy: { name: "asc" },
     });
 
     const result = await Promise.all(

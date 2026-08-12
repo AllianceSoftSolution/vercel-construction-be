@@ -4,6 +4,7 @@ export type PettyCashUser = {
     isHead?: boolean;
 };
 export declare const isAdminRole: (role: string) => boolean;
+export declare const getAccessibleProjectIds: (user: PettyCashUser) => Promise<string[]>;
 export declare const isHeadOfficeUser: (user: PettyCashUser) => boolean;
 export declare const isProjectAccountant: (userId: string, projectId: string) => Promise<boolean>;
 export declare const isSectionAccountantFor: (userId: string, sectionId: string) => Promise<boolean>;

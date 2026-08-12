@@ -9,6 +9,38 @@ export type PettyCashUser = {
 export const isAdminRole = (role: string) =>
   ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"].includes(role);
 
+/** All project IDs the user may view in petty cash */
+export const getAccessibleProjectIds = async (user: PettyCashUser) => {
+  if (isAdminRole(user.role)) {
+    const projects = await prisma.project.findMany({
+      where: { isDeleted: false },
+      select: { id: true },
+    });
+    return projects.map((p) => p.id);
+  }
+
+  if (user.role === "ACCOUNTANT") {
+    const assignments = await prisma.accountantAssignment.findMany({
+      where: { userId: user.id, isActive: true },
+      select: { projectId: true, sectionId: true },
+    });
+    const projectIds = new Set(assignments.map((a) => a.projectId));
+    const sectionIds = assignments
+      .map((a) => a.sectionId)
+      .filter((id): id is string => id !== null);
+    if (sectionIds.length > 0) {
+      const sections = await prisma.section.findMany({
+        where: { id: { in: sectionIds }, isDeleted: false },
+        select: { projectId: true },
+      });
+      sections.forEach((s) => projectIds.add(s.projectId));
+    }
+    return [...projectIds];
+  }
+
+  return [];
+};
+
 /** Head office: Super Admin, Admin, Sub Admin, or Head Accountant */
 export const isHeadOfficeUser = (user: PettyCashUser) =>
   isAdminRole(user.role) || (user.role === "ACCOUNTANT" && !!user.isHead);

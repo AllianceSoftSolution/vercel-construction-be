@@ -3,10 +3,39 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getSectionRemaining = exports.getProjectPoolRemaining = exports.computeProjectBalances = exports.assertSectionAccess = exports.assertProjectAccess = exports.buildPettyCashAccessWhere = exports.getSectionAccountantSectionIds = exports.getProjectAccountantProjectIds = exports.getHeadOfficeProjectIds = exports.isSectionAccountantFor = exports.isProjectAccountant = exports.isHeadOfficeUser = exports.isAdminRole = void 0;
+exports.getSectionRemaining = exports.getProjectPoolRemaining = exports.computeProjectBalances = exports.assertSectionAccess = exports.assertProjectAccess = exports.buildPettyCashAccessWhere = exports.getSectionAccountantSectionIds = exports.getProjectAccountantProjectIds = exports.getHeadOfficeProjectIds = exports.isSectionAccountantFor = exports.isProjectAccountant = exports.isHeadOfficeUser = exports.getAccessibleProjectIds = exports.isAdminRole = void 0;
 const prisma_1 = __importDefault(require("./prisma"));
 const isAdminRole = (role) => ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"].includes(role);
 exports.isAdminRole = isAdminRole;
+const getAccessibleProjectIds = async (user) => {
+    if ((0, exports.isAdminRole)(user.role)) {
+        const projects = await prisma_1.default.project.findMany({
+            where: { isDeleted: false },
+            select: { id: true },
+        });
+        return projects.map((p) => p.id);
+    }
+    if (user.role === "ACCOUNTANT") {
+        const assignments = await prisma_1.default.accountantAssignment.findMany({
+            where: { userId: user.id, isActive: true },
+            select: { projectId: true, sectionId: true },
+        });
+        const projectIds = new Set(assignments.map((a) => a.projectId));
+        const sectionIds = assignments
+            .map((a) => a.sectionId)
+            .filter((id) => id !== null);
+        if (sectionIds.length > 0) {
+            const sections = await prisma_1.default.section.findMany({
+                where: { id: { in: sectionIds }, isDeleted: false },
+                select: { projectId: true },
+            });
+            sections.forEach((s) => projectIds.add(s.projectId));
+        }
+        return [...projectIds];
+    }
+    return [];
+};
+exports.getAccessibleProjectIds = getAccessibleProjectIds;
 const isHeadOfficeUser = (user) => (0, exports.isAdminRole)(user.role) || (user.role === "ACCOUNTANT" && !!user.isHead);
 exports.isHeadOfficeUser = isHeadOfficeUser;
 const isProjectAccountant = async (userId, projectId) => {
