@@ -60,6 +60,13 @@ enum VendorAccountTransactionType {
   DEBIT
 }
 
+enum PettyCashTransactionType {
+  FUNDING
+  DISTRIBUTION
+  INTERNAL_EXPENSE
+  SECTION_EXPENSE
+}
+
 enum POStatus {
   CREATED
   CONFIRMED
@@ -128,6 +135,8 @@ model User {
   materialCaps               MaterialCap[] @relation("MaterialCapCreator")
   materialCapsUpdated        MaterialCap[] @relation("MaterialCapUpdater")
   storePermissions           StorePermission[]
+  pettyCashTransactionsCreated PettyCashTransaction[] @relation("PettyCashCreator")
+  pettyCashDistributionsReceived PettyCashTransaction[] @relation("PettyCashRecipient")
 
   @@map("users")
 }
@@ -154,6 +163,7 @@ model Project {
   purchaseOrders            PurchaseOrder[]
   materialCaps              MaterialCap[]
   headStores                Store[] @relation("ProjectHeadStores")
+  pettyCashTransactions     PettyCashTransaction[]
 
   @@map("projects")
 }
@@ -183,6 +193,7 @@ model Section {
   demands                    Demand[]
   purchaseOrders            PurchaseOrder[]
   materialCaps              MaterialCap[]
+  pettyCashTransactions     PettyCashTransaction[]
 
   @@unique([projectId, code])
   @@map("sections")
@@ -635,4 +646,50 @@ model DeviceToken {
 
   @@index([userId])
   @@map("device_tokens")
+}
+
+model PettyCashExpenseHead {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  isDeleted   Boolean  @default(false)
+  createdBy   String
+  updatedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transactions PettyCashTransaction[]
+
+  @@map("petty_cash_expense_heads")
+}
+
+model PettyCashTransaction {
+  id              String                   @id @default(cuid())
+  referenceNumber String?
+  type            PettyCashTransactionType
+  projectId       String
+  sectionId       String?
+  expenseHeadId   String?
+  recipientUserId String?
+  amount          Decimal
+  proofUrl        String?
+  description     String?
+  isDeleted       Boolean                  @default(false)
+  createdBy       String
+  updatedBy       String?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  project         Project                  @relation(fields: [projectId], references: [id])
+  section         Section?                 @relation(fields: [sectionId], references: [id])
+  expenseHead     PettyCashExpenseHead?    @relation(fields: [expenseHeadId], references: [id])
+  creator         User                     @relation("PettyCashCreator", fields: [createdBy], references: [id])
+  recipient       User?                    @relation("PettyCashRecipient", fields: [recipientUserId], references: [id])
+
+  @@index([projectId])
+  @@index([sectionId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("petty_cash_transactions")
 }

@@ -14,6 +14,7 @@ import assignmentRoutes from "./assignment";
 import vendorAccountRoutes from "./vendorAccount";
 import purchaseOrderRoutes from "./purchaseOrder";
 import analyticsRoutes from "./analytics";
+import pettyCashRoutes from "./pettyCash";
 
 // Authentication and user management
 router.use("/auth", authRoutes);
@@ -31,6 +32,7 @@ router.use("/purchase-orders", purchaseOrderRoutes);
 
 // Finance management routes
 router.use("/vendor-account", vendorAccountRoutes);
+router.use("/petty-cash", pettyCashRoutes);
 
 // Analytics and dashboard routes
 router.use("/analytics", analyticsRoutes);
