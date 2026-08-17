@@ -1,26 +1,35 @@
+import type { PettyCashTransactionType } from "@prisma/client";
 export type PettyCashUser = {
     id: string;
     role: string;
     isHead?: boolean;
 };
 export declare const isAdminRole: (role: string) => boolean;
+export declare const isPettyCashExpenseHeadAdmin: (user: PettyCashUser) => boolean;
 export declare const getAccessibleProjectIds: (user: PettyCashUser) => Promise<string[]>;
 export declare const isHeadOfficeUser: (user: PettyCashUser) => boolean;
-export declare const isProjectAccountant: (userId: string, projectId: string) => Promise<boolean>;
+export declare const usesSectionScopedOverview: (user: PettyCashUser) => boolean;
+export declare const getPettyCashOverviewViewMode: (user: PettyCashUser) => "section" | "project";
+export declare const isProjectManagerForProject: (userId: string, projectId: string) => Promise<boolean>;
+export declare const isProjectManagerForSection: (userId: string, sectionId: string) => Promise<boolean>;
+export declare const getProjectManagerProjectIds: (userId: string) => Promise<string[]>;
+export declare const getProjectManagerSectionIds: (userId: string) => Promise<string[]>;
 export declare const isSectionAccountantFor: (userId: string, sectionId: string) => Promise<boolean>;
-export declare const getHeadOfficeProjectIds: (userId: string) => Promise<string[]>;
-export declare const getProjectAccountantProjectIds: (userId: string) => Promise<string[]>;
+export declare const getHeadOfficeProjectIds: (_userId?: string) => Promise<string[]>;
 export declare const getSectionAccountantSectionIds: (userId: string) => Promise<string[]>;
+export declare const getSectionAccountantUser: (sectionId: string) => Promise<{
+    id: string;
+    name: string;
+    email: string;
+} | null>;
 export declare const buildPettyCashAccessWhere: (user: PettyCashUser) => Promise<{
-    isDeleted: boolean;
-} | {
-    projectId: {
-        in: string[];
-    };
     isDeleted: boolean;
 } | {
     OR: ({
         projectId: {
+            in: string[];
+        };
+        type: {
             in: string[];
         };
         sectionId?: undefined;
@@ -29,6 +38,7 @@ export declare const buildPettyCashAccessWhere: (user: PettyCashUser) => Promise
             in: string[];
         };
         projectId?: undefined;
+        type?: undefined;
     })[];
     isDeleted: boolean;
 } | {
@@ -36,10 +46,99 @@ export declare const buildPettyCashAccessWhere: (user: PettyCashUser) => Promise
         in: string[];
     };
     isDeleted: boolean;
+} | {
+    projectId: {
+        in: string[];
+    };
+    isDeleted: boolean;
 }>;
 export declare const assertProjectAccess: (user: PettyCashUser, projectId: string) => Promise<boolean>;
 export declare const assertSectionAccess: (user: PettyCashUser, sectionId: string) => Promise<boolean>;
-export declare const computeProjectBalances: (projectId: string) => Promise<{
+export type PettyCashListFilters = {
+    projectId?: string;
+    sectionId?: string;
+    type?: PettyCashTransactionType;
+};
+export declare const applyPettyCashListFilters: (where: Record<string, unknown>, filters: PettyCashListFilters) => {
+    [x: string]: unknown;
+};
+export declare const parsePettyCashListFilters: (query: {
+    projectId?: string;
+    sectionId?: string;
+    type?: string;
+}) => PettyCashListFilters;
+export declare const aggregatePettyCashTotals: (transactions: {
+    type: string;
+    amount: unknown;
+}[]) => {
+    totalFunded: number;
+    totalDistributed: number;
+    totalInternalExpenses: number;
+    totalSectionExpenses: number;
+    totalSpent: number;
+    poolRemaining: number;
+};
+export declare const computePettyCashOverview: (totals: ReturnType<typeof aggregatePettyCashTotals>, viewMode: "section" | "project") => {
+    totalCredited: number;
+    totalDebited: number;
+    remainingBalance: number;
+};
+export declare const aggregateOverviewTotals: (transactions: {
+    type: string;
+    amount: unknown;
+}[], viewMode: "section" | "project") => {
+    totalFunded: number;
+    totalDistributed: number;
+    totalInternalExpenses: number;
+    totalSectionExpenses: number;
+    totalSpent: number;
+    poolRemaining: number;
+};
+export declare const mapProjectBalancesForHeadOffice: (balances: Awaited<ReturnType<typeof computeProjectBalances>>) => {
+    totalCredited: number;
+    totalDebited: number;
+    remainingBalance: number;
+    totalFunded: number;
+    totalDistributed: number;
+    totalInternalExpenses: number;
+    projectPoolRemaining: number;
+    sectionBalances: Record<string, {
+        received: number;
+        spent: number;
+        remaining: number;
+    }>;
+};
+export declare const mapProjectBalancesForOverview: (balances: Awaited<ReturnType<typeof computeProjectBalances>>, sectionScoped: boolean) => {
+    totalFunded: number;
+    totalDistributed: number;
+    totalInternalExpenses: number;
+    projectPoolRemaining: number;
+    sectionBalances: Record<string, {
+        received: number;
+        spent: number;
+        remaining: number;
+    }>;
+} | {
+    totalFunded: number;
+    totalInternalExpenses: number;
+    totalSectionExpenses: number;
+    totalCredited: number;
+    totalDebited: number;
+    remainingBalance: number;
+    totalDistributed: number;
+    projectPoolRemaining: number;
+    sectionBalances: Record<string, {
+        received: number;
+        spent: number;
+        remaining: number;
+    }>;
+};
+export type PettyCashBalanceScope = {
+    pmSectionIds?: string[];
+};
+export declare const getPettyCashBalanceScope: (user: PettyCashUser) => Promise<PettyCashBalanceScope>;
+export declare const resolveFilteredProjectIds: (accessibleIds: string[], filters: PettyCashListFilters, user?: PettyCashUser) => Promise<string[]>;
+export declare const computeProjectBalances: (projectId: string, filters?: PettyCashListFilters, scope?: PettyCashBalanceScope) => Promise<{
     totalFunded: number;
     totalDistributed: number;
     totalInternalExpenses: number;
@@ -52,3 +151,10 @@ export declare const computeProjectBalances: (projectId: string) => Promise<{
 }>;
 export declare const getProjectPoolRemaining: (projectId: string) => Promise<number>;
 export declare const getSectionRemaining: (sectionId: string) => Promise<number>;
+export declare const assertSufficientPettyCashBalance: (available: number, amount: number, balanceLabel: string) => string | null;
+export declare const computeSectionBalances: (sectionId: string, filters?: PettyCashListFilters) => Promise<{
+    received: number;
+    spent: number;
+    remaining: number;
+    transactionCount: number;
+}>;

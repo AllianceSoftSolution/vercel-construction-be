@@ -43,6 +43,7 @@ const s3UploadMiddleware_1 = require("../middlewares/s3UploadMiddleware");
 const router = express_1.default.Router();
 router.get("/summary", auth_middleware_1.default, pettyCashController.getSummary);
 router.get("/summary/by-project", auth_middleware_1.default, pettyCashController.getSummaryByProject);
+router.get("/summary/by-section", auth_middleware_1.default, pettyCashController.getSummaryBySection);
 router.get("/projects/:projectId/balance", auth_middleware_1.default, pettyCashController.getProjectBalance);
 router.get("/expense-heads", auth_middleware_1.default, pettyCashController.getExpenseHeads);
 router.post("/expense-heads", auth_middleware_1.default, pettyCashController.createExpenseHead);
@@ -51,8 +52,9 @@ router.delete("/expense-heads/:id", auth_middleware_1.default, pettyCashControll
 router.get("/transactions", auth_middleware_1.default, pettyCashController.getTransactions);
 router.post("/funding", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addFunding);
 router.post("/internal-expense", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addInternalExpense);
-router.post("/distribution", auth_middleware_1.default, pettyCashController.addDistribution);
+router.post("/distribution", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addDistribution);
 router.post("/section-expense", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addSectionExpense);
+router.get("/projects/:projectId/sections", auth_middleware_1.default, pettyCashController.getProjectSections);
 router.get("/projects/:projectId/accountants", auth_middleware_1.default, pettyCashController.getProjectAccountants);
 exports.default = router;
 //# sourceMappingURL=pettyCash.js.map

@@ -3,17 +3,40 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getProjectAccountants = exports.addSectionExpense = exports.addDistribution = exports.addInternalExpense = exports.addFunding = exports.getTransactions = exports.getProjectBalance = exports.getSummaryByProject = exports.getSummary = exports.deleteExpenseHead = exports.updateExpenseHead = exports.createExpenseHead = exports.getExpenseHeads = void 0;
+exports.getProjectAccountants = exports.getProjectSections = exports.addSectionExpense = exports.addDistribution = exports.addInternalExpense = exports.addFunding = exports.getTransactions = exports.getProjectBalance = exports.getSummaryBySection = exports.getSummaryByProject = exports.getSummary = exports.deleteExpenseHead = exports.updateExpenseHead = exports.createExpenseHead = exports.getExpenseHeads = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const pettyCashAccess_1 = require("../utils/pettyCashAccess");
 const transactionInclude = {
     project: { select: { id: true, name: true, code: true } },
-    section: { select: { id: true, name: true, code: true } },
+    section: {
+        select: {
+            id: true,
+            name: true,
+            code: true,
+            accountantAssignments: {
+                where: { isActive: true },
+                take: 1,
+                select: {
+                    user: { select: { id: true, name: true, email: true } },
+                },
+            },
+        },
+    },
     expenseHead: { select: { id: true, name: true } },
-    creator: { select: { id: true, name: true, email: true, role: true } },
-    recipient: { select: { id: true, name: true, email: true } },
+    creator: {
+        select: { id: true, name: true, email: true, role: true, isHead: true },
+    },
+    recipient: {
+        select: {
+            id: true,
+            name: true,
+            email: true,
+            role: true,
+            isHead: true,
+        },
+    },
 };
 exports.getExpenseHeads = (0, catchAsync_1.default)(async (req, res) => {
     const heads = await prisma_1.default.pettyCashExpenseHead.findMany({
@@ -24,7 +47,7 @@ exports.getExpenseHeads = (0, catchAsync_1.default)(async (req, res) => {
 });
 exports.createExpenseHead = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
-    if (!(0, pettyCashAccess_1.isHeadOfficeUser)(user)) {
+    if (!(0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user)) {
         return next(new appError_1.default("Not authorized to manage expense heads", 403));
     }
     const { name, description } = req.body;
@@ -42,7 +65,7 @@ exports.createExpenseHead = (0, catchAsync_1.default)(async (req, res, next) => 
 });
 exports.updateExpenseHead = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
-    if (!(0, pettyCashAccess_1.isHeadOfficeUser)(user)) {
+    if (!(0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user)) {
         return next(new appError_1.default("Not authorized to manage expense heads", 403));
     }
     const { id } = req.params;
@@ -62,7 +85,7 @@ exports.updateExpenseHead = (0, catchAsync_1.default)(async (req, res, next) => 
 });
 exports.deleteExpenseHead = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
-    if (!(0, pettyCashAccess_1.isHeadOfficeUser)(user)) {
+    if (!(0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user)) {
         return next(new appError_1.default("Not authorized to manage expense heads", 403));
     }
     const { id } = req.params;
@@ -75,55 +98,56 @@ exports.deleteExpenseHead = (0, catchAsync_1.default)(async (req, res, next) => 
 exports.getSummary = (0, catchAsync_1.default)(async (req, res) => {
     const user = req.user;
     const accessWhere = await (0, pettyCashAccess_1.buildPettyCashAccessWhere)(user);
+    const listFilters = (0, pettyCashAccess_1.parsePettyCashListFilters)(req.query);
+    const where = (0, pettyCashAccess_1.applyPettyCashListFilters)(accessWhere, listFilters);
     const transactions = await prisma_1.default.pettyCashTransaction.findMany({
-        where: accessWhere,
+        where,
         select: { type: true, amount: true },
     });
-    let totalFunded = 0;
-    let totalDistributed = 0;
-    let totalInternalExpenses = 0;
-    let totalSectionExpenses = 0;
-    for (const tx of transactions) {
-        const amt = Number(tx.amount);
-        switch (tx.type) {
-            case "FUNDING":
-                totalFunded += amt;
-                break;
-            case "DISTRIBUTION":
-                totalDistributed += amt;
-                break;
-            case "INTERNAL_EXPENSE":
-                totalInternalExpenses += amt;
-                break;
-            case "SECTION_EXPENSE":
-                totalSectionExpenses += amt;
-                break;
-        }
-    }
-    const totalSpent = totalInternalExpenses + totalSectionExpenses;
-    const poolRemaining = totalFunded - totalDistributed - totalInternalExpenses;
+    const overviewViewMode = (0, pettyCashAccess_1.getPettyCashOverviewViewMode)(user);
+    const { totalFunded, totalDistributed, totalInternalExpenses, totalSectionExpenses, totalSpent, poolRemaining, } = (0, pettyCashAccess_1.aggregateOverviewTotals)(transactions, overviewViewMode);
     const headOffice = (0, pettyCashAccess_1.isHeadOfficeUser)(user);
-    let canDistribute = headOffice;
-    let canAddInternalExpense = headOffice;
-    let canAddSectionExpense = headOffice;
-    if (user.role === "ACCOUNTANT" && !user.isHead) {
-        const projectIds = await (0, pettyCashAccess_1.getProjectAccountantProjectIds)(user.id);
-        const sectionIds = await (0, pettyCashAccess_1.getSectionAccountantSectionIds)(user.id);
-        canDistribute = projectIds.length > 0;
-        canAddInternalExpense = projectIds.length > 0;
-        canAddSectionExpense = sectionIds.length > 0 || projectIds.length > 0;
+    const canManageHeads = (0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user);
+    let canDistribute = false;
+    let canAddInternalExpense = false;
+    let canAddSectionExpense = false;
+    if (headOffice) {
+        canDistribute = true;
     }
+    else if (user.role === "PROJECT_MANAGER") {
+        const sectionIds = await (0, pettyCashAccess_1.getProjectManagerSectionIds)(user.id);
+        canDistribute = sectionIds.length > 0;
+        canAddInternalExpense = sectionIds.length > 0;
+    }
+    else if (user.role === "ACCOUNTANT" && !user.isHead) {
+        const sectionIds = await (0, pettyCashAccess_1.getSectionAccountantSectionIds)(user.id);
+        canAddSectionExpense = sectionIds.length > 0;
+    }
+    const { totalCredited, totalDebited, remainingBalance } = (0, pettyCashAccess_1.computePettyCashOverview)({
+        totalFunded,
+        totalDistributed,
+        totalInternalExpenses,
+        totalSectionExpenses,
+        totalSpent,
+        poolRemaining,
+    }, overviewViewMode);
     res.status(200).json({
         status: "success",
         data: {
+            viewMode: overviewViewMode,
+            totalCredited,
+            totalDebited,
+            remainingBalance,
             totalFunded,
             totalDistributed,
             totalInternalExpenses,
             totalSectionExpenses,
             totalSpent,
-            poolRemaining,
+            totalReceived: totalDistributed,
+            balanceRemaining: remainingBalance,
+            poolRemaining: remainingBalance,
             canAddFunding: headOffice,
-            canManageHeads: headOffice,
+            canManageHeads,
             canDistribute,
             canAddInternalExpense,
             canAddSectionExpense,
@@ -132,18 +156,91 @@ exports.getSummary = (0, catchAsync_1.default)(async (req, res) => {
 });
 exports.getSummaryByProject = (0, catchAsync_1.default)(async (req, res) => {
     const user = req.user;
+    if (user.role === "ACCOUNTANT" && !user.isHead) {
+        res.status(200).json({ status: "success", data: [] });
+        return;
+    }
     const accessibleIds = await (0, pettyCashAccess_1.getAccessibleProjectIds)(user);
+    const listFilters = (0, pettyCashAccess_1.parsePettyCashListFilters)(req.query);
+    const filteredIds = await (0, pettyCashAccess_1.resolveFilteredProjectIds)(accessibleIds, listFilters, user);
     const projects = await prisma_1.default.project.findMany({
         where: {
-            id: { in: accessibleIds.length ? accessibleIds : ["__none__"] },
+            id: { in: filteredIds.length ? filteredIds : ["__none__"] },
             isDeleted: false,
         },
         select: { id: true, name: true, code: true },
         orderBy: { name: "asc" },
     });
+    const balanceFilters = {
+        ...(listFilters.sectionId && { sectionId: listFilters.sectionId }),
+        ...(listFilters.type && { type: listFilters.type }),
+    };
+    const balanceScope = await (0, pettyCashAccess_1.getPettyCashBalanceScope)(user);
+    const sectionScopedOverview = (0, pettyCashAccess_1.usesSectionScopedOverview)(user);
     const result = await Promise.all(projects.map(async (project) => {
-        const balances = await (0, pettyCashAccess_1.computeProjectBalances)(project.id);
-        return { ...project, ...balances };
+        const balances = await (0, pettyCashAccess_1.computeProjectBalances)(project.id, balanceFilters, balanceScope);
+        if (sectionScopedOverview) {
+            return {
+                ...project,
+                ...(0, pettyCashAccess_1.mapProjectBalancesForOverview)(balances, true),
+            };
+        }
+        return {
+            ...project,
+            ...(0, pettyCashAccess_1.mapProjectBalancesForHeadOffice)(balances),
+        };
+    }));
+    res.status(200).json({ status: "success", data: result });
+});
+exports.getSummaryBySection = (0, catchAsync_1.default)(async (req, res) => {
+    const user = req.user;
+    const listFilters = (0, pettyCashAccess_1.parsePettyCashListFilters)(req.query);
+    let sectionIds = [];
+    if (user.role === "ACCOUNTANT" && !user.isHead) {
+        sectionIds = await (0, pettyCashAccess_1.getSectionAccountantSectionIds)(user.id);
+    }
+    else if ((0, pettyCashAccess_1.isHeadOfficeUser)(user)) {
+        const sections = await prisma_1.default.section.findMany({
+            where: { isDeleted: false },
+            select: { id: true },
+        });
+        sectionIds = sections.map((s) => s.id);
+    }
+    if (listFilters.sectionId) {
+        sectionIds = sectionIds.filter((id) => id === listFilters.sectionId);
+    }
+    if (listFilters.projectId) {
+        const projectSections = await prisma_1.default.section.findMany({
+            where: { projectId: listFilters.projectId, isDeleted: false },
+            select: { id: true },
+        });
+        const projectSectionIds = new Set(projectSections.map((s) => s.id));
+        sectionIds = sectionIds.filter((id) => projectSectionIds.has(id));
+    }
+    const sections = await prisma_1.default.section.findMany({
+        where: {
+            id: { in: sectionIds.length ? sectionIds : ["__none__"] },
+            isDeleted: false,
+        },
+        include: {
+            project: { select: { id: true, name: true, code: true } },
+        },
+        orderBy: { name: "asc" },
+    });
+    const balanceFilters = {
+        ...(listFilters.type && { type: listFilters.type }),
+    };
+    const result = await Promise.all(sections.map(async (section) => {
+        const balances = await (0, pettyCashAccess_1.computeSectionBalances)(section.id, balanceFilters);
+        return {
+            id: section.id,
+            name: section.name,
+            code: section.code,
+            projectId: section.projectId,
+            projectName: section.project.name,
+            projectCode: section.project.code,
+            ...balances,
+        };
     }));
     res.status(200).json({ status: "success", data: result });
 });
@@ -159,9 +256,29 @@ exports.getProjectBalance = (0, catchAsync_1.default)(async (req, res, next) => 
     });
     if (!project)
         return next(new appError_1.default("Project not found", 404));
-    const balances = await (0, pettyCashAccess_1.computeProjectBalances)(projectId);
+    const listFilters = (0, pettyCashAccess_1.parsePettyCashListFilters)(req.query);
+    const balanceFilters = {
+        ...(listFilters.sectionId && { sectionId: listFilters.sectionId }),
+        ...(listFilters.type && { type: listFilters.type }),
+    };
+    const balanceScope = await (0, pettyCashAccess_1.getPettyCashBalanceScope)(user);
+    const rawBalances = await (0, pettyCashAccess_1.computeProjectBalances)(projectId, balanceFilters, balanceScope);
+    const balances = (0, pettyCashAccess_1.usesSectionScopedOverview)(user)
+        ? (0, pettyCashAccess_1.mapProjectBalancesForOverview)(rawBalances, true)
+        : (0, pettyCashAccess_1.mapProjectBalancesForHeadOffice)(rawBalances);
+    let sectionWhere = {
+        projectId,
+        isDeleted: false,
+    };
+    if (listFilters.sectionId) {
+        sectionWhere.id = listFilters.sectionId;
+    }
+    else if (user.role === "PROJECT_MANAGER") {
+        const pmSectionIds = await (0, pettyCashAccess_1.getProjectManagerSectionIds)(user.id);
+        sectionWhere.id = { in: pmSectionIds.length ? pmSectionIds : ["__none__"] };
+    }
     const sections = await prisma_1.default.section.findMany({
-        where: { projectId, isDeleted: false },
+        where: sectionWhere,
         select: { id: true, name: true, code: true },
     });
     const sectionDetails = sections.map((s) => ({
@@ -179,24 +296,20 @@ exports.getProjectBalance = (0, catchAsync_1.default)(async (req, res, next) => 
 });
 exports.getTransactions = (0, catchAsync_1.default)(async (req, res) => {
     const user = req.user;
-    const { projectId, sectionId, type, dateFrom, dateTo, page = "1", limit = "50", } = req.query;
+    const { dateFrom, dateTo, page = "1", limit = "50", } = req.query;
     const accessWhere = await (0, pettyCashAccess_1.buildPettyCashAccessWhere)(user);
-    const where = { ...accessWhere };
-    if (projectId)
-        where.projectId = projectId;
-    if (sectionId)
-        where.sectionId = sectionId;
-    if (type)
-        where.type = type;
+    const listFilters = (0, pettyCashAccess_1.parsePettyCashListFilters)(req.query);
+    const where = (0, pettyCashAccess_1.applyPettyCashListFilters)(accessWhere, listFilters);
     if (dateFrom || dateTo) {
-        where.createdAt = {};
+        const createdAt = {};
         if (dateFrom)
-            where.createdAt.gte = new Date(dateFrom);
+            createdAt.gte = new Date(dateFrom);
         if (dateTo) {
             const end = new Date(dateTo);
             end.setHours(23, 59, 59, 999);
-            where.createdAt.lte = end;
+            createdAt.lte = end;
         }
+        where.createdAt = createdAt;
     }
     const skip = (Number(page) - 1) * Number(limit);
     const [transactions, total] = await Promise.all([
@@ -260,11 +373,13 @@ exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) =>
         return next(new appError_1.default("Project is required", 400));
     if (!expenseHeadId)
         return next(new appError_1.default("Expense head is required", 400));
+    if (!proofUrl)
+        return next(new appError_1.default("Proof of expense is required", 400));
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
         return next(new appError_1.default("A valid amount is required", 400));
     }
     const canAdd = (0, pettyCashAccess_1.isHeadOfficeUser)(user) ||
-        (await (0, pettyCashAccess_1.isProjectAccountant)(user.id, projectId));
+        (await (0, pettyCashAccess_1.isProjectManagerForProject)(user.id, projectId));
     if (!canAdd) {
         return next(new appError_1.default("Not authorized to add internal expense", 403));
     }
@@ -272,9 +387,9 @@ exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) =>
         return next(new appError_1.default("Not authorized for this project", 403));
     }
     const remaining = await (0, pettyCashAccess_1.getProjectPoolRemaining)(projectId);
-    if (Number(amount) > remaining) {
-        return next(new appError_1.default(`Insufficient project pool balance. Available: ${remaining.toFixed(2)}`, 400));
-    }
+    const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "project pool balance");
+    if (poolError)
+        return next(new appError_1.default(poolError, 400));
     const head = await prisma_1.default.pettyCashExpenseHead.findFirst({
         where: { id: expenseHeadId, isDeleted: false, isActive: true },
     });
@@ -296,45 +411,50 @@ exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) =>
 });
 exports.addDistribution = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
-    const { projectId, sectionId, recipientUserId, amount, description } = req.body;
+    const { projectId, sectionId, amount, description } = req.body;
+    const filesFromS3 = req.filesFromS3;
+    const proofUrl = filesFromS3?.proofOfExpense || null;
     if (!projectId)
         return next(new appError_1.default("Project is required", 400));
+    if (!sectionId)
+        return next(new appError_1.default("Section is required", 400));
+    if (!proofUrl)
+        return next(new appError_1.default("Proof of expense is required", 400));
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
         return next(new appError_1.default("A valid amount is required", 400));
     }
     const canDistribute = (0, pettyCashAccess_1.isHeadOfficeUser)(user) ||
-        (await (0, pettyCashAccess_1.isProjectAccountant)(user.id, projectId));
+        (await (0, pettyCashAccess_1.isProjectManagerForSection)(user.id, sectionId));
     if (!canDistribute) {
         return next(new appError_1.default("Not authorized to distribute petty cash", 403));
     }
     if (!(await (0, pettyCashAccess_1.assertProjectAccess)(user, projectId))) {
         return next(new appError_1.default("Not authorized for this project", 403));
     }
+    if (!(await (0, pettyCashAccess_1.assertSectionAccess)(user, sectionId))) {
+        return next(new appError_1.default("Not authorized for this section", 403));
+    }
     const remaining = await (0, pettyCashAccess_1.getProjectPoolRemaining)(projectId);
-    if (Number(amount) > remaining) {
-        return next(new appError_1.default(`Insufficient project pool. Available: ${remaining.toFixed(2)}`, 400));
-    }
-    if (sectionId) {
-        const section = await prisma_1.default.section.findFirst({
-            where: { id: sectionId, projectId, isDeleted: false },
-        });
-        if (!section)
-            return next(new appError_1.default("Section not found in project", 404));
-    }
-    if (recipientUserId) {
-        const recipient = await prisma_1.default.user.findFirst({
-            where: { id: recipientUserId, isDeleted: false, isActive: true },
-        });
-        if (!recipient)
-            return next(new appError_1.default("Recipient not found", 404));
+    const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "project pool balance");
+    if (poolError)
+        return next(new appError_1.default(poolError, 400));
+    const section = await prisma_1.default.section.findFirst({
+        where: { id: sectionId, projectId, isDeleted: false },
+    });
+    if (!section)
+        return next(new appError_1.default("Section not found in project", 404));
+    const sectionAccountant = await (0, pettyCashAccess_1.getSectionAccountantUser)(sectionId);
+    if (!sectionAccountant) {
+        return next(new appError_1.default("No section accountant is assigned to this section", 400));
     }
     const tx = await prisma_1.default.pettyCashTransaction.create({
         data: {
             type: "DISTRIBUTION",
             projectId,
-            sectionId: sectionId || null,
-            recipientUserId: recipientUserId || user.id,
+            sectionId,
+            recipientUserId: sectionAccountant.id,
             amount: Number(amount),
+            proofUrl,
             description: description?.trim() || null,
             createdBy: user.id,
         },
@@ -352,11 +472,12 @@ exports.addSectionExpense = (0, catchAsync_1.default)(async (req, res, next) => 
     }
     if (!expenseHeadId)
         return next(new appError_1.default("Expense head is required", 400));
+    if (!proofUrl)
+        return next(new appError_1.default("Proof of expense is required", 400));
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
         return next(new appError_1.default("A valid amount is required", 400));
     }
     const canExpense = (0, pettyCashAccess_1.isHeadOfficeUser)(user) ||
-        (await (0, pettyCashAccess_1.isProjectAccountant)(user.id, projectId)) ||
         (await (0, pettyCashAccess_1.isSectionAccountantFor)(user.id, sectionId));
     if (!canExpense) {
         return next(new appError_1.default("Not authorized for section expense", 403));
@@ -365,9 +486,9 @@ exports.addSectionExpense = (0, catchAsync_1.default)(async (req, res, next) => 
         return next(new appError_1.default("Not authorized for this section", 403));
     }
     const remaining = await (0, pettyCashAccess_1.getSectionRemaining)(sectionId);
-    if (Number(amount) > remaining) {
-        return next(new appError_1.default(`Insufficient section balance. Available: ${remaining.toFixed(2)}`, 400));
-    }
+    const sectionError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "section balance");
+    if (sectionError)
+        return next(new appError_1.default(sectionError, 400));
     const head = await prisma_1.default.pettyCashExpenseHead.findFirst({
         where: { id: expenseHeadId, isDeleted: false, isActive: true },
     });
@@ -387,6 +508,48 @@ exports.addSectionExpense = (0, catchAsync_1.default)(async (req, res, next) => 
         include: transactionInclude,
     });
     res.status(201).json({ status: "success", data: tx });
+});
+exports.getProjectSections = (0, catchAsync_1.default)(async (req, res, next) => {
+    const user = req.user;
+    const { projectId } = req.params;
+    if (!(await (0, pettyCashAccess_1.assertProjectAccess)(user, projectId))) {
+        return next(new appError_1.default("Not authorized for this project", 403));
+    }
+    let sectionWhere = {
+        projectId,
+        isDeleted: false,
+        isActive: true,
+    };
+    if (user.role === "PROJECT_MANAGER") {
+        const pmSectionIds = await (0, pettyCashAccess_1.getProjectManagerSectionIds)(user.id);
+        sectionWhere.id = { in: pmSectionIds.length ? pmSectionIds : ["__none__"] };
+    }
+    const sections = await prisma_1.default.section.findMany({
+        where: sectionWhere,
+        select: { id: true, name: true, code: true, projectId: true },
+        orderBy: { name: "asc" },
+    });
+    const sectionIds = sections.map((s) => s.id);
+    const accountantAssignments = sectionIds.length > 0
+        ? await prisma_1.default.accountantAssignment.findMany({
+            where: {
+                projectId,
+                sectionId: { in: sectionIds },
+                isActive: true,
+            },
+            include: {
+                user: { select: { id: true, name: true, email: true } },
+            },
+        })
+        : [];
+    const accountantBySectionId = new Map(accountantAssignments
+        .filter((a) => a.sectionId)
+        .map((a) => [a.sectionId, a.user]));
+    const data = sections.map((section) => ({
+        ...section,
+        sectionAccountant: accountantBySectionId.get(section.id) || null,
+    }));
+    res.status(200).json({ status: "success", data });
 });
 exports.getProjectAccountants = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;

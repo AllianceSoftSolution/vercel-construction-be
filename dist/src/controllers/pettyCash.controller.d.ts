@@ -5,10 +5,12 @@ export declare const updateExpenseHead: (req: Request, res: Response, next: impo
 export declare const deleteExpenseHead: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getSummary: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getSummaryByProject: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getSummaryBySection: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getProjectBalance: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getTransactions: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const addFunding: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const addInternalExpense: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const addDistribution: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const addSectionExpense: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getProjectSections: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getProjectAccountants: (req: Request, res: Response, next: import("express").NextFunction) => void;

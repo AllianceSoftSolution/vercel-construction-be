@@ -13,6 +13,11 @@ router.get(
   pettyCashController.getSummaryByProject
 );
 router.get(
+  "/summary/by-section",
+  protect,
+  pettyCashController.getSummaryBySection
+);
+router.get(
   "/projects/:projectId/balance",
   protect,
   pettyCashController.getProjectBalance
@@ -51,8 +56,13 @@ router.post(
   pettyCashController.addInternalExpense
 );
 
-// Distribution to sections / self
-router.post("/distribution", protect, pettyCashController.addDistribution);
+// Distribution to sections
+router.post(
+  "/distribution",
+  protect,
+  s3UploadMiddleware([{ name: "proofOfExpense", maxCount: 1 }]),
+  pettyCashController.addDistribution
+);
 
 // Section-level expense
 router.post(
@@ -63,6 +73,11 @@ router.post(
 );
 
 // Helpers
+router.get(
+  "/projects/:projectId/sections",
+  protect,
+  pettyCashController.getProjectSections
+);
 router.get(
   "/projects/:projectId/accountants",
   protect,

@@ -156,19 +156,25 @@ const getSections = (0, catchAsync_1.default)(async (req, res) => {
             where: { userId: user.id, isActive: true },
             select: { sectionId: true, projectId: true },
         });
-        if (user.isHead) {
-            const projectIds = Array.from(new Set(assignments.map((a) => a.projectId)));
+        const projectIds = Array.from(new Set(assignments.map((a) => a.projectId)));
+        const explicitSectionIds = assignments
+            .map((a) => a.sectionId)
+            .filter((id) => !!id);
+        const hasProjectScope = user.isHead || assignments.some((a) => !a.sectionId);
+        if (hasProjectScope) {
             const projectSections = await prisma_1.default.section.findMany({
                 where: { projectId: { in: projectIds }, isDeleted: false },
                 select: { id: true },
             });
-            defaultFilters.id = { in: projectSections.map((s) => s.id) };
+            defaultFilters.id = {
+                in: Array.from(new Set([
+                    ...projectSections.map((s) => s.id),
+                    ...explicitSectionIds,
+                ])),
+            };
         }
         else {
-            const sectionIds = assignments
-                .map((a) => a.sectionId)
-                .filter((id) => !!id);
-            defaultFilters.id = { in: sectionIds };
+            defaultFilters.id = { in: explicitSectionIds };
         }
     }
     const queryOptions = (0, buildQueryOptions_1.buildQueryOptions)(filterOptions, defaultFilters, searchableFields);
@@ -273,23 +279,27 @@ const getSectionById = (0, catchAsync_1.default)(async (req, res, next) => {
             assigned = !!assignment;
         }
         else if (user.role === "ACCOUNTANT") {
-            if (user.isHead) {
-                const section = await prisma_1.default.section.findUnique({
-                    where: { id },
-                    select: { projectId: true },
+            const section = await prisma_1.default.section.findUnique({
+                where: { id },
+                select: { projectId: true },
+            });
+            if (section) {
+                const projectAssignment = await prisma_1.default.accountantAssignment.findFirst({
+                    where: {
+                        userId: user.id,
+                        projectId: section.projectId,
+                        isActive: true,
+                    },
                 });
-                if (section) {
-                    const projectAssignment = await prisma_1.default.accountantAssignment.findFirst({
-                        where: { userId: user.id, projectId: section.projectId, isActive: true },
-                    });
-                    assigned = !!projectAssignment;
+                if (projectAssignment && (user.isHead || !projectAssignment.sectionId)) {
+                    assigned = true;
                 }
             }
-            else {
-                const assignment = await prisma_1.default.accountantAssignment.findFirst({
+            if (!assigned) {
+                const sectionAssignment = await prisma_1.default.accountantAssignment.findFirst({
                     where: { userId: user.id, sectionId: id, isActive: true },
                 });
-                assigned = !!assignment;
+                assigned = !!sectionAssignment;
             }
         }
         if (!assigned) {
