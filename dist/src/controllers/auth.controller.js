@@ -17,9 +17,19 @@ const otpUtils_1 = require("../utils/otpUtils");
 const passwordUtils_1 = require("../utils/passwordUtils");
 const constants_1 = require("../constants");
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const resolveHeadAccountantProjectIds = async (isHeadOffice, projectIds) => {
+    if (isHeadOffice) {
+        const projects = await prisma_1.default.project.findMany({
+            where: { isDeleted: false, isActive: true },
+            select: { id: true },
+        });
+        return projects.map((p) => p.id);
+    }
+    return Array.isArray(projectIds) ? projectIds : [];
+};
 (0, otpUtils_1.setupOTPCleanup)();
 const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { email, name, role, isHead = false, notes, projectIds } = req.body;
+    const { email, name, role, isHead = false, isHeadOffice = false, notes, projectIds, } = req.body;
     const userCount = await prisma_1.default.user.count();
     let createdBy = null;
     if (userCount > 0) {
@@ -39,18 +49,27 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
             return next(new appError_1.default("isHead can only be set for ACCOUNTANT and STORE_INCHARGE roles", 400));
         }
         if (role === "ACCOUNTANT" || role === "STORE_INCHARGE") {
-            if (!projectIds ||
-                !Array.isArray(projectIds) ||
-                projectIds.length === 0) {
-                return next(new appError_1.default("projectIds[] is required when creating a Head Accountant or Head Store Incharge. Assign at least one project.", 400));
+            const resolvedIds = role === "ACCOUNTANT"
+                ? await resolveHeadAccountantProjectIds(!!isHeadOffice, projectIds)
+                : Array.isArray(projectIds)
+                    ? projectIds
+                    : [];
+            if (resolvedIds.length === 0) {
+                return next(new appError_1.default(role === "ACCOUNTANT"
+                    ? "Select one or more projects for a Project Accountant, or mark the user as Head Office Accountant."
+                    : "projectIds[] is required when creating a Head Store Incharge. Assign at least one project.", 400));
             }
+            req.body.projectIds = resolvedIds;
         }
     }
+    const assignedProjectIds = Array.isArray(req.body.projectIds)
+        ? req.body.projectIds
+        : [];
     const existingUser = await prisma_1.default.user.findFirst({
         where: { email },
     });
     if (existingUser) {
-        if (isHead && role === "ACCOUNTANT" && Array.isArray(projectIds) && projectIds.length > 0) {
+        if (isHead && role === "ACCOUNTANT" && assignedProjectIds.length > 0) {
             const updatedUser = await prisma_1.default.$transaction(async (tx) => {
                 const updated = await tx.user.update({
                     where: { id: existingUser.id },
@@ -61,7 +80,7 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
                     },
                 });
                 await tx.accountantAssignment.createMany({
-                    data: projectIds.map((pid) => ({
+                    data: assignedProjectIds.map((pid) => ({
                         userId: existingUser.id, projectId: pid, sectionId: null,
                         isActive: true, createdBy: createdBy ?? existingUser.id,
                     })),
@@ -74,7 +93,7 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
                 user: updatedUser,
             });
         }
-        if (isHead && role === "STORE_INCHARGE" && Array.isArray(projectIds) && projectIds.length > 0) {
+        if (isHead && role === "STORE_INCHARGE" && assignedProjectIds.length > 0) {
             const updatedUser = await prisma_1.default.$transaction(async (tx) => {
                 const updated = await tx.user.update({
                     where: { id: existingUser.id },
@@ -85,7 +104,7 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
                     },
                 });
                 await tx.headStoreInchargeAssignment.createMany({
-                    data: projectIds.map((pid) => ({
+                    data: assignedProjectIds.map((pid) => ({
                         userId: existingUser.id, projectId: pid,
                         isActive: true, createdBy: createdBy ?? existingUser.id,
                     })),
@@ -128,9 +147,9 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
                 notes: true,
             },
         });
-        if (isHead && role === "ACCOUNTANT" && projectIds?.length) {
+        if (isHead && role === "ACCOUNTANT" && assignedProjectIds.length) {
             await tx.accountantAssignment.createMany({
-                data: projectIds.map((pid) => ({
+                data: assignedProjectIds.map((pid) => ({
                     userId: created.id,
                     projectId: pid,
                     sectionId: null,
@@ -140,9 +159,9 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
                 skipDuplicates: true,
             });
         }
-        if (isHead && role === "STORE_INCHARGE" && projectIds?.length) {
+        if (isHead && role === "STORE_INCHARGE" && assignedProjectIds.length) {
             await tx.headStoreInchargeAssignment.createMany({
-                data: projectIds.map((pid) => ({
+                data: assignedProjectIds.map((pid) => ({
                     userId: created.id,
                     projectId: pid,
                     isActive: true,
@@ -394,6 +413,10 @@ const getUserById = (0, catchAsync_1.default)(async (req, res, next) => {
             isActive: true,
             createdAt: true,
             updatedAt: true,
+            accountantAssignments: {
+                where: { isActive: true },
+                select: { projectId: true, sectionId: true },
+            },
             creator: {
                 select: {
                     id: true,
@@ -715,7 +738,7 @@ exports.removeDeviceToken = (0, catchAsync_1.default)(async (req, res, next) => 
 });
 const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
-    const { newRole, isHead = false, projectIds } = req.body;
+    const { newRole, isHead = false, isHeadOffice = false, projectIds } = req.body;
     const adminId = req.user.id;
     if (req.user.role !== "ADMIN") {
         return next(new appError_1.default("Only admins can change user roles", 403));
@@ -741,13 +764,22 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
             return next(new appError_1.default("isHead can only be set for ACCOUNTANT and STORE_INCHARGE roles", 400));
         }
         if (newRole === "ACCOUNTANT" || newRole === "STORE_INCHARGE") {
-            if (!projectIds ||
-                !Array.isArray(projectIds) ||
-                projectIds.length === 0) {
-                return next(new appError_1.default("projectIds[] is required when setting isHead: true for an Accountant or Store Incharge. Assign at least one project.", 400));
+            const resolvedIds = newRole === "ACCOUNTANT"
+                ? await resolveHeadAccountantProjectIds(!!isHeadOffice, projectIds)
+                : Array.isArray(projectIds)
+                    ? projectIds
+                    : [];
+            if (resolvedIds.length === 0) {
+                return next(new appError_1.default(newRole === "ACCOUNTANT"
+                    ? "Select one or more projects for a Project Accountant, or mark the user as Head Office Accountant."
+                    : "projectIds[] is required when setting isHead: true for a Store Incharge. Assign at least one project.", 400));
             }
+            req.body.projectIds = resolvedIds;
         }
     }
+    const assignedProjectIds = Array.isArray(req.body.projectIds)
+        ? req.body.projectIds
+        : [];
     const user = await prisma_1.default.user.findUnique({
         where: { id },
         select: {
@@ -780,9 +812,9 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
                         where: { userId: id, isActive: true },
                         data: { isActive: false },
                     });
-                    if (isHead && projectIds?.length) {
+                    if (isHead && assignedProjectIds.length) {
                         await tx.accountantAssignment.createMany({
-                            data: projectIds.map((pid) => ({
+                            data: assignedProjectIds.map((pid) => ({
                                 userId: id, projectId: pid, sectionId: null,
                                 isActive: true, createdBy: adminId,
                             })),
@@ -795,9 +827,9 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
                         where: { userId: id, isActive: true },
                         data: { isActive: false },
                     });
-                    if (isHead && projectIds?.length) {
+                    if (isHead && assignedProjectIds.length) {
                         await tx.headStoreInchargeAssignment.createMany({
-                            data: projectIds.map((pid) => ({
+                            data: assignedProjectIds.map((pid) => ({
                                 userId: id, projectId: pid,
                                 isActive: true, createdBy: adminId,
                             })),
@@ -973,9 +1005,9 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
                 updatedAt: true,
             },
         });
-        if (isHead && newRole === "ACCOUNTANT" && projectIds?.length) {
+        if (isHead && newRole === "ACCOUNTANT" && assignedProjectIds.length) {
             await tx.accountantAssignment.createMany({
-                data: projectIds.map((pid) => ({
+                data: assignedProjectIds.map((pid) => ({
                     userId: id,
                     projectId: pid,
                     sectionId: null,
@@ -985,9 +1017,9 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
                 skipDuplicates: true,
             });
         }
-        if (isHead && newRole === "STORE_INCHARGE" && projectIds?.length) {
+        if (isHead && newRole === "STORE_INCHARGE" && assignedProjectIds.length) {
             await tx.headStoreInchargeAssignment.createMany({
-                data: projectIds.map((pid) => ({
+                data: assignedProjectIds.map((pid) => ({
                     userId: id,
                     projectId: pid,
                     isActive: true,

@@ -29,11 +29,7 @@ export const getAccessibleProjectIds = async (user: PettyCashUser) => {
   }
 
   if (user.role === "ACCOUNTANT" && user.isHead) {
-    const projects = await prisma.project.findMany({
-      where: { isDeleted: false },
-      select: { id: true },
-    });
-    return projects.map((p) => p.id);
+    return getProjectAccountantProjectIds(user.id);
   }
 
   if (user.role === "ACCOUNTANT") {
@@ -58,9 +54,104 @@ export const getAccessibleProjectIds = async (user: PettyCashUser) => {
   return [];
 };
 
-/** Head office: Super Admin, Admin, Sub Admin, or Head Accountant */
+/** Project-level accountant assignments (sectionId = null) */
+export const getProjectAccountantProjectIds = async (userId: string) => {
+  const assignments = await prisma.accountantAssignment.findMany({
+    where: { userId, isActive: true, sectionId: null },
+    select: { projectId: true },
+  });
+  return [...new Set(assignments.map((a) => a.projectId))];
+};
+
+/** Accountant created with isHead=true and assigned project(s) */
+export const isProjectAccountantUser = (user: PettyCashUser) =>
+  user.role === "ACCOUNTANT" && !!user.isHead;
+
+/** Admin / Super Admin / Sub Admin, or any project-level accountant */
 export const isHeadOfficeUser = (user: PettyCashUser) =>
-  isAdminRole(user.role) || (user.role === "ACCOUNTANT" && !!user.isHead);
+  isAdminRole(user.role) || isProjectAccountantUser(user);
+
+/** True HO accountant: assigned to every active project */
+export const isHeadOfficeAccountant = async (user: PettyCashUser) => {
+  if (!isProjectAccountantUser(user)) return false;
+  const assigned = await getProjectAccountantProjectIds(user.id);
+  const all = await getHeadOfficeProjectIds();
+  if (all.length === 0) return false;
+  return all.every((id) => assigned.includes(id));
+};
+
+/** Can inject funding into project pools (admins + true HO accountant only) */
+export const canAddPettyCashFunding = async (user: PettyCashUser) =>
+  isAdminRole(user.role) || (await isHeadOfficeAccountant(user));
+
+export type PettyCashRoleScope =
+  | "ADMIN"
+  | "HEAD_OFFICE_ACCOUNTANT"
+  | "PROJECT_ACCOUNTANT"
+  | "PROJECT_MANAGER"
+  | "SECTION_ACCOUNTANT"
+  | "NONE";
+
+export const getPettyCashRoleScope = async (
+  user: PettyCashUser
+): Promise<PettyCashRoleScope> => {
+  if (isAdminRole(user.role)) return "ADMIN";
+  if (user.role === "PROJECT_MANAGER") return "PROJECT_MANAGER";
+  if (user.role === "ACCOUNTANT" && !user.isHead) return "SECTION_ACCOUNTANT";
+  if (isProjectAccountantUser(user)) {
+    return (await isHeadOfficeAccountant(user))
+      ? "HEAD_OFFICE_ACCOUNTANT"
+      : "PROJECT_ACCOUNTANT";
+  }
+  return "NONE";
+};
+
+/** Keep HO accountants assigned when a new project is created */
+export const assignHeadOfficeAccountantsToProject = async (
+  projectId: string,
+  createdBy: string
+) => {
+  const otherProjects = await prisma.project.findMany({
+    where: { isDeleted: false, isActive: true, id: { not: projectId } },
+    select: { id: true },
+  });
+  const otherIds = otherProjects.map((p) => p.id);
+  if (otherIds.length === 0) return;
+
+  const headAccountants = await prisma.user.findMany({
+    where: {
+      role: "ACCOUNTANT",
+      isHead: true,
+      isDeleted: false,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      accountantAssignments: {
+        where: { isActive: true, sectionId: null },
+        select: { projectId: true },
+      },
+    },
+  });
+
+  for (const accountant of headAccountants) {
+    const assigned = new Set(
+      accountant.accountantAssignments.map((a) => a.projectId)
+    );
+    const coversAllOthers = otherIds.every((id) => assigned.has(id));
+    if (!coversAllOthers || assigned.has(projectId)) continue;
+
+    await prisma.accountantAssignment.create({
+      data: {
+        userId: accountant.id,
+        projectId,
+        sectionId: null,
+        isActive: true,
+        createdBy,
+      },
+    });
+  }
+};
 
 /** PM & section accountant: overview/cards use assigned-section totals only */
 export const usesSectionScopedOverview = (user: PettyCashUser) =>
@@ -123,7 +214,7 @@ export const isSectionAccountantFor = async (
 
 export const getHeadOfficeProjectIds = async (_userId?: string) => {
   const projects = await prisma.project.findMany({
-    where: { isDeleted: false },
+    where: { isDeleted: false, isActive: true },
     select: { id: true },
   });
   return projects.map((p) => p.id);
@@ -186,7 +277,11 @@ export const buildPettyCashAccessWhere = async (user: PettyCashUser) => {
   }
 
   if (user.role === "ACCOUNTANT" && user.isHead) {
-    return base;
+    const projectIds = await getProjectAccountantProjectIds(user.id);
+    return {
+      ...base,
+      projectId: { in: projectIds.length ? projectIds : ["__none__"] },
+    };
   }
 
   if (user.role === "ACCOUNTANT") {
@@ -215,7 +310,8 @@ export const assertProjectAccess = async (
 
   if (user.role === "ACCOUNTANT") {
     if (user.isHead) {
-      return true;
+      const ids = await getProjectAccountantProjectIds(user.id);
+      return ids.includes(projectId);
     }
 
     const sections = await prisma.section.findMany({
@@ -246,7 +342,8 @@ export const assertSectionAccess = async (
   }
 
   if (user.role === "ACCOUNTANT" && user.isHead) {
-    return true;
+    const ids = await getProjectAccountantProjectIds(user.id);
+    return ids.includes(section.projectId);
   }
 
   if (user.role === "ACCOUNTANT") {
@@ -260,6 +357,24 @@ export type PettyCashListFilters = {
   projectId?: string;
   sectionId?: string;
   type?: PettyCashTransactionType;
+  expenseHeadId?: string;
+};
+
+const constrainIdFilter = (existing: unknown, requested: string) => {
+  if (!existing) return requested;
+  if (typeof existing === "string") {
+    return existing === requested ? requested : "__none__";
+  }
+  if (
+    typeof existing === "object" &&
+    existing !== null &&
+    "in" in existing &&
+    Array.isArray((existing as { in: unknown }).in)
+  ) {
+    const ids = (existing as { in: string[] }).in;
+    return ids.includes(requested) ? requested : "__none__";
+  }
+  return "__none__";
 };
 
 export const applyPettyCashListFilters = (
@@ -267,9 +382,14 @@ export const applyPettyCashListFilters = (
   filters: PettyCashListFilters
 ) => {
   const next = { ...where };
-  if (filters.projectId) next.projectId = filters.projectId;
-  if (filters.sectionId) next.sectionId = filters.sectionId;
+  if (filters.projectId) {
+    next.projectId = constrainIdFilter(where.projectId, filters.projectId);
+  }
+  if (filters.sectionId) {
+    next.sectionId = constrainIdFilter(where.sectionId, filters.sectionId);
+  }
   if (filters.type) next.type = filters.type;
+  if (filters.expenseHeadId) next.expenseHeadId = filters.expenseHeadId;
   return next;
 };
 
@@ -277,10 +397,12 @@ export const parsePettyCashListFilters = (query: {
   projectId?: string;
   sectionId?: string;
   type?: string;
+  expenseHeadId?: string;
 }): PettyCashListFilters => ({
   ...(query.projectId && { projectId: String(query.projectId) }),
   ...(query.sectionId && { sectionId: String(query.sectionId) }),
   ...(query.type && { type: String(query.type) as PettyCashTransactionType }),
+  ...(query.expenseHeadId && { expenseHeadId: String(query.expenseHeadId) }),
 });
 
 export const aggregatePettyCashTotals = (
@@ -429,6 +551,9 @@ export const resolveFilteredProjectIds = async (
     } else if (user?.role === "ACCOUNTANT" && !user.isHead) {
       const saSectionIds = await getSectionAccountantSectionIds(user.id);
       if (!saSectionIds.includes(filters.sectionId)) return [];
+    } else if (user?.role === "ACCOUNTANT" && user.isHead) {
+      const paProjectIds = await getProjectAccountantProjectIds(user.id);
+      if (!paProjectIds.includes(section.projectId)) return [];
     }
 
     ids = ids.filter((id) => id === section.projectId);

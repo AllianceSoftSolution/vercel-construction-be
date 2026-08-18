@@ -7,7 +7,14 @@ export type PettyCashUser = {
 export declare const isAdminRole: (role: string) => boolean;
 export declare const isPettyCashExpenseHeadAdmin: (user: PettyCashUser) => boolean;
 export declare const getAccessibleProjectIds: (user: PettyCashUser) => Promise<string[]>;
+export declare const getProjectAccountantProjectIds: (userId: string) => Promise<string[]>;
+export declare const isProjectAccountantUser: (user: PettyCashUser) => boolean;
 export declare const isHeadOfficeUser: (user: PettyCashUser) => boolean;
+export declare const isHeadOfficeAccountant: (user: PettyCashUser) => Promise<boolean>;
+export declare const canAddPettyCashFunding: (user: PettyCashUser) => Promise<boolean>;
+export type PettyCashRoleScope = "ADMIN" | "HEAD_OFFICE_ACCOUNTANT" | "PROJECT_ACCOUNTANT" | "PROJECT_MANAGER" | "SECTION_ACCOUNTANT" | "NONE";
+export declare const getPettyCashRoleScope: (user: PettyCashUser) => Promise<PettyCashRoleScope>;
+export declare const assignHeadOfficeAccountantsToProject: (projectId: string, createdBy: string) => Promise<void>;
 export declare const usesSectionScopedOverview: (user: PettyCashUser) => boolean;
 export declare const getPettyCashOverviewViewMode: (user: PettyCashUser) => "section" | "project";
 export declare const isProjectManagerForProject: (userId: string, projectId: string) => Promise<boolean>;
@@ -42,12 +49,12 @@ export declare const buildPettyCashAccessWhere: (user: PettyCashUser) => Promise
     })[];
     isDeleted: boolean;
 } | {
-    sectionId: {
+    projectId: {
         in: string[];
     };
     isDeleted: boolean;
 } | {
-    projectId: {
+    sectionId: {
         in: string[];
     };
     isDeleted: boolean;
@@ -58,6 +65,7 @@ export type PettyCashListFilters = {
     projectId?: string;
     sectionId?: string;
     type?: PettyCashTransactionType;
+    expenseHeadId?: string;
 };
 export declare const applyPettyCashListFilters: (where: Record<string, unknown>, filters: PettyCashListFilters) => {
     [x: string]: unknown;
@@ -66,6 +74,7 @@ export declare const parsePettyCashListFilters: (query: {
     projectId?: string;
     sectionId?: string;
     type?: string;
+    expenseHeadId?: string;
 }) => PettyCashListFilters;
 export declare const aggregatePettyCashTotals: (transactions: {
     type: string;

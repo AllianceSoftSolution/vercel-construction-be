@@ -106,23 +106,18 @@ exports.getSummary = (0, catchAsync_1.default)(async (req, res) => {
     });
     const overviewViewMode = (0, pettyCashAccess_1.getPettyCashOverviewViewMode)(user);
     const { totalFunded, totalDistributed, totalInternalExpenses, totalSectionExpenses, totalSpent, poolRemaining, } = (0, pettyCashAccess_1.aggregateOverviewTotals)(transactions, overviewViewMode);
-    const headOffice = (0, pettyCashAccess_1.isHeadOfficeUser)(user);
+    const roleScope = await (0, pettyCashAccess_1.getPettyCashRoleScope)(user);
     const canManageHeads = (0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user);
-    let canDistribute = false;
-    let canAddInternalExpense = false;
-    let canAddSectionExpense = false;
-    if (headOffice) {
-        canDistribute = true;
-    }
-    else if (user.role === "PROJECT_MANAGER") {
-        const sectionIds = await (0, pettyCashAccess_1.getProjectManagerSectionIds)(user.id);
-        canDistribute = sectionIds.length > 0;
-        canAddInternalExpense = sectionIds.length > 0;
-    }
-    else if (user.role === "ACCOUNTANT" && !user.isHead) {
-        const sectionIds = await (0, pettyCashAccess_1.getSectionAccountantSectionIds)(user.id);
-        canAddSectionExpense = sectionIds.length > 0;
-    }
+    const canAddFunding = await (0, pettyCashAccess_1.canAddPettyCashFunding)(user);
+    const canDistribute = roleScope === "ADMIN" ||
+        roleScope === "HEAD_OFFICE_ACCOUNTANT" ||
+        roleScope === "PROJECT_ACCOUNTANT" ||
+        roleScope === "PROJECT_MANAGER";
+    const canAddInternalExpense = canDistribute;
+    const canAddSectionExpense = roleScope === "ADMIN" ||
+        roleScope === "HEAD_OFFICE_ACCOUNTANT" ||
+        roleScope === "PROJECT_ACCOUNTANT" ||
+        roleScope === "SECTION_ACCOUNTANT";
     const { totalCredited, totalDebited, remainingBalance } = (0, pettyCashAccess_1.computePettyCashOverview)({
         totalFunded,
         totalDistributed,
@@ -135,6 +130,7 @@ exports.getSummary = (0, catchAsync_1.default)(async (req, res) => {
         status: "success",
         data: {
             viewMode: overviewViewMode,
+            roleScope,
             totalCredited,
             totalDebited,
             remainingBalance,
@@ -146,7 +142,7 @@ exports.getSummary = (0, catchAsync_1.default)(async (req, res) => {
             totalReceived: totalDistributed,
             balanceRemaining: remainingBalance,
             poolRemaining: remainingBalance,
-            canAddFunding: headOffice,
+            canAddFunding,
             canManageHeads,
             canDistribute,
             canAddInternalExpense,
@@ -199,9 +195,13 @@ exports.getSummaryBySection = (0, catchAsync_1.default)(async (req, res) => {
     if (user.role === "ACCOUNTANT" && !user.isHead) {
         sectionIds = await (0, pettyCashAccess_1.getSectionAccountantSectionIds)(user.id);
     }
-    else if ((0, pettyCashAccess_1.isHeadOfficeUser)(user)) {
+    else if ((0, pettyCashAccess_1.isAdminRole)(user.role) || (0, pettyCashAccess_1.isProjectAccountantUser)(user)) {
+        const projectIds = await (0, pettyCashAccess_1.getAccessibleProjectIds)(user);
         const sections = await prisma_1.default.section.findMany({
-            where: { isDeleted: false },
+            where: {
+                projectId: { in: projectIds.length ? projectIds : ["__none__"] },
+                isDeleted: false,
+            },
             select: { id: true },
         });
         sectionIds = sections.map((s) => s.id);
@@ -277,6 +277,10 @@ exports.getProjectBalance = (0, catchAsync_1.default)(async (req, res, next) => 
         const pmSectionIds = await (0, pettyCashAccess_1.getProjectManagerSectionIds)(user.id);
         sectionWhere.id = { in: pmSectionIds.length ? pmSectionIds : ["__none__"] };
     }
+    else if (user.role === "ACCOUNTANT" && !user.isHead) {
+        const saSectionIds = await (0, pettyCashAccess_1.getSectionAccountantSectionIds)(user.id);
+        sectionWhere.id = { in: saSectionIds.length ? saSectionIds : ["__none__"] };
+    }
     const sections = await prisma_1.default.section.findMany({
         where: sectionWhere,
         select: { id: true, name: true, code: true },
@@ -335,8 +339,8 @@ exports.getTransactions = (0, catchAsync_1.default)(async (req, res) => {
 });
 exports.addFunding = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
-    if (!(0, pettyCashAccess_1.isHeadOfficeUser)(user)) {
-        return next(new appError_1.default("Only head office users can add petty cash funding", 403));
+    if (!(await (0, pettyCashAccess_1.canAddPettyCashFunding)(user))) {
+        return next(new appError_1.default("Only admins and head office accountants can add petty cash funding", 403));
     }
     const { projectId, amount, description } = req.body;
     const filesFromS3 = req.filesFromS3;
@@ -351,6 +355,9 @@ exports.addFunding = (0, catchAsync_1.default)(async (req, res, next) => {
     });
     if (!project)
         return next(new appError_1.default("Project not found", 404));
+    if (!(await (0, pettyCashAccess_1.assertProjectAccess)(user, projectId))) {
+        return next(new appError_1.default("Not authorized for this project", 403));
+    }
     const tx = await prisma_1.default.pettyCashTransaction.create({
         data: {
             type: "FUNDING",
@@ -373,12 +380,8 @@ exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) =>
         return next(new appError_1.default("Project is required", 400));
     if (!expenseHeadId)
         return next(new appError_1.default("Expense head is required", 400));
-    if (!proofUrl)
-        return next(new appError_1.default("Proof of expense is required", 400));
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-        return next(new appError_1.default("A valid amount is required", 400));
-    }
-    const canAdd = (0, pettyCashAccess_1.isHeadOfficeUser)(user) ||
+    const canAdd = (0, pettyCashAccess_1.isAdminRole)(user.role) ||
+        (0, pettyCashAccess_1.isProjectAccountantUser)(user) ||
         (await (0, pettyCashAccess_1.isProjectManagerForProject)(user.id, projectId));
     if (!canAdd) {
         return next(new appError_1.default("Not authorized to add internal expense", 403));
@@ -386,8 +389,13 @@ exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) =>
     if (!(await (0, pettyCashAccess_1.assertProjectAccess)(user, projectId))) {
         return next(new appError_1.default("Not authorized for this project", 403));
     }
+    if (!proofUrl)
+        return next(new appError_1.default("Proof of expense is required", 400));
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        return next(new appError_1.default("A valid amount is required", 400));
+    }
     const remaining = await (0, pettyCashAccess_1.getProjectPoolRemaining)(projectId);
-    const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "project pool balance");
+    const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "project balance");
     if (poolError)
         return next(new appError_1.default(poolError, 400));
     const head = await prisma_1.default.pettyCashExpenseHead.findFirst({
@@ -418,12 +426,8 @@ exports.addDistribution = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new appError_1.default("Project is required", 400));
     if (!sectionId)
         return next(new appError_1.default("Section is required", 400));
-    if (!proofUrl)
-        return next(new appError_1.default("Proof of expense is required", 400));
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-        return next(new appError_1.default("A valid amount is required", 400));
-    }
-    const canDistribute = (0, pettyCashAccess_1.isHeadOfficeUser)(user) ||
+    const canDistribute = (0, pettyCashAccess_1.isAdminRole)(user.role) ||
+        (0, pettyCashAccess_1.isProjectAccountantUser)(user) ||
         (await (0, pettyCashAccess_1.isProjectManagerForSection)(user.id, sectionId));
     if (!canDistribute) {
         return next(new appError_1.default("Not authorized to distribute petty cash", 403));
@@ -434,8 +438,13 @@ exports.addDistribution = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!(await (0, pettyCashAccess_1.assertSectionAccess)(user, sectionId))) {
         return next(new appError_1.default("Not authorized for this section", 403));
     }
+    if (!proofUrl)
+        return next(new appError_1.default("Proof of expense is required", 400));
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        return next(new appError_1.default("A valid amount is required", 400));
+    }
     const remaining = await (0, pettyCashAccess_1.getProjectPoolRemaining)(projectId);
-    const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "project pool balance");
+    const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "project balance");
     if (poolError)
         return next(new appError_1.default(poolError, 400));
     const section = await prisma_1.default.section.findFirst({
@@ -470,20 +479,21 @@ exports.addSectionExpense = (0, catchAsync_1.default)(async (req, res, next) => 
     if (!projectId || !sectionId) {
         return next(new appError_1.default("Project and section are required", 400));
     }
-    if (!expenseHeadId)
-        return next(new appError_1.default("Expense head is required", 400));
-    if (!proofUrl)
-        return next(new appError_1.default("Proof of expense is required", 400));
-    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-        return next(new appError_1.default("A valid amount is required", 400));
-    }
-    const canExpense = (0, pettyCashAccess_1.isHeadOfficeUser)(user) ||
+    const canExpense = (0, pettyCashAccess_1.isAdminRole)(user.role) ||
+        (0, pettyCashAccess_1.isProjectAccountantUser)(user) ||
         (await (0, pettyCashAccess_1.isSectionAccountantFor)(user.id, sectionId));
     if (!canExpense) {
         return next(new appError_1.default("Not authorized for section expense", 403));
     }
     if (!(await (0, pettyCashAccess_1.assertSectionAccess)(user, sectionId))) {
         return next(new appError_1.default("Not authorized for this section", 403));
+    }
+    if (!expenseHeadId)
+        return next(new appError_1.default("Expense head is required", 400));
+    if (!proofUrl)
+        return next(new appError_1.default("Proof of expense is required", 400));
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        return next(new appError_1.default("A valid amount is required", 400));
     }
     const remaining = await (0, pettyCashAccess_1.getSectionRemaining)(sectionId);
     const sectionError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "section balance");
@@ -523,6 +533,10 @@ exports.getProjectSections = (0, catchAsync_1.default)(async (req, res, next) =>
     if (user.role === "PROJECT_MANAGER") {
         const pmSectionIds = await (0, pettyCashAccess_1.getProjectManagerSectionIds)(user.id);
         sectionWhere.id = { in: pmSectionIds.length ? pmSectionIds : ["__none__"] };
+    }
+    else if (user.role === "ACCOUNTANT" && !user.isHead) {
+        const saSectionIds = await (0, pettyCashAccess_1.getSectionAccountantSectionIds)(user.id);
+        sectionWhere.id = { in: saSectionIds.length ? saSectionIds : ["__none__"] };
     }
     const sections = await prisma_1.default.section.findMany({
         where: sectionWhere,

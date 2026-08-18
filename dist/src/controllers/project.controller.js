@@ -10,6 +10,7 @@ const generateCode_1 = require("../utils/generateCode");
 const buildQueryOptions_1 = require("../utils/buildQueryOptions");
 const notification_1 = require("../utils/notification");
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const pettyCashAccess_1 = require("../utils/pettyCashAccess");
 const createProject = (0, catchAsync_1.default)(async (req, res, next) => {
     const { name, description, startDate, endDate, code } = req.body;
     const userId = req.user.id;
@@ -54,6 +55,7 @@ const createProject = (0, catchAsync_1.default)(async (req, res, next) => {
         message: "Project created successfully",
         project,
     });
+    await (0, pettyCashAccess_1.assignHeadOfficeAccountantsToProject)(project.id, userId);
     await (0, notification_1.sendNotificationToUserSafe)({
         userId,
         title: "Project Created",

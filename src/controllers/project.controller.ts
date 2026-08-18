@@ -8,6 +8,7 @@ import {
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
 import prisma from "../utils/prisma";
+import { assignHeadOfficeAccountantsToProject } from "../utils/pettyCashAccess";
 
 const createProject = catchAsync(async (req, res, next) => {
   const { name, description, startDate, endDate, code } = req.body;
@@ -62,6 +63,7 @@ const createProject = catchAsync(async (req, res, next) => {
     message: "Project created successfully",
     project,
   });
+  await assignHeadOfficeAccountantsToProject(project.id, userId);
   await sendNotificationToUserSafe({
     userId,
     title: "Project Created",
