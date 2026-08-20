@@ -19,6 +19,8 @@ async function main() {
 
   await prisma.deviceToken.deleteMany({});
   await prisma.auditLog.deleteMany({});
+  await prisma.pettyCashTransaction.deleteMany({});
+  await prisma.pettyCashExpenseHead.deleteMany({});
   await prisma.vendorAccountTransaction.deleteMany({});
   await prisma.vendorPayment.deleteMany({});
   await prisma.vendorAccount.deleteMany({});
@@ -45,7 +47,6 @@ async function main() {
   await prisma.oTP.deleteMany({});
 
   await prisma.user.updateMany({
-    where: { role: { in: PRESERVED_ROLES } },
     data: { createdBy: null, updatedBy: null },
   });
 
