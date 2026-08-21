@@ -21,14 +21,14 @@ ALTER TABLE "store_transactions"
     ELSE to_jsonb(ARRAY["documentUrl"])
   END;
 
-ALTER TABLE "vendor_account_transactions"
+ALTER TABLE "VendorAccountTransaction"
   ALTER COLUMN "proofOfPayment" TYPE JSONB
   USING CASE
     WHEN "proofOfPayment" IS NULL THEN NULL
     ELSE to_jsonb(ARRAY["proofOfPayment"])
   END;
 
-ALTER TABLE "vendor_payments"
+ALTER TABLE "VendorPayment"
   ALTER COLUMN "proofOfPayment" TYPE JSONB
   USING CASE
     WHEN "proofOfPayment" IS NULL THEN NULL
