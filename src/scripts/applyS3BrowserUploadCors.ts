@@ -13,6 +13,13 @@ if (!bucket || !region) {
   process.exit(1);
 }
 
+const PRODUCTION_ORIGINS = [
+  "http://radc-mern-app-env.eba-qdy3azv3.us-east-1.elasticbeanstalk.com",
+  "https://radc-mern-app-env.eba-qdy3azv3.us-east-1.elasticbeanstalk.com",
+  "https://app.rustumdynamic.com",
+  "http://app.rustumdynamic.com",
+];
+
 const corsRules: AWS.S3.CORSRules = [
   {
     AllowedHeaders: ["*"],
@@ -23,6 +30,7 @@ const corsRules: AWS.S3.CORSRules = [
       "http://localhost:3000",
       "https://vercel-construction-fe.vercel.app",
       "https://vercel-construction-be.vercel.app",
+      ...PRODUCTION_ORIGINS,
     ],
     ExposeHeaders: ["ETag"],
     MaxAgeSeconds: 3000,

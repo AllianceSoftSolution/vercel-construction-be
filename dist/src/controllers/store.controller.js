@@ -810,6 +810,7 @@ const stockIn = (0, catchAsync_1.default)(async (req, res, next) => {
         bodyKey: "documentUrls",
         multipartKey: "document",
     });
+    (0, attachmentUrls_1.requireAttachmentUrls)(documentUrls, "Document attachment");
     const documentUrl = (0, attachmentUrls_1.attachmentUrlsToJson)(documentUrls);
     if (!materialId || !req.body.quantity) {
         return next(new appError_1.default("Material ID and quantity are required", 400));
@@ -978,6 +979,7 @@ const stockOut = (0, catchAsync_1.default)(async (req, res, next) => {
         bodyKey: "documentUrls",
         multipartKey: "document",
     });
+    (0, attachmentUrls_1.requireAttachmentUrls)(documentUrls, "Document attachment");
     const documentUrl = (0, attachmentUrls_1.attachmentUrlsToJson)(documentUrls);
     if (!materialId || !req.body.quantity) {
         return next(new appError_1.default("Material ID and quantity are required", 400));
@@ -1482,6 +1484,7 @@ const acceptIncomingTransaction = (0, catchAsync_1.default)(async (req, res, nex
         bodyKey: "documentUrls",
         multipartKey: "document",
     });
+    (0, attachmentUrls_1.requireAttachmentUrls)(newDocumentUrls, "Receiving document");
     const existingDocumentUrls = (0, attachmentUrls_1.normalizeAttachmentUrls)(transaction.documentUrl);
     const mergedDocumentUrls = newDocumentUrls.length > 0
         ? [...existingDocumentUrls, ...newDocumentUrls]
@@ -1762,13 +1765,12 @@ const assignPersonnel = (0, catchAsync_1.default)(async (req, res, next) => {
         bodyKey: "utilityFileUrls",
         multipartKey: "utilityFile",
     });
-    const utilityFile = utilityFileUrls.length
-        ? (0, attachmentUrls_1.attachmentUrlsToJson)(utilityFileUrls)
-        : undefined;
+    (0, attachmentUrls_1.requireAttachmentUrls)(utilityFileUrls, "Utility file");
+    const utilityFile = (0, attachmentUrls_1.attachmentUrlsToJson)(utilityFileUrls);
     await prisma_1.default.storeInchargeAssignment.upsert({
         where: { userId_storeId: { userId, storeId } },
-        update: { isActive: true, ...(utilityFile ? { utilityFile } : {}) },
-        create: { userId, storeId, createdBy: actorId, ...(utilityFile ? { utilityFile } : {}) },
+        update: { isActive: true, utilityFile },
+        create: { userId, storeId, createdBy: actorId, utilityFile },
     });
     const updatedStore = await prisma_1.default.store.update({
         where: { id: storeId },

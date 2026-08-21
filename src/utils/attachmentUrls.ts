@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import AppError from "./appError";
 
 export const MAX_FILE_SIZE_BYTES = 150 * 1024 * 1024;
 
@@ -34,6 +35,15 @@ export const attachmentUrlsToJson = (
   const normalized = normalizeAttachmentUrls(urls);
   if (normalized.length === 0) return Prisma.JsonNull;
   return normalized as Prisma.InputJsonValue;
+};
+
+export const requireAttachmentUrls = (
+  urls: string[],
+  fieldLabel: string
+): void => {
+  if (!normalizeAttachmentUrls(urls).length) {
+    throw new AppError(`${fieldLabel} is required`, 400);
+  }
 };
 
 export const mapRecordAttachmentFields = <

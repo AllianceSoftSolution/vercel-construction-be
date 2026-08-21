@@ -13,6 +13,7 @@ import {
   attachmentUrlsToJson,
   mapRecordAttachmentFields,
   normalizeAttachmentUrls,
+  requireAttachmentUrls,
 } from "../utils/attachmentUrls";
 import { resolveUploadUrls } from "../utils/resolveUploadUrls";
 
@@ -934,6 +935,7 @@ const stockIn = catchAsync(async (req, res, next) => {
     bodyKey: "documentUrls",
     multipartKey: "document",
   });
+  requireAttachmentUrls(documentUrls, "Document attachment");
   const documentUrl = attachmentUrlsToJson(documentUrls);
 
   // Validate required fields
@@ -1163,6 +1165,7 @@ const stockOut = catchAsync(async (req, res, next) => {
     bodyKey: "documentUrls",
     multipartKey: "document",
   });
+  requireAttachmentUrls(documentUrls, "Document attachment");
   const documentUrl = attachmentUrlsToJson(documentUrls);
 
   // Validate required fields
@@ -1844,6 +1847,7 @@ const acceptIncomingTransaction = catchAsync(async (req, res, next) => {
     bodyKey: "documentUrls",
     multipartKey: "document",
   });
+  requireAttachmentUrls(newDocumentUrls, "Receiving document");
   const existingDocumentUrls = normalizeAttachmentUrls(transaction.documentUrl);
   const mergedDocumentUrls =
     newDocumentUrls.length > 0
@@ -2182,20 +2186,18 @@ const assignPersonnel = catchAsync(async (req, res, next) => {
     return next(new AppError("This user is already assigned to this store", 400));
   }
 
-  // Get uploaded utility file URL(s) if any
   const utilityFileUrls = resolveUploadUrls(req, {
     bodyKey: "utilityFileUrls",
     multipartKey: "utilityFile",
   });
-  const utilityFile = utilityFileUrls.length
-    ? attachmentUrlsToJson(utilityFileUrls)
-    : undefined;
+  requireAttachmentUrls(utilityFileUrls, "Utility file");
+  const utilityFile = attachmentUrlsToJson(utilityFileUrls);
 
   // Add (or reactivate) the assignment — do NOT deactivate other assignments
   await prisma.storeInchargeAssignment.upsert({
     where: { userId_storeId: { userId, storeId } },
-    update: { isActive: true, ...(utilityFile ? { utilityFile } : {}) },
-    create: { userId, storeId, createdBy: actorId, ...(utilityFile ? { utilityFile } : {}) },
+    update: { isActive: true, utilityFile },
+    create: { userId, storeId, createdBy: actorId, utilityFile },
   });
 
   // Update assignedUserId on the store to the latest assigned user

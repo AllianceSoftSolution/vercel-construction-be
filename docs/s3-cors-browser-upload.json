@@ -5,9 +5,12 @@
     "AllowedOrigins": [
       "http://localhost:5173",
       "http://localhost:4173",
-      "https://*.vercel.app",
-      "https://construction-fe.vercel.app",
-      "https://vercel-construction-fe.vercel.app"
+      "http://localhost:3000",
+      "https://vercel-construction-fe.vercel.app",
+      "http://radc-mern-app-env.eba-qdy3azv3.us-east-1.elasticbeanstalk.com",
+      "https://radc-mern-app-env.eba-qdy3azv3.us-east-1.elasticbeanstalk.com",
+      "https://app.rustumdynamic.com",
+      "http://app.rustumdynamic.com"
     ],
     "ExposeHeaders": ["ETag"],
     "MaxAgeSeconds": 3000
