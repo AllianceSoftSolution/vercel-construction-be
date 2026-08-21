@@ -8,6 +8,8 @@ const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const notificationService_1 = require("../utils/notificationService");
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const attachmentUrls_1 = require("../utils/attachmentUrls");
+const resolveUploadUrls_1 = require("../utils/resolveUploadUrls");
 exports.getVendorAccountStatement = (0, catchAsync_1.default)(async (req, res, next) => {
     const { vendorId } = req.params;
     const { projectId } = req.query;
@@ -82,8 +84,11 @@ exports.addVendorPayment = (0, catchAsync_1.default)(async (req, res, next) => {
     const { vendorId } = req.params;
     const { amount, note, projectId, sectionId } = req.body;
     const userId = req.user.id;
-    const filesFromS3 = req.filesFromS3;
-    const proofOfPayment = filesFromS3?.proofOfPayment;
+    const proofOfPaymentUrls = (0, resolveUploadUrls_1.resolveUploadUrls)(req, {
+        bodyKey: "proofOfPaymentUrls",
+        multipartKey: "proofOfPayment",
+    });
+    const proofOfPayment = (0, attachmentUrls_1.attachmentUrlsToJson)(proofOfPaymentUrls);
     const vendor = await prisma_1.default.vendor.findUnique({ where: { id: vendorId } });
     if (!vendor) {
         return next(new appError_1.default("Vendor not found", 404));
@@ -109,7 +114,7 @@ exports.addVendorPayment = (0, catchAsync_1.default)(async (req, res, next) => {
             sectionId: sectionId || null,
             amount,
             addedBy: userId,
-            proofOfPayment: proofOfPayment || null,
+            proofOfPayment,
             note,
         },
     });
@@ -122,7 +127,7 @@ exports.addVendorPayment = (0, catchAsync_1.default)(async (req, res, next) => {
             projectId: projectId || null,
             sectionId: sectionId || null,
             addedBy: userId,
-            proofOfPayment: proofOfPayment || null,
+            proofOfPayment,
             note,
         },
     });

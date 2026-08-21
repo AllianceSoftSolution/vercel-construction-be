@@ -2,9 +2,13 @@
 import multer from "multer";
 import { Request, Response, NextFunction } from "express";
 import { uploadToS3 } from "../utils/s3Upload";
+import { MAX_FILE_SIZE_BYTES } from "../utils/attachmentUrls";
 
 const storage = multer.memoryStorage();
-const upload = multer({ storage });
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_FILE_SIZE_BYTES },
+});
 
 export const s3UploadMiddleware = (fields: { name: string; maxCount: number }[]) => {
     const multerFields = upload.fields(fields);
@@ -16,7 +20,7 @@ export const s3UploadMiddleware = (fields: { name: string; maxCount: number }[])
             const files = req.files as { [fieldname: string]: Express.Multer.File[] };
 
             const uploadedFiles: Record<string, string | string[]> = {};
-[]
+
             try {
                 for (const field of fields) {
                     const fieldName = field.name;

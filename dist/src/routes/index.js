@@ -18,6 +18,7 @@ const vendorAccount_1 = __importDefault(require("./vendorAccount"));
 const purchaseOrder_1 = __importDefault(require("./purchaseOrder"));
 const analytics_1 = __importDefault(require("./analytics"));
 const pettyCash_1 = __importDefault(require("./pettyCash"));
+const fileUpload_1 = __importDefault(require("./fileUpload"));
 router.use("/auth", auth_1.default);
 router.use("/projects", project_1.default);
 router.use("/sections", section_1.default);
@@ -31,5 +32,6 @@ router.use("/purchase-orders", purchaseOrder_1.default);
 router.use("/vendor-account", vendorAccount_1.default);
 router.use("/petty-cash", pettyCash_1.default);
 router.use("/analytics", analytics_1.default);
+router.use("/files", fileUpload_1.default);
 exports.default = router;
 //# sourceMappingURL=index.js.map

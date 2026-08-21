@@ -9,6 +9,15 @@ import { TRANSACTION_REFERENCES } from "../constants";
 import { sendNotificationToUserSafe } from "../utils/notification";
 import { NotificationService } from "../utils/notificationService";
 import prisma from "../utils/prisma";
+import {
+  attachmentUrlsToJson,
+  mapRecordAttachmentFields,
+  normalizeAttachmentUrls,
+} from "../utils/attachmentUrls";
+import { resolveUploadUrls } from "../utils/resolveUploadUrls";
+
+const mapStoreTransactionResponse = <T extends Record<string, unknown>>(tx: T) =>
+  mapRecordAttachmentFields(tx, ["documentUrl"]);
 
 const createStore = catchAsync(async (req, res, next) => {
   const {
@@ -921,6 +930,11 @@ const stockIn = catchAsync(async (req, res, next) => {
   } = req.body;
   const quantity = parseFloat(req.body.quantity); // Parse to number — FormData sends strings
   const userId = req.user.id;
+  const documentUrls = resolveUploadUrls(req, {
+    bodyKey: "documentUrls",
+    multipartKey: "document",
+  });
+  const documentUrl = attachmentUrlsToJson(documentUrls);
 
   // Validate required fields
   if (!materialId || !req.body.quantity) {
@@ -1075,7 +1089,7 @@ const stockIn = catchAsync(async (req, res, next) => {
         reference: poReferenceNumber || stockInType.toUpperCase(),
         notes: notes || `${stockInType} stock in`,
         createdBy: userId,
-        documentUrl: (req as any).filesFromS3?.document || null,
+        documentUrl,
         // fromStoreId intentionally null for external PO deliveries (source is a vendor, not a store)
       },
     });
@@ -1145,6 +1159,11 @@ const stockOut = catchAsync(async (req, res, next) => {
   } = req.body;
   const quantity = parseFloat(req.body.quantity); // Parse to number — FormData sends strings
   const userId = req.user.id;
+  const documentUrls = resolveUploadUrls(req, {
+    bodyKey: "documentUrls",
+    multipartKey: "document",
+  });
+  const documentUrl = attachmentUrlsToJson(documentUrls);
 
   // Validate required fields
   if (!materialId || !req.body.quantity) {
@@ -1398,7 +1417,7 @@ const stockOut = catchAsync(async (req, res, next) => {
         notes: notes || `${stockOutType} stock out`,
         createdBy: userId,
         toStoreId: toStoreId || null, // Optional: which store received this stock
-        documentUrl: (req as any).filesFromS3?.document || null,
+        documentUrl,
       },
     });
 
@@ -1414,7 +1433,7 @@ const stockOut = catchAsync(async (req, res, next) => {
           notes: notes || `Transfer from store`,
           createdBy: userId,
           fromStoreId: storeId,
-          documentUrl: (req as any).filesFromS3?.document || null,
+          documentUrl,
         },
       });
     }
@@ -1821,6 +1840,16 @@ const acceptIncomingTransaction = catchAsync(async (req, res, next) => {
       : note
     : transaction.notes;
 
+  const newDocumentUrls = resolveUploadUrls(req, {
+    bodyKey: "documentUrls",
+    multipartKey: "document",
+  });
+  const existingDocumentUrls = normalizeAttachmentUrls(transaction.documentUrl);
+  const mergedDocumentUrls =
+    newDocumentUrls.length > 0
+      ? [...existingDocumentUrls, ...newDocumentUrls]
+      : existingDocumentUrls;
+
   const updatedTransaction = await prisma.$transaction(async (tx) => {
     await tx.storeInventory.upsert({
       where: {
@@ -1847,7 +1876,9 @@ const acceptIncomingTransaction = catchAsync(async (req, res, next) => {
       data: {
         notes: updatedNotes,
         documentUrl:
-          (req as any).filesFromS3?.document || transaction.documentUrl,
+          mergedDocumentUrls.length > 0
+            ? attachmentUrlsToJson(mergedDocumentUrls)
+            : transaction.documentUrl ?? undefined,
         acceptedAt: new Date(),
       },
     });
@@ -1855,7 +1886,7 @@ const acceptIncomingTransaction = catchAsync(async (req, res, next) => {
 
   res.json({
     message: "Incoming request accepted successfully",
-    transaction: updatedTransaction,
+    transaction: mapStoreTransactionResponse(updatedTransaction),
   });
 });
 
@@ -2151,14 +2182,20 @@ const assignPersonnel = catchAsync(async (req, res, next) => {
     return next(new AppError("This user is already assigned to this store", 400));
   }
 
-  // Get uploaded utility file URL (if any)
-  const utilityFileUrl = (req as any).filesFromS3?.utilityFile as string | undefined;
+  // Get uploaded utility file URL(s) if any
+  const utilityFileUrls = resolveUploadUrls(req, {
+    bodyKey: "utilityFileUrls",
+    multipartKey: "utilityFile",
+  });
+  const utilityFile = utilityFileUrls.length
+    ? attachmentUrlsToJson(utilityFileUrls)
+    : undefined;
 
   // Add (or reactivate) the assignment — do NOT deactivate other assignments
   await prisma.storeInchargeAssignment.upsert({
     where: { userId_storeId: { userId, storeId } },
-    update: { isActive: true, ...(utilityFileUrl ? { utilityFile: utilityFileUrl } : {}) },
-    create: { userId, storeId, createdBy: actorId, ...(utilityFileUrl ? { utilityFile: utilityFileUrl } : {}) },
+    update: { isActive: true, ...(utilityFile ? { utilityFile } : {}) },
+    create: { userId, storeId, createdBy: actorId, ...(utilityFile ? { utilityFile } : {}) },
   });
 
   // Update assignedUserId on the store to the latest assigned user

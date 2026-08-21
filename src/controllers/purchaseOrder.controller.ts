@@ -7,6 +7,10 @@ import { generatePOReferenceNumber } from "../utils/generateCode";
 import { NotificationService } from "../utils/notificationService";
 import prisma from "../utils/prisma";
 import { getStoreInchargeAccessibleSectionIds } from "../utils/storeInchargeAccess";
+import {
+  attachmentUrlsToJson,
+} from "../utils/attachmentUrls";
+import { resolveUploadUrls } from "../utils/resolveUploadUrls";
 
 // Helper to calculate total PO quantity for a demand
 async function getTotalPOQuantityForDemand(demandId: string) {
@@ -942,9 +946,11 @@ export const addPOAmount = catchAsync(
     const { id } = req.params;
     const { unitPrice, notes } = req.body;
 
-    // Get uploaded file from middleware
-    const filesFromS3 = (req as any).filesFromS3;
-    const proofOfBill = filesFromS3?.proofOfBill;
+    // Get uploaded file from middleware or presigned URLs
+    const proofOfBillUrls = resolveUploadUrls(req, {
+      bodyKey: "proofOfBillUrls",
+      multipartKey: "proofOfBill",
+    });
 
     const purchaseOrder = await prisma.purchaseOrder.findFirst({
       where: { id, isDeleted: false },
@@ -970,11 +976,12 @@ export const addPOAmount = catchAsync(
       return next(new AppError("Unit price must be greater than 0", 400));
     }
 
-    if (!proofOfBill) {
+    if (proofOfBillUrls.length === 0) {
       return next(new AppError("Proof of bill/invoice file is required", 400));
     }
 
     const totalAmount = Number(purchaseOrder.quantity) * Number(unitPrice);
+    const proofOfBill = attachmentUrlsToJson(proofOfBillUrls);
 
     // Use transaction to ensure data consistency
     const result = await prisma.$transaction(async (tx) => {
@@ -1063,8 +1070,10 @@ export const updatePOAmount = catchAsync(
   async (req: Request, res: Response, next: NextFunction) => {
     const { id } = req.params;
     const { unitPrice, notes } = req.body;
-    const filesFromS3 = (req as any).filesFromS3;
-    const proofOfBill = filesFromS3?.proofOfBill;
+    const proofOfBillUrls = resolveUploadUrls(req, {
+      bodyKey: "proofOfBillUrls",
+      multipartKey: "proofOfBill",
+    });
 
     const purchaseOrder = await prisma.purchaseOrder.findFirst({
       where: { id, isDeleted: false },
@@ -1145,8 +1154,8 @@ export const updatePOAmount = catchAsync(
         updateData.notes = notes;
       }
 
-      if (proofOfBill) {
-        updateData.proofOfBill = proofOfBill;
+      if (proofOfBillUrls.length > 0) {
+        updateData.proofOfBill = attachmentUrlsToJson(proofOfBillUrls);
       }
 
       const updatedPO = await tx.purchaseOrder.update({
@@ -1207,7 +1216,9 @@ export const updatePOAmount = catchAsync(
           data: {
             amount: new Decimal(newTotalAmount),
             note: notes || existingTransaction.note || `Credit for PO ${purchaseOrder.referenceNumber}`,
-            ...(proofOfBill && { proofOfPayment: proofOfBill }),
+            ...(proofOfBillUrls.length > 0 && {
+              proofOfPayment: attachmentUrlsToJson(proofOfBillUrls),
+            }),
           },
         });
       } else {
@@ -1219,7 +1230,10 @@ export const updatePOAmount = catchAsync(
             amount: new Decimal(newTotalAmount),
             purchaseOrderId: purchaseOrder.id,
             addedBy: user.id,
-            proofOfPayment: proofOfBill || purchaseOrder.proofOfBill,
+            proofOfPayment:
+              proofOfBillUrls.length > 0
+                ? attachmentUrlsToJson(proofOfBillUrls)
+                : purchaseOrder.proofOfBill ?? undefined,
             note: notes || `Credit for PO ${purchaseOrder.referenceNumber}`,
           },
         });

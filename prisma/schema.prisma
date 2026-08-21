@@ -254,7 +254,7 @@ model StoreInchargeAssignment {
   userId      String
   storeId     String
   isActive    Boolean  @default(true)
-  utilityFile String?
+  utilityFile Json?
   createdAt   DateTime @default(now())
   createdBy   String
   
@@ -490,7 +490,7 @@ model PurchaseOrder {
   quantity        Decimal  // Renamed from totalQuantity
   unitPrice       Decimal? // NEW: price per unit
   totalAmount     Decimal? // NEW: total amount (quantity * unitPrice)
-  proofOfBill     String?  // NEW: URL to vendor's bill/invoice
+  proofOfBill     Json?    // URLs to vendor bill/invoice documents
   amountAddedBy     String?  // NEW: who added the amount
   amountAddedAt     DateTime? // NEW: when amount was first added
   amountLastEditedAt DateTime? // when amount was last edited (refreshes 24h window)
@@ -541,7 +541,7 @@ model StoreTransaction {
   quantity      Decimal
   reference     String?  // Reference to PO, Demand, etc.
   notes         String?
-  documentUrl   String?  // Optional attached document (image/pdf/doc)
+  documentUrl   Json?    // Optional attached documents (image/pdf/doc)
   transactionDate DateTime @default(now())
   acceptedAt      DateTime? // Set when incoming transfer is accepted at destination store
   createdBy     String
@@ -581,7 +581,7 @@ model VendorAccountTransaction {
   sectionId       String?  // section context for payment (DEBIT) transactions
   addedBy         String
   createdAt       DateTime @default(now())
-  proofOfPayment  String?
+  proofOfPayment  Json?
   note            String?
 
   vendorAccount   VendorAccount @relation(fields: [vendorAccountId], references: [id])
@@ -595,7 +595,7 @@ model VendorPayment {
   amount         Decimal
   addedBy        String
   createdAt      DateTime @default(now())
-  proofOfPayment String?
+  proofOfPayment Json?
   note           String?
 
   vendor         Vendor   @relation(fields: [vendorId], references: [id])
@@ -673,7 +673,7 @@ model PettyCashTransaction {
   expenseHeadId   String?
   recipientUserId String?
   amount          Decimal
-  proofUrl        String?
+  proofUrl        Json?
   description     String?
   isDeleted       Boolean                  @default(false)
   createdBy       String

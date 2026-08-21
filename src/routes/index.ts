@@ -15,6 +15,7 @@ import vendorAccountRoutes from "./vendorAccount";
 import purchaseOrderRoutes from "./purchaseOrder";
 import analyticsRoutes from "./analytics";
 import pettyCashRoutes from "./pettyCash";
+import fileUploadRoutes from "./fileUpload";
 
 // Authentication and user management
 router.use("/auth", authRoutes);
@@ -36,5 +37,8 @@ router.use("/petty-cash", pettyCashRoutes);
 
 // Analytics and dashboard routes
 router.use("/analytics", analyticsRoutes);
+
+// Direct S3 uploads (presigned URLs)
+router.use("/files", fileUploadRoutes);
 
 export default router;

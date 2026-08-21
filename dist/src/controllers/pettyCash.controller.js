@@ -8,6 +8,9 @@ const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const pettyCashAccess_1 = require("../utils/pettyCashAccess");
+const attachmentUrls_1 = require("../utils/attachmentUrls");
+const resolveUploadUrls_1 = require("../utils/resolveUploadUrls");
+const mapTransactionResponse = (tx) => (0, attachmentUrls_1.mapRecordAttachmentFields)(tx, ["proofUrl"]);
 const transactionInclude = {
     project: { select: { id: true, name: true, code: true } },
     section: {
@@ -328,7 +331,7 @@ exports.getTransactions = (0, catchAsync_1.default)(async (req, res) => {
     ]);
     res.status(200).json({
         status: "success",
-        data: transactions,
+        data: transactions.map(mapTransactionResponse),
         pagination: {
             page: Number(page),
             limit: Number(limit),
@@ -343,8 +346,10 @@ exports.addFunding = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new appError_1.default("Only admins and head office accountants can add petty cash funding", 403));
     }
     const { projectId, amount, description } = req.body;
-    const filesFromS3 = req.filesFromS3;
-    const proofUrl = filesFromS3?.proofOfExpense || null;
+    const proofUrls = (0, resolveUploadUrls_1.resolveUploadUrls)(req, {
+        bodyKey: "proofUrls",
+        multipartKey: "proofOfExpense",
+    });
     if (!projectId)
         return next(new appError_1.default("Project is required", 400));
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
@@ -363,19 +368,21 @@ exports.addFunding = (0, catchAsync_1.default)(async (req, res, next) => {
             type: "FUNDING",
             projectId,
             amount: Number(amount),
-            proofUrl,
+            proofUrl: (0, attachmentUrls_1.attachmentUrlsToJson)(proofUrls),
             description: description?.trim() || null,
             createdBy: user.id,
         },
         include: transactionInclude,
     });
-    res.status(201).json({ status: "success", data: tx });
+    res.status(201).json({ status: "success", data: mapTransactionResponse(tx) });
 });
 exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
     const { projectId, expenseHeadId, amount, description } = req.body;
-    const filesFromS3 = req.filesFromS3;
-    const proofUrl = filesFromS3?.proofOfExpense || null;
+    const proofUrls = (0, resolveUploadUrls_1.resolveUploadUrls)(req, {
+        bodyKey: "proofUrls",
+        multipartKey: "proofOfExpense",
+    });
     if (!projectId)
         return next(new appError_1.default("Project is required", 400));
     if (!expenseHeadId)
@@ -389,8 +396,9 @@ exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) =>
     if (!(await (0, pettyCashAccess_1.assertProjectAccess)(user, projectId))) {
         return next(new appError_1.default("Not authorized for this project", 403));
     }
-    if (!proofUrl)
+    if (proofUrls.length === 0) {
         return next(new appError_1.default("Proof of expense is required", 400));
+    }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
         return next(new appError_1.default("A valid amount is required", 400));
     }
@@ -409,19 +417,21 @@ exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) =>
             projectId,
             expenseHeadId,
             amount: Number(amount),
-            proofUrl,
+            proofUrl: (0, attachmentUrls_1.attachmentUrlsToJson)(proofUrls),
             description: description?.trim() || null,
             createdBy: user.id,
         },
         include: transactionInclude,
     });
-    res.status(201).json({ status: "success", data: tx });
+    res.status(201).json({ status: "success", data: mapTransactionResponse(tx) });
 });
 exports.addDistribution = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
     const { projectId, sectionId, amount, description } = req.body;
-    const filesFromS3 = req.filesFromS3;
-    const proofUrl = filesFromS3?.proofOfExpense || null;
+    const proofUrls = (0, resolveUploadUrls_1.resolveUploadUrls)(req, {
+        bodyKey: "proofUrls",
+        multipartKey: "proofOfExpense",
+    });
     if (!projectId)
         return next(new appError_1.default("Project is required", 400));
     if (!sectionId)
@@ -438,8 +448,9 @@ exports.addDistribution = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!(await (0, pettyCashAccess_1.assertSectionAccess)(user, sectionId))) {
         return next(new appError_1.default("Not authorized for this section", 403));
     }
-    if (!proofUrl)
+    if (proofUrls.length === 0) {
         return next(new appError_1.default("Proof of expense is required", 400));
+    }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
         return next(new appError_1.default("A valid amount is required", 400));
     }
@@ -463,19 +474,21 @@ exports.addDistribution = (0, catchAsync_1.default)(async (req, res, next) => {
             sectionId,
             recipientUserId: sectionAccountant.id,
             amount: Number(amount),
-            proofUrl,
+            proofUrl: (0, attachmentUrls_1.attachmentUrlsToJson)(proofUrls),
             description: description?.trim() || null,
             createdBy: user.id,
         },
         include: transactionInclude,
     });
-    res.status(201).json({ status: "success", data: tx });
+    res.status(201).json({ status: "success", data: mapTransactionResponse(tx) });
 });
 exports.addSectionExpense = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
     const { projectId, sectionId, expenseHeadId, amount, description } = req.body;
-    const filesFromS3 = req.filesFromS3;
-    const proofUrl = filesFromS3?.proofOfExpense || null;
+    const proofUrls = (0, resolveUploadUrls_1.resolveUploadUrls)(req, {
+        bodyKey: "proofUrls",
+        multipartKey: "proofOfExpense",
+    });
     if (!projectId || !sectionId) {
         return next(new appError_1.default("Project and section are required", 400));
     }
@@ -490,8 +503,9 @@ exports.addSectionExpense = (0, catchAsync_1.default)(async (req, res, next) => 
     }
     if (!expenseHeadId)
         return next(new appError_1.default("Expense head is required", 400));
-    if (!proofUrl)
+    if (proofUrls.length === 0) {
         return next(new appError_1.default("Proof of expense is required", 400));
+    }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
         return next(new appError_1.default("A valid amount is required", 400));
     }
@@ -511,13 +525,13 @@ exports.addSectionExpense = (0, catchAsync_1.default)(async (req, res, next) => 
             sectionId,
             expenseHeadId,
             amount: Number(amount),
-            proofUrl,
+            proofUrl: (0, attachmentUrls_1.attachmentUrlsToJson)(proofUrls),
             description: description?.trim() || null,
             createdBy: user.id,
         },
         include: transactionInclude,
     });
-    res.status(201).json({ status: "success", data: tx });
+    res.status(201).json({ status: "success", data: mapTransactionResponse(tx) });
 });
 exports.getProjectSections = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
