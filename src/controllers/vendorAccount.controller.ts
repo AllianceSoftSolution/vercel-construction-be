@@ -3,6 +3,10 @@ import catchAsync from "../utils/catchAsync";
 import AppError from "../utils/appError";
 import { NotificationService } from "../utils/notificationService";
 import prisma from "../utils/prisma";
+import {
+  attachmentUrlsToJson,
+} from "../utils/attachmentUrls";
+import { resolveUploadUrls } from "../utils/resolveUploadUrls";
 
 // Get vendor account statement (summary + all transactions)
 export const getVendorAccountStatement = catchAsync(
@@ -101,9 +105,12 @@ export const addVendorPayment = catchAsync(
     const { amount, note, projectId, sectionId } = req.body;
     const userId = req.user.id;
 
-    // Get uploaded file from middleware
-    const filesFromS3 = (req as any).filesFromS3;
-    const proofOfPayment = filesFromS3?.proofOfPayment;
+    // Get uploaded file from middleware or presigned URLs
+    const proofOfPaymentUrls = resolveUploadUrls(req, {
+      bodyKey: "proofOfPaymentUrls",
+      multipartKey: "proofOfPayment",
+    });
+    const proofOfPayment = attachmentUrlsToJson(proofOfPaymentUrls);
 
     // Validate vendor exists
     const vendor = await prisma.vendor.findUnique({ where: { id: vendorId } });
@@ -137,7 +144,7 @@ export const addVendorPayment = catchAsync(
         sectionId: sectionId || null,
         amount,
         addedBy: userId,
-        proofOfPayment: proofOfPayment || null,
+        proofOfPayment,
         note,
       },
     });
@@ -152,7 +159,7 @@ export const addVendorPayment = catchAsync(
         projectId: projectId || null,
         sectionId: sectionId || null,
         addedBy: userId,
-        proofOfPayment: proofOfPayment || null,
+        proofOfPayment,
         note,
       },
     });

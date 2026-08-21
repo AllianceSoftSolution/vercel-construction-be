@@ -6,8 +6,12 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.s3UploadMiddleware = void 0;
 const multer_1 = __importDefault(require("multer"));
 const s3Upload_1 = require("../utils/s3Upload");
+const attachmentUrls_1 = require("../utils/attachmentUrls");
 const storage = multer_1.default.memoryStorage();
-const upload = (0, multer_1.default)({ storage });
+const upload = (0, multer_1.default)({
+    storage,
+    limits: { fileSize: attachmentUrls_1.MAX_FILE_SIZE_BYTES },
+});
 const s3UploadMiddleware = (fields) => {
     const multerFields = upload.fields(fields);
     return async (req, res, next) => {
@@ -16,7 +20,6 @@ const s3UploadMiddleware = (fields) => {
                 return next(err);
             const files = req.files;
             const uploadedFiles = {};
-            [];
             try {
                 for (const field of fields) {
                     const fieldName = field.name;

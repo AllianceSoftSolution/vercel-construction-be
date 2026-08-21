@@ -34,6 +34,14 @@ import {
   isProjectManagerForSection,
   isSectionAccountantFor,
 } from "../utils/pettyCashAccess";
+import {
+  attachmentUrlsToJson,
+  mapRecordAttachmentFields,
+} from "../utils/attachmentUrls";
+import { resolveUploadUrls } from "../utils/resolveUploadUrls";
+
+const mapTransactionResponse = <T extends Record<string, unknown>>(tx: T) =>
+  mapRecordAttachmentFields(tx, ["proofUrl"]);
 
 const transactionInclude = {
   project: { select: { id: true, name: true, code: true } },
@@ -448,7 +456,7 @@ export const getTransactions = catchAsync(async (req: Request, res: Response) =>
 
   res.status(200).json({
     status: "success",
-    data: transactions,
+    data: transactions.map(mapTransactionResponse),
     pagination: {
       page: Number(page),
       limit: Number(limit),
@@ -473,8 +481,10 @@ export const addFunding = catchAsync(
     }
 
     const { projectId, amount, description } = req.body;
-    const filesFromS3 = (req as any).filesFromS3;
-    const proofUrl = filesFromS3?.proofOfExpense || null;
+    const proofUrls = resolveUploadUrls(req, {
+      bodyKey: "proofUrls",
+      multipartKey: "proofOfExpense",
+    });
 
     if (!projectId) return next(new AppError("Project is required", 400));
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
@@ -494,14 +504,14 @@ export const addFunding = catchAsync(
         type: "FUNDING",
         projectId,
         amount: Number(amount),
-        proofUrl,
+        proofUrl: attachmentUrlsToJson(proofUrls),
         description: description?.trim() || null,
         createdBy: user.id,
       },
       include: transactionInclude,
     });
 
-    res.status(201).json({ status: "success", data: tx });
+    res.status(201).json({ status: "success", data: mapTransactionResponse(tx) });
   }
 );
 
@@ -511,8 +521,10 @@ export const addInternalExpense = catchAsync(
   async (req: Request, res: Response, next) => {
     const user = req.user;
     const { projectId, expenseHeadId, amount, description } = req.body;
-    const filesFromS3 = (req as any).filesFromS3;
-    const proofUrl = filesFromS3?.proofOfExpense || null;
+    const proofUrls = resolveUploadUrls(req, {
+      bodyKey: "proofUrls",
+      multipartKey: "proofOfExpense",
+    });
 
     if (!projectId) return next(new AppError("Project is required", 400));
     if (!expenseHeadId) return next(new AppError("Expense head is required", 400));
@@ -528,7 +540,9 @@ export const addInternalExpense = catchAsync(
       return next(new AppError("Not authorized for this project", 403));
     }
 
-    if (!proofUrl) return next(new AppError("Proof of expense is required", 400));
+    if (proofUrls.length === 0) {
+      return next(new AppError("Proof of expense is required", 400));
+    }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       return next(new AppError("A valid amount is required", 400));
     }
@@ -552,14 +566,14 @@ export const addInternalExpense = catchAsync(
         projectId,
         expenseHeadId,
         amount: Number(amount),
-        proofUrl,
+        proofUrl: attachmentUrlsToJson(proofUrls),
         description: description?.trim() || null,
         createdBy: user.id,
       },
       include: transactionInclude,
     });
 
-    res.status(201).json({ status: "success", data: tx });
+    res.status(201).json({ status: "success", data: mapTransactionResponse(tx) });
   }
 );
 
@@ -569,8 +583,10 @@ export const addDistribution = catchAsync(
   async (req: Request, res: Response, next) => {
     const user = req.user;
     const { projectId, sectionId, amount, description } = req.body;
-    const filesFromS3 = (req as any).filesFromS3;
-    const proofUrl = filesFromS3?.proofOfExpense || null;
+    const proofUrls = resolveUploadUrls(req, {
+      bodyKey: "proofUrls",
+      multipartKey: "proofOfExpense",
+    });
 
     if (!projectId) return next(new AppError("Project is required", 400));
     if (!sectionId) return next(new AppError("Section is required", 400));
@@ -589,7 +605,9 @@ export const addDistribution = catchAsync(
       return next(new AppError("Not authorized for this section", 403));
     }
 
-    if (!proofUrl) return next(new AppError("Proof of expense is required", 400));
+    if (proofUrls.length === 0) {
+      return next(new AppError("Proof of expense is required", 400));
+    }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       return next(new AppError("A valid amount is required", 400));
     }
@@ -624,14 +642,14 @@ export const addDistribution = catchAsync(
         sectionId,
         recipientUserId: sectionAccountant.id,
         amount: Number(amount),
-        proofUrl,
+        proofUrl: attachmentUrlsToJson(proofUrls),
         description: description?.trim() || null,
         createdBy: user.id,
       },
       include: transactionInclude,
     });
 
-    res.status(201).json({ status: "success", data: tx });
+    res.status(201).json({ status: "success", data: mapTransactionResponse(tx) });
   }
 );
 
@@ -642,8 +660,10 @@ export const addSectionExpense = catchAsync(
     const user = req.user;
     const { projectId, sectionId, expenseHeadId, amount, description } =
       req.body;
-    const filesFromS3 = (req as any).filesFromS3;
-    const proofUrl = filesFromS3?.proofOfExpense || null;
+    const proofUrls = resolveUploadUrls(req, {
+      bodyKey: "proofUrls",
+      multipartKey: "proofOfExpense",
+    });
 
     if (!projectId || !sectionId) {
       return next(new AppError("Project and section are required", 400));
@@ -661,7 +681,9 @@ export const addSectionExpense = catchAsync(
     }
 
     if (!expenseHeadId) return next(new AppError("Expense head is required", 400));
-    if (!proofUrl) return next(new AppError("Proof of expense is required", 400));
+    if (proofUrls.length === 0) {
+      return next(new AppError("Proof of expense is required", 400));
+    }
     if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
       return next(new AppError("A valid amount is required", 400));
     }
@@ -686,14 +708,14 @@ export const addSectionExpense = catchAsync(
         sectionId,
         expenseHeadId,
         amount: Number(amount),
-        proofUrl,
+        proofUrl: attachmentUrlsToJson(proofUrls),
         description: description?.trim() || null,
         createdBy: user.id,
       },
       include: transactionInclude,
     });
 
-    res.status(201).json({ status: "success", data: tx });
+    res.status(201).json({ status: "success", data: mapTransactionResponse(tx) });
   }
 );
 

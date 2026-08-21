@@ -12,6 +12,8 @@ const generateCode_1 = require("../utils/generateCode");
 const notificationService_1 = require("../utils/notificationService");
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const storeInchargeAccess_1 = require("../utils/storeInchargeAccess");
+const attachmentUrls_1 = require("../utils/attachmentUrls");
+const resolveUploadUrls_1 = require("../utils/resolveUploadUrls");
 async function getTotalPOQuantityForDemand(demandId) {
     const existingPOs = await prisma_1.default.purchaseOrder.findMany({
         where: {
@@ -744,8 +746,10 @@ exports.updatePOStatus = (0, catchAsync_1.default)(async (req, res, next) => {
 exports.addPOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
     const { unitPrice, notes } = req.body;
-    const filesFromS3 = req.filesFromS3;
-    const proofOfBill = filesFromS3?.proofOfBill;
+    const proofOfBillUrls = (0, resolveUploadUrls_1.resolveUploadUrls)(req, {
+        bodyKey: "proofOfBillUrls",
+        multipartKey: "proofOfBill",
+    });
     const purchaseOrder = await prisma_1.default.purchaseOrder.findFirst({
         where: { id, isDeleted: false },
         include: {
@@ -763,10 +767,11 @@ exports.addPOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!unitPrice || unitPrice <= 0) {
         return next(new appError_1.default("Unit price must be greater than 0", 400));
     }
-    if (!proofOfBill) {
+    if (proofOfBillUrls.length === 0) {
         return next(new appError_1.default("Proof of bill/invoice file is required", 400));
     }
     const totalAmount = Number(purchaseOrder.quantity) * Number(unitPrice);
+    const proofOfBill = (0, attachmentUrls_1.attachmentUrlsToJson)(proofOfBillUrls);
     const result = await prisma_1.default.$transaction(async (tx) => {
         const updatedPO = await tx.purchaseOrder.update({
             where: { id },
@@ -837,8 +842,10 @@ exports.addPOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
 exports.updatePOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
     const { unitPrice, notes } = req.body;
-    const filesFromS3 = req.filesFromS3;
-    const proofOfBill = filesFromS3?.proofOfBill;
+    const proofOfBillUrls = (0, resolveUploadUrls_1.resolveUploadUrls)(req, {
+        bodyKey: "proofOfBillUrls",
+        multipartKey: "proofOfBill",
+    });
     const purchaseOrder = await prisma_1.default.purchaseOrder.findFirst({
         where: { id, isDeleted: false },
         include: {
@@ -888,8 +895,8 @@ exports.updatePOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
         if (notes) {
             updateData.notes = notes;
         }
-        if (proofOfBill) {
-            updateData.proofOfBill = proofOfBill;
+        if (proofOfBillUrls.length > 0) {
+            updateData.proofOfBill = (0, attachmentUrls_1.attachmentUrlsToJson)(proofOfBillUrls);
         }
         const updatedPO = await tx.purchaseOrder.update({
             where: { id },
@@ -942,7 +949,9 @@ exports.updatePOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
                 data: {
                     amount: new library_1.Decimal(newTotalAmount),
                     note: notes || existingTransaction.note || `Credit for PO ${purchaseOrder.referenceNumber}`,
-                    ...(proofOfBill && { proofOfPayment: proofOfBill }),
+                    ...(proofOfBillUrls.length > 0 && {
+                        proofOfPayment: (0, attachmentUrls_1.attachmentUrlsToJson)(proofOfBillUrls),
+                    }),
                 },
             });
         }
@@ -954,7 +963,9 @@ exports.updatePOAmount = (0, catchAsync_1.default)(async (req, res, next) => {
                     amount: new library_1.Decimal(newTotalAmount),
                     purchaseOrderId: purchaseOrder.id,
                     addedBy: user.id,
-                    proofOfPayment: proofOfBill || purchaseOrder.proofOfBill,
+                    proofOfPayment: proofOfBillUrls.length > 0
+                        ? (0, attachmentUrls_1.attachmentUrlsToJson)(proofOfBillUrls)
+                        : purchaseOrder.proofOfBill ?? undefined,
                     note: notes || `Credit for PO ${purchaseOrder.referenceNumber}`,
                 },
             });
