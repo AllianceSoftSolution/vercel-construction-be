@@ -40,7 +40,14 @@ router.delete(
 // Transactions
 router.get("/transactions", protect, pettyCashController.getTransactions);
 
-// Funding (head office only)
+router.post(
+  "/pool",
+  protect,
+  s3UploadMiddleware([{ name: "proofOfExpense", maxCount: 1 }]),
+  pettyCashController.addPettyCashPool
+);
+
+// Funding (distribute central pool to a project)
 router.post(
   "/funding",
   protect,

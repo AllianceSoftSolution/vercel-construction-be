@@ -25,11 +25,16 @@ import {
   getSectionRemaining,
   getSectionAccountantUser,
   assertSufficientPettyCashBalance,
+  getHeadOfficeDistributableRemaining,
   isAdminRole,
   isProjectAccountantUser,
   canAddPettyCashFunding,
+  canAddPettyCashPool,
+  resolveHeadOfficePettyCashProjectId,
   getPettyCashRoleScope,
   isPettyCashExpenseHeadAdmin,
+  getPettyCashOperationalProjectError,
+  pettyCashOperationalProjectWhere,
   isProjectManagerForProject,
   isProjectManagerForSection,
   isSectionAccountantFor,
@@ -170,6 +175,12 @@ export const getSummary = catchAsync(async (req: Request, res: Response) => {
   const roleScope = await getPettyCashRoleScope(user);
   const canManageHeads = isPettyCashExpenseHeadAdmin(user);
   const canAddFunding = await canAddPettyCashFunding(user);
+  const canAddPettyCashPoolFunding = canAddPettyCashPool(user);
+  const showPettyCashPoolRemaining =
+    roleScope === "ADMIN" || roleScope === "HEAD_OFFICE_ACCOUNTANT";
+  const headOfficeDistributableRemaining = showPettyCashPoolRemaining
+    ? await getHeadOfficeDistributableRemaining()
+    : null;
   const canDistribute =
     roleScope === "ADMIN" ||
     roleScope === "HEAD_OFFICE_ACCOUNTANT" ||
@@ -212,6 +223,8 @@ export const getSummary = catchAsync(async (req: Request, res: Response) => {
       balanceRemaining: remainingBalance,
       poolRemaining: remainingBalance,
       canAddFunding,
+      canAddPettyCashPool: canAddPettyCashPoolFunding,
+      headOfficeDistributableRemaining,
       canManageHeads,
       canDistribute,
       canAddInternalExpense,
@@ -241,6 +254,7 @@ export const getSummaryByProject = catchAsync(
       where: {
         id: { in: filteredIds.length ? filteredIds : ["__none__"] },
         isDeleted: false,
+        ...pettyCashOperationalProjectWhere(),
       },
       select: { id: true, name: true, code: true },
       orderBy: { name: "asc" },
@@ -292,6 +306,7 @@ export const getSummaryBySection = catchAsync(
         where: {
           projectId: { in: projectIds.length ? projectIds : ["__none__"] },
           isDeleted: false,
+          project: pettyCashOperationalProjectWhere(),
         },
         select: { id: true },
       });
@@ -315,6 +330,7 @@ export const getSummaryBySection = catchAsync(
       where: {
         id: { in: sectionIds.length ? sectionIds : ["__none__"] },
         isDeleted: false,
+        project: pettyCashOperationalProjectWhere(),
       },
       include: {
         project: { select: { id: true, name: true, code: true } },
@@ -466,6 +482,48 @@ export const getTransactions = catchAsync(async (req: Request, res: Response) =>
   });
 });
 
+// ─── Add Petty Cash (central HO pool — admins only) ────────────────────────
+
+export const addPettyCashPool = catchAsync(
+  async (req: Request, res: Response, next) => {
+    const user = req.user;
+    if (!canAddPettyCashPool(user)) {
+      return next(
+        new AppError("Only admins can add petty cash to the head office pool", 403)
+      );
+    }
+
+    const { amount, description } = req.body;
+    const proofUrls = resolveUploadUrls(req, {
+      bodyKey: "proofUrls",
+      multipartKey: "proofOfExpense",
+    });
+
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+      return next(new AppError("A valid amount is required", 400));
+    }
+    if (proofUrls.length === 0) {
+      return next(new AppError("Proof is required", 400));
+    }
+
+    const poolProjectId = await resolveHeadOfficePettyCashProjectId(user.id);
+
+    const tx = await prisma.pettyCashTransaction.create({
+      data: {
+        type: "FUNDING",
+        projectId: poolProjectId,
+        amount: Number(amount),
+        proofUrl: attachmentUrlsToJson(proofUrls),
+        description: description?.trim() || null,
+        createdBy: user.id,
+      },
+      include: transactionInclude,
+    });
+
+    res.status(201).json({ status: "success", data: mapTransactionResponse(tx) });
+  }
+);
+
 // ─── Add Funding (project pool) ──────────────────────────────────────────────
 
 export const addFunding = catchAsync(
@@ -495,9 +553,23 @@ export const addFunding = catchAsync(
       where: { id: projectId, isDeleted: false },
     });
     if (!project) return next(new AppError("Project not found", 404));
+    const operationalError = getPettyCashOperationalProjectError(project);
+    if (operationalError) return next(new AppError(operationalError, 400));
     if (!(await assertProjectAccess(user, projectId))) {
       return next(new AppError("Not authorized for this project", 403));
     }
+
+    if (proofUrls.length === 0) {
+      return next(new AppError("Proof is required", 400));
+    }
+
+    const remaining = await getHeadOfficeDistributableRemaining();
+    const poolError = assertSufficientPettyCashBalance(
+      remaining,
+      Number(amount),
+      "petty cash pool balance"
+    );
+    if (poolError) return next(new AppError(poolError, 400));
 
     const tx = await prisma.pettyCashTransaction.create({
       data: {
@@ -538,6 +610,17 @@ export const addInternalExpense = catchAsync(
     }
     if (!(await assertProjectAccess(user, projectId))) {
       return next(new AppError("Not authorized for this project", 403));
+    }
+
+    const internalProject = await prisma.project.findFirst({
+      where: { id: projectId, isDeleted: false },
+      select: { code: true, name: true },
+    });
+    if (!internalProject) return next(new AppError("Project not found", 404));
+    const internalProjectError =
+      getPettyCashOperationalProjectError(internalProject);
+    if (internalProjectError) {
+      return next(new AppError(internalProjectError, 400));
     }
 
     if (proofUrls.length === 0) {
@@ -605,6 +688,17 @@ export const addDistribution = catchAsync(
       return next(new AppError("Not authorized for this section", 403));
     }
 
+    const distributionProject = await prisma.project.findFirst({
+      where: { id: projectId, isDeleted: false },
+      select: { code: true, name: true },
+    });
+    if (!distributionProject) return next(new AppError("Project not found", 404));
+    const distributionProjectError =
+      getPettyCashOperationalProjectError(distributionProject);
+    if (distributionProjectError) {
+      return next(new AppError(distributionProjectError, 400));
+    }
+
     if (proofUrls.length === 0) {
       return next(new AppError("Proof of expense is required", 400));
     }
@@ -622,8 +716,15 @@ export const addDistribution = catchAsync(
 
     const section = await prisma.section.findFirst({
       where: { id: sectionId, projectId, isDeleted: false },
+      include: { project: { select: { code: true, name: true } } },
     });
     if (!section) return next(new AppError("Section not found in project", 404));
+    const distributionSectionProjectError = getPettyCashOperationalProjectError(
+      section.project
+    );
+    if (distributionSectionProjectError) {
+      return next(new AppError(distributionSectionProjectError, 400));
+    }
 
     const sectionAccountant = await getSectionAccountantUser(sectionId);
     if (!sectionAccountant) {

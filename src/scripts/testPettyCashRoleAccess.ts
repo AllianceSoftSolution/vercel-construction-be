@@ -76,6 +76,11 @@ async function main() {
   record("HO canAddFunding", hoaSum.data?.data?.canAddFunding === true);
   record("HO canDistribute", hoaSum.data?.data?.canDistribute === true);
   record("HO canAddInternalExpense", hoaSum.data?.data?.canAddInternalExpense === true);
+  record(
+    "HO summary includes distributable remaining",
+    typeof hoaSum.data?.data?.headOfficeDistributableRemaining === "number",
+    String(hoaSum.data?.data?.headOfficeDistributableRemaining)
+  );
 
   const paSum = await pa1Api.get("/petty-cash/summary");
   record(

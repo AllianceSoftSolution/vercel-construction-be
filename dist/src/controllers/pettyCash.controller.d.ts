@@ -8,6 +8,7 @@ export declare const getSummaryByProject: (req: Request, res: Response, next: im
 export declare const getSummaryBySection: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getProjectBalance: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getTransactions: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const addPettyCashPool: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const addFunding: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const addInternalExpense: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const addDistribution: (req: Request, res: Response, next: import("express").NextFunction) => void;

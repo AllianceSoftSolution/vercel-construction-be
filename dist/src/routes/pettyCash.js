@@ -50,6 +50,7 @@ router.post("/expense-heads", auth_middleware_1.default, pettyCashController.cre
 router.put("/expense-heads/:id", auth_middleware_1.default, pettyCashController.updateExpenseHead);
 router.delete("/expense-heads/:id", auth_middleware_1.default, pettyCashController.deleteExpenseHead);
 router.get("/transactions", auth_middleware_1.default, pettyCashController.getTransactions);
+router.post("/pool", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addPettyCashPool);
 router.post("/funding", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addFunding);
 router.post("/internal-expense", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addInternalExpense);
 router.post("/distribution", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addDistribution);

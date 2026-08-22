@@ -3,12 +3,68 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.computeSectionBalances = exports.assertSufficientPettyCashBalance = exports.getSectionRemaining = exports.getProjectPoolRemaining = exports.computeProjectBalances = exports.resolveFilteredProjectIds = exports.getPettyCashBalanceScope = exports.mapProjectBalancesForOverview = exports.mapProjectBalancesForHeadOffice = exports.aggregateOverviewTotals = exports.computePettyCashOverview = exports.aggregatePettyCashTotals = exports.parsePettyCashListFilters = exports.applyPettyCashListFilters = exports.assertSectionAccess = exports.assertProjectAccess = exports.buildPettyCashAccessWhere = exports.getSectionAccountantUser = exports.getSectionAccountantSectionIds = exports.getHeadOfficeProjectIds = exports.isSectionAccountantFor = exports.getProjectManagerSectionIds = exports.getProjectManagerProjectIds = exports.isProjectManagerForSection = exports.isProjectManagerForProject = exports.getPettyCashOverviewViewMode = exports.usesSectionScopedOverview = exports.assignHeadOfficeAccountantsToProject = exports.getPettyCashRoleScope = exports.canAddPettyCashFunding = exports.isHeadOfficeAccountant = exports.isHeadOfficeUser = exports.isProjectAccountantUser = exports.getProjectAccountantProjectIds = exports.getAccessibleProjectIds = exports.isPettyCashExpenseHeadAdmin = exports.isAdminRole = void 0;
+exports.computeSectionBalances = exports.assertSufficientPettyCashBalance = exports.getSectionRemaining = exports.getProjectPoolRemaining = exports.computeProjectBalances = exports.resolveFilteredProjectIds = exports.getPettyCashBalanceScope = exports.mapProjectBalancesForOverview = exports.mapProjectBalancesForHeadOffice = exports.aggregateOverviewTotals = exports.computePettyCashOverview = exports.aggregatePettyCashTotals = exports.parsePettyCashListFilters = exports.applyPettyCashListFilters = exports.assertSectionAccess = exports.assertProjectAccess = exports.buildPettyCashAccessWhere = exports.getSectionAccountantUser = exports.getSectionAccountantSectionIds = exports.getHeadOfficeProjectIds = exports.isSectionAccountantFor = exports.getProjectManagerSectionIds = exports.getProjectManagerProjectIds = exports.isProjectManagerForSection = exports.isProjectManagerForProject = exports.getPettyCashOverviewViewMode = exports.usesSectionScopedOverview = exports.assignHeadOfficeAccountantsToProject = exports.getPettyCashRoleScope = exports.canAddPettyCashFunding = exports.getHeadOfficeDistributableRemaining = exports.isHeadOfficeAccountant = exports.syncHeadOfficeAccountantProjectAssignments = exports.isHeadOfficeUser = exports.isProjectAccountantUser = exports.getProjectAccountantProjectIds = exports.getAccessibleProjectIds = exports.canAddPettyCashPool = exports.resolveHeadOfficePettyCashProjectId = exports.getHeadOfficePettyCashProjectId = exports.getPettyCashOperationalProjectError = exports.pettyCashOperationalProjectWhere = exports.filterPettyCashSelectableProjects = exports.isPettyCashSelectableProject = exports.PETTY_CASH_UI_EXCLUDED_PROJECT_CODES = exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = exports.isPettyCashExpenseHeadAdmin = exports.isAdminRole = void 0;
 const prisma_1 = __importDefault(require("./prisma"));
 const isAdminRole = (role) => ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"].includes(role);
 exports.isAdminRole = isAdminRole;
 const isPettyCashExpenseHeadAdmin = (user) => user.role === "ADMIN" || user.role === "SUPER_ADMIN";
 exports.isPettyCashExpenseHeadAdmin = isPettyCashExpenseHeadAdmin;
+exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = "HO-Petty";
+exports.PETTY_CASH_UI_EXCLUDED_PROJECT_CODES = [
+    exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE,
+];
+const isPettyCashSelectableProject = (project) => {
+    const code = (project.code || "").trim();
+    if (exports.PETTY_CASH_UI_EXCLUDED_PROJECT_CODES.includes(code)) {
+        return false;
+    }
+    const name = (project.name || "").trim().toLowerCase();
+    return name !== "head office petty cash";
+};
+exports.isPettyCashSelectableProject = isPettyCashSelectableProject;
+const filterPettyCashSelectableProjects = (projects) => projects.filter(exports.isPettyCashSelectableProject);
+exports.filterPettyCashSelectableProjects = filterPettyCashSelectableProjects;
+const pettyCashOperationalProjectWhere = () => ({
+    code: { notIn: [...exports.PETTY_CASH_UI_EXCLUDED_PROJECT_CODES] },
+});
+exports.pettyCashOperationalProjectWhere = pettyCashOperationalProjectWhere;
+const getPettyCashOperationalProjectError = (project) => {
+    if ((0, exports.isPettyCashSelectableProject)(project))
+        return null;
+    return "Head Office Petty Cash cannot be selected for petty cash operations. Choose an operational project.";
+};
+exports.getPettyCashOperationalProjectError = getPettyCashOperationalProjectError;
+const getHeadOfficePettyCashProjectId = async () => {
+    const project = await prisma_1.default.project.findFirst({
+        where: {
+            code: exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE,
+            isDeleted: false,
+        },
+        select: { id: true },
+    });
+    return project?.id ?? null;
+};
+exports.getHeadOfficePettyCashProjectId = getHeadOfficePettyCashProjectId;
+const resolveHeadOfficePettyCashProjectId = async (createdBy) => {
+    const existingId = await (0, exports.getHeadOfficePettyCashProjectId)();
+    if (existingId)
+        return existingId;
+    const created = await prisma_1.default.project.create({
+        data: {
+            name: "Head Office Petty Cash",
+            code: exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE,
+            description: "Central petty cash pool funded by admins",
+            isActive: true,
+            isDeleted: false,
+            createdBy,
+        },
+        select: { id: true },
+    });
+    return created.id;
+};
+exports.resolveHeadOfficePettyCashProjectId = resolveHeadOfficePettyCashProjectId;
+const canAddPettyCashPool = (user) => (0, exports.isAdminRole)(user.role);
+exports.canAddPettyCashPool = canAddPettyCashPool;
 const getAccessibleProjectIds = async (user) => {
     if ((0, exports.isAdminRole)(user.role)) {
         const projects = await prisma_1.default.project.findMany({
@@ -56,9 +112,69 @@ const isProjectAccountantUser = (user) => user.role === "ACCOUNTANT" && !!user.i
 exports.isProjectAccountantUser = isProjectAccountantUser;
 const isHeadOfficeUser = (user) => (0, exports.isAdminRole)(user.role) || (0, exports.isProjectAccountantUser)(user);
 exports.isHeadOfficeUser = isHeadOfficeUser;
+const syncHeadOfficeAccountantProjectAssignments = async (userId, createdBy = "system") => {
+    const user = await prisma_1.default.user.findFirst({
+        where: {
+            id: userId,
+            role: "ACCOUNTANT",
+            isHead: true,
+            isDeleted: false,
+            isActive: true,
+        },
+        select: { id: true },
+    });
+    if (!user)
+        return;
+    const projectLevelCount = await prisma_1.default.accountantAssignment.count({
+        where: { userId, isActive: true, sectionId: null },
+    });
+    if (projectLevelCount === 0)
+        return;
+    const allIds = await (0, exports.getHeadOfficeProjectIds)();
+    if (allIds.length === 0)
+        return;
+    let assigned = new Set(await (0, exports.getProjectAccountantProjectIds)(userId));
+    let missing = allIds.filter((id) => !assigned.has(id));
+    const likelyHeadOffice = projectLevelCount >= 3 &&
+        missing.length > 0 &&
+        projectLevelCount + missing.length === allIds.length;
+    if (likelyHeadOffice) {
+        for (const projectId of missing) {
+            await prisma_1.default.accountantAssignment.create({
+                data: {
+                    userId,
+                    projectId,
+                    sectionId: null,
+                    isActive: true,
+                    createdBy,
+                },
+            });
+            assigned.add(projectId);
+        }
+        return;
+    }
+    for (const projectId of missing) {
+        const otherIds = allIds.filter((id) => id !== projectId);
+        const coversAllOthers = otherIds.every((id) => assigned.has(id));
+        if (!coversAllOthers)
+            continue;
+        await prisma_1.default.accountantAssignment.create({
+            data: {
+                userId,
+                projectId,
+                sectionId: null,
+                isActive: true,
+                createdBy,
+            },
+        });
+        assigned.add(projectId);
+    }
+};
+exports.syncHeadOfficeAccountantProjectAssignments = syncHeadOfficeAccountantProjectAssignments;
 const isHeadOfficeAccountant = async (user) => {
     if (!(0, exports.isProjectAccountantUser)(user))
         return false;
+    await (0, exports.syncHeadOfficeAccountantProjectAssignments)(user.id);
     const assigned = await (0, exports.getProjectAccountantProjectIds)(user.id);
     const all = await (0, exports.getHeadOfficeProjectIds)();
     if (all.length === 0)
@@ -66,6 +182,55 @@ const isHeadOfficeAccountant = async (user) => {
     return all.every((id) => assigned.includes(id));
 };
 exports.isHeadOfficeAccountant = isHeadOfficeAccountant;
+const getHeadOfficeDistributableRemaining = async () => {
+    const poolProjectId = await (0, exports.getHeadOfficePettyCashProjectId)();
+    if (!poolProjectId)
+        return 0;
+    const firstPoolAdd = await prisma_1.default.pettyCashTransaction.findFirst({
+        where: {
+            isDeleted: false,
+            type: "FUNDING",
+            projectId: poolProjectId,
+            creator: { role: { in: ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"] } },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { createdAt: true },
+    });
+    if (!firstPoolAdd)
+        return 0;
+    const poolEpoch = firstPoolAdd.createdAt;
+    const txs = await prisma_1.default.pettyCashTransaction.findMany({
+        where: { isDeleted: false, type: "FUNDING" },
+        select: {
+            amount: true,
+            projectId: true,
+            createdAt: true,
+            creator: { select: { role: true, isHead: true } },
+        },
+    });
+    let poolAdded = 0;
+    let poolDistributed = 0;
+    for (const tx of txs) {
+        const amt = Number(tx.amount);
+        const creator = tx.creator;
+        if (!creator)
+            continue;
+        if (tx.projectId === poolProjectId && (0, exports.isAdminRole)(creator.role)) {
+            poolAdded += amt;
+            continue;
+        }
+        if (tx.projectId !== poolProjectId &&
+            tx.createdAt >= poolEpoch) {
+            const distributedByHo = creator.role === "ACCOUNTANT" && creator.isHead;
+            const distributedByAdmin = (0, exports.isAdminRole)(creator.role);
+            if (distributedByHo || distributedByAdmin) {
+                poolDistributed += amt;
+            }
+        }
+    }
+    return Math.max(0, poolAdded - poolDistributed);
+};
+exports.getHeadOfficeDistributableRemaining = getHeadOfficeDistributableRemaining;
 const canAddPettyCashFunding = async (user) => (0, exports.isAdminRole)(user.role) || (await (0, exports.isHeadOfficeAccountant)(user));
 exports.canAddPettyCashFunding = canAddPettyCashFunding;
 const getPettyCashRoleScope = async (user) => {
@@ -167,7 +332,11 @@ const isSectionAccountantFor = async (userId, sectionId) => {
 exports.isSectionAccountantFor = isSectionAccountantFor;
 const getHeadOfficeProjectIds = async (_userId) => {
     const projects = await prisma_1.default.project.findMany({
-        where: { isDeleted: false, isActive: true },
+        where: {
+            isDeleted: false,
+            isActive: true,
+            ...(0, exports.pettyCashOperationalProjectWhere)(),
+        },
         select: { id: true },
     });
     return projects.map((p) => p.id);

@@ -14,6 +14,77 @@ export const isAdminRole = (role: string) =>
 export const isPettyCashExpenseHeadAdmin = (user: PettyCashUser) =>
   user.role === "ADMIN" || user.role === "SUPER_ADMIN";
 
+/** Internal pool project — hidden from non-admin petty cash project pickers */
+export const HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = "HO-Petty";
+export const PETTY_CASH_UI_EXCLUDED_PROJECT_CODES = [
+  HEAD_OFFICE_PETTY_CASH_PROJECT_CODE,
+] as const;
+
+export type PettyCashProjectRef = {
+  code?: string | null;
+  name?: string | null;
+};
+
+export const isPettyCashSelectableProject = (project: PettyCashProjectRef) => {
+  const code = (project.code || "").trim();
+  if (
+    PETTY_CASH_UI_EXCLUDED_PROJECT_CODES.includes(
+      code as (typeof PETTY_CASH_UI_EXCLUDED_PROJECT_CODES)[number]
+    )
+  ) {
+    return false;
+  }
+  const name = (project.name || "").trim().toLowerCase();
+  return name !== "head office petty cash";
+};
+
+export const filterPettyCashSelectableProjects = <T extends PettyCashProjectRef>(
+  projects: T[]
+) => projects.filter(isPettyCashSelectableProject);
+
+export const pettyCashOperationalProjectWhere = () => ({
+  code: { notIn: [...PETTY_CASH_UI_EXCLUDED_PROJECT_CODES] },
+});
+
+/** Reject petty cash mutations targeting the internal HO pool project */
+export const getPettyCashOperationalProjectError = (project: PettyCashProjectRef) => {
+  if (isPettyCashSelectableProject(project)) return null;
+  return "Head Office Petty Cash cannot be selected for petty cash operations. Choose an operational project.";
+};
+
+export const getHeadOfficePettyCashProjectId = async () => {
+  const project = await prisma.project.findFirst({
+    where: {
+      code: HEAD_OFFICE_PETTY_CASH_PROJECT_CODE,
+      isDeleted: false,
+    },
+    select: { id: true },
+  });
+  return project?.id ?? null;
+};
+
+export const resolveHeadOfficePettyCashProjectId = async (createdBy: string) => {
+  const existingId = await getHeadOfficePettyCashProjectId();
+  if (existingId) return existingId;
+
+  const created = await prisma.project.create({
+    data: {
+      name: "Head Office Petty Cash",
+      code: HEAD_OFFICE_PETTY_CASH_PROJECT_CODE,
+      description: "Central petty cash pool funded by admins",
+      isActive: true,
+      isDeleted: false,
+      createdBy,
+    },
+    select: { id: true },
+  });
+  return created.id;
+};
+
+/** Admins inject petty cash into the central HO pool (not project distribution) */
+export const canAddPettyCashPool = (user: PettyCashUser) =>
+  isAdminRole(user.role);
+
 /** All project IDs the user may view in petty cash */
 export const getAccessibleProjectIds = async (user: PettyCashUser) => {
   if (isAdminRole(user.role)) {
@@ -71,13 +142,149 @@ export const isProjectAccountantUser = (user: PettyCashUser) =>
 export const isHeadOfficeUser = (user: PettyCashUser) =>
   isAdminRole(user.role) || isProjectAccountantUser(user);
 
+/**
+ * When new projects are created, HO accountants who already cover every other
+ * active project receive the missing assignment (same rule as project create).
+ * Section-level assignments do not block sync when the user also has project-level
+ * head accountant assignments (HO may work at both project and section scope).
+ */
+export const syncHeadOfficeAccountantProjectAssignments = async (
+  userId: string,
+  createdBy = "system"
+) => {
+  const user = await prisma.user.findFirst({
+    where: {
+      id: userId,
+      role: "ACCOUNTANT",
+      isHead: true,
+      isDeleted: false,
+      isActive: true,
+    },
+    select: { id: true },
+  });
+  if (!user) return;
+
+  const projectLevelCount = await prisma.accountantAssignment.count({
+    where: { userId, isActive: true, sectionId: null },
+  });
+  if (projectLevelCount === 0) return;
+
+  const allIds = await getHeadOfficeProjectIds();
+  if (allIds.length === 0) return;
+
+  let assigned = new Set(await getProjectAccountantProjectIds(userId));
+  let missing = allIds.filter((id) => !assigned.has(id));
+
+  // Head office accountants cover many projects; project accountants cover one (or two).
+  const likelyHeadOffice =
+    projectLevelCount >= 3 &&
+    missing.length > 0 &&
+    projectLevelCount + missing.length === allIds.length;
+
+  if (likelyHeadOffice) {
+    for (const projectId of missing) {
+      await prisma.accountantAssignment.create({
+        data: {
+          userId,
+          projectId,
+          sectionId: null,
+          isActive: true,
+          createdBy,
+        },
+      });
+      assigned.add(projectId);
+    }
+    return;
+  }
+
+  for (const projectId of missing) {
+    const otherIds = allIds.filter((id) => id !== projectId);
+    const coversAllOthers = otherIds.every((id) => assigned.has(id));
+    if (!coversAllOthers) continue;
+
+    await prisma.accountantAssignment.create({
+      data: {
+        userId,
+        projectId,
+        sectionId: null,
+        isActive: true,
+        createdBy,
+      },
+    });
+    assigned.add(projectId);
+  }
+};
+
 /** True HO accountant: assigned to every active project */
 export const isHeadOfficeAccountant = async (user: PettyCashUser) => {
   if (!isProjectAccountantUser(user)) return false;
+  await syncHeadOfficeAccountantProjectAssignments(user.id);
   const assigned = await getProjectAccountantProjectIds(user.id);
   const all = await getHeadOfficeProjectIds();
   if (all.length === 0) return false;
   return all.every((id) => assigned.includes(id));
+};
+
+/**
+ * Central petty cash pool: admin FUNDING on HO-Petty minus FUNDING sent to
+ * operational projects by admins or head office accountants.
+ */
+export const getHeadOfficeDistributableRemaining = async () => {
+  const poolProjectId = await getHeadOfficePettyCashProjectId();
+  if (!poolProjectId) return 0;
+
+  const firstPoolAdd = await prisma.pettyCashTransaction.findFirst({
+    where: {
+      isDeleted: false,
+      type: "FUNDING",
+      projectId: poolProjectId,
+      creator: { role: { in: ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"] } },
+    },
+    orderBy: { createdAt: "asc" },
+    select: { createdAt: true },
+  });
+
+  if (!firstPoolAdd) return 0;
+
+  const poolEpoch = firstPoolAdd.createdAt;
+
+  const txs = await prisma.pettyCashTransaction.findMany({
+    where: { isDeleted: false, type: "FUNDING" },
+    select: {
+      amount: true,
+      projectId: true,
+      createdAt: true,
+      creator: { select: { role: true, isHead: true } },
+    },
+  });
+
+  let poolAdded = 0;
+  let poolDistributed = 0;
+
+  for (const tx of txs) {
+    const amt = Number(tx.amount);
+    const creator = tx.creator;
+    if (!creator) continue;
+
+    if (tx.projectId === poolProjectId && isAdminRole(creator.role)) {
+      poolAdded += amt;
+      continue;
+    }
+
+    if (
+      tx.projectId !== poolProjectId &&
+      tx.createdAt >= poolEpoch
+    ) {
+      const distributedByHo =
+        creator.role === "ACCOUNTANT" && creator.isHead;
+      const distributedByAdmin = isAdminRole(creator.role);
+      if (distributedByHo || distributedByAdmin) {
+        poolDistributed += amt;
+      }
+    }
+  }
+
+  return Math.max(0, poolAdded - poolDistributed);
 };
 
 /** Can inject funding into project pools (admins + true HO accountant only) */
@@ -214,7 +421,11 @@ export const isSectionAccountantFor = async (
 
 export const getHeadOfficeProjectIds = async (_userId?: string) => {
   const projects = await prisma.project.findMany({
-    where: { isDeleted: false, isActive: true },
+    where: {
+      isDeleted: false,
+      isActive: true,
+      ...pettyCashOperationalProjectWhere(),
+    },
     select: { id: true },
   });
   return projects.map((p) => p.id);
