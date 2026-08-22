@@ -8,7 +8,8 @@
         "includeFiles": [
           "prisma/**",
           "src/templates/**",
-          "src/config/**"
+          "src/config/**",
+          "src/assets/**"
         ]
       }
     }

@@ -13,6 +13,7 @@ router.get("/", auth_middleware_1.default, purchaseOrder_controller_1.getPurchas
 router.get("/summary", auth_middleware_1.default, purchaseOrder_controller_1.getPurchaseOrderSummary);
 router.get("/vendor", auth_middleware_1.default, purchaseOrder_controller_1.getPurchaseOrdersByVendor);
 router.get("/demand/:demandId/statistics", auth_middleware_1.default, purchaseOrder_controller_1.getDemandPOStatistics);
+router.get("/:id/pdf", auth_middleware_1.default, purchaseOrder_controller_1.downloadPurchaseOrderPdf);
 router.get("/:id", auth_middleware_1.default, purchaseOrder_controller_1.getPurchaseOrder);
 router.put("/:id", auth_middleware_1.default, purchaseOrder_controller_1.updatePurchaseOrder);
 router.patch("/:id/status", auth_middleware_1.default, purchaseOrder_controller_1.updatePOStatus);

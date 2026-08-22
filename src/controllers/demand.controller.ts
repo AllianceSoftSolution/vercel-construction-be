@@ -10,6 +10,7 @@ import { sendNotificationToUserSafe } from "../utils/notification";
 import { NotificationService } from "../utils/notificationService";
 import prisma from "../utils/prisma";
 import { getStoreInchargeAccessibleSectionIds } from "../utils/storeInchargeAccess";
+import { DEMAND_APPROVER_ROLES } from "../utils/adminRoles";
 
 const createDemand = catchAsync(async (req, res, next) => {
   const { materialId, quantity, unit, sectionId, notes } = req.body;
@@ -601,8 +602,7 @@ const approveDemand = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  const allowedRoles = ["PROJECT_MANAGER", "SITE_INCHARGE", "ADMIN"];
-  if (!allowedRoles.includes(user.role)) {
+  if (!DEMAND_APPROVER_ROLES.includes(user.role as (typeof DEMAND_APPROVER_ROLES)[number])) {
     return next(
       new AppError(
         "Only Project Managers, Site Incharges, or Admins can approve demands",
@@ -812,8 +812,7 @@ const rejectDemand = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
-  const allowedRoles = ["PROJECT_MANAGER", "SITE_INCHARGE", "ADMIN"];
-  if (!allowedRoles.includes(user.role)) {
+  if (!DEMAND_APPROVER_ROLES.includes(user.role as (typeof DEMAND_APPROVER_ROLES)[number])) {
     return next(
       new AppError(
         "Only Project Managers, Site Incharges, or Admins can reject demands",

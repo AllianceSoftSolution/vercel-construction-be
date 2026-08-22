@@ -12,6 +12,7 @@ const notification_1 = require("../utils/notification");
 const notificationService_1 = require("../utils/notificationService");
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const storeInchargeAccess_1 = require("../utils/storeInchargeAccess");
+const adminRoles_1 = require("../utils/adminRoles");
 const createDemand = (0, catchAsync_1.default)(async (req, res, next) => {
     const { materialId, quantity, unit, sectionId, notes } = req.body;
     const userId = req.user.id;
@@ -529,8 +530,7 @@ const approveDemand = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!user) {
         return next(new appError_1.default("User not found", 404));
     }
-    const allowedRoles = ["PROJECT_MANAGER", "SITE_INCHARGE", "ADMIN"];
-    if (!allowedRoles.includes(user.role)) {
+    if (!adminRoles_1.DEMAND_APPROVER_ROLES.includes(user.role)) {
         return next(new appError_1.default("Only Project Managers, Site Incharges, or Admins can approve demands", 403));
     }
     const demand = await prisma_1.default.demand.findUnique({
@@ -696,8 +696,7 @@ const rejectDemand = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!user) {
         return next(new appError_1.default("User not found", 404));
     }
-    const allowedRoles = ["PROJECT_MANAGER", "SITE_INCHARGE", "ADMIN"];
-    if (!allowedRoles.includes(user.role)) {
+    if (!adminRoles_1.DEMAND_APPROVER_ROLES.includes(user.role)) {
         return next(new appError_1.default("Only Project Managers, Site Incharges, or Admins can reject demands", 403));
     }
     const demand = await prisma_1.default.demand.findUnique({

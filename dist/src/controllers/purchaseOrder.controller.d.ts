@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 export declare const createPurchaseOrder: (req: Request, res: Response, next: NextFunction) => void;
 export declare const getPurchaseOrders: (req: Request, res: Response, next: NextFunction) => void;
 export declare const getPurchaseOrder: (req: Request, res: Response, next: NextFunction) => void;
+export declare const downloadPurchaseOrderPdf: (req: Request, res: Response, next: NextFunction) => void;
 export declare const updatePurchaseOrder: (req: Request, res: Response, next: NextFunction) => void;
 export declare const deletePurchaseOrder: (req: Request, res: Response, next: NextFunction) => void;
 export declare const getPurchaseOrdersByVendor: (req: Request, res: Response, next: NextFunction) => void;

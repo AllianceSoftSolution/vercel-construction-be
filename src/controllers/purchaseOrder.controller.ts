@@ -11,6 +11,93 @@ import {
   attachmentUrlsToJson,
 } from "../utils/attachmentUrls";
 import { resolveUploadUrls } from "../utils/resolveUploadUrls";
+import { generatePurchaseOrderPdf } from "../utils/generatePurchaseOrderPdf";
+
+const ADMIN_PO_ROLES = ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"];
+
+const isAdminPoRole = (role?: string) =>
+  !!role && ADMIN_PO_ROLES.includes(role);
+
+const purchaseOrderPdfInclude = {
+  project: { select: { id: true, name: true, code: true } },
+  section: { select: { id: true, name: true, code: true } },
+  material: { select: { id: true, name: true, unit: true, description: true } },
+  vendor: { select: { id: true, name: true, address: true } },
+  demand: {
+    include: {
+      creator: { select: { id: true, name: true, role: true } },
+      approvals: {
+        include: {
+          user: { select: { id: true, name: true, role: true } },
+        },
+      },
+    },
+  },
+};
+
+const assertPurchaseOrderAccess = async (
+  user: { id: string; role: string },
+  purchaseOrder: {
+    sectionId: string;
+    demand?: { createdBy?: string } | null;
+  },
+  next: NextFunction
+) => {
+  if (isAdminPoRole(user.role)) return true;
+
+  let assigned = false;
+  const sectionId = purchaseOrder.sectionId;
+  if (user.role === "SITE_INCHARGE") {
+    const assignment = await prisma.siteInchargeAssignment.findFirst({
+      where: { userId: user.id, sectionId, isActive: true },
+    });
+    assigned = !!assignment;
+  } else if (user.role === "PROJECT_MANAGER") {
+    const assignment = await prisma.projectManagerAssignment.findFirst({
+      where: { userId: user.id, sectionId, isActive: true },
+    });
+    assigned = !!assignment;
+  } else if (user.role === "CONSTRUCTION_MANAGER") {
+    const assignment = await prisma.constructionManagerAssignment.findFirst({
+      where: { userId: user.id, sectionId, isActive: true },
+    });
+    assigned = !!assignment;
+  } else if (user.role === "STORE_INCHARGE") {
+    const accessibleSectionIds =
+      await getStoreInchargeAccessibleSectionIds(user);
+    assigned = accessibleSectionIds.includes(sectionId);
+  } else if (user.role === "ACCOUNTANT") {
+    const assignment = await prisma.accountantAssignment.findFirst({
+      where: { userId: user.id, sectionId, isActive: true },
+    });
+    assigned = !!assignment;
+  }
+
+  if (!assigned) {
+    next(
+      new AppError(
+        "Access denied: not assigned to this purchase order's section",
+        403
+      )
+    );
+    return false;
+  }
+
+  if (
+    user.role === "CONSTRUCTION_MANAGER" &&
+    purchaseOrder.demand?.createdBy !== user.id
+  ) {
+    next(
+      new AppError(
+        "Access denied: purchase order not linked to your demands",
+        403
+      )
+    );
+    return false;
+  }
+
+  return true;
+};
 
 // Helper to calculate total PO quantity for a demand
 async function getTotalPOQuantityForDemand(demandId: string) {
@@ -357,23 +444,17 @@ export const getPurchaseOrder = catchAsync(
     const purchaseOrder = await prisma.purchaseOrder.findFirst({
       where: { id, isDeleted: false },
       include: {
+        ...purchaseOrderPdfInclude,
         demand: {
           include: {
+            ...purchaseOrderPdfInclude.demand.include,
             section: {
               include: {
                 project: true,
               },
             },
-            approvals: {
-              include: {
-                user: true,
-              },
-            },
           },
         },
-        section: true,
-        material: true, // <-- add this line to include material details
-        vendor: true, // <-- add this line to include vendor details
       },
     });
 
@@ -381,63 +462,62 @@ export const getPurchaseOrder = catchAsync(
       return next(new AppError("Purchase Order not found", 404));
     }
 
-    // Role-based access check
-    if (user.role !== "ADMIN") {
-      let assigned = false;
-      const sectionId = purchaseOrder.sectionId;
-      if (user.role === "SITE_INCHARGE") {
-        const assignment = await prisma.siteInchargeAssignment.findFirst({
-          where: { userId: user.id, sectionId, isActive: true },
-        });
-        assigned = !!assignment;
-      } else if (user.role === "PROJECT_MANAGER") {
-        const assignment = await prisma.projectManagerAssignment.findFirst({
-          where: { userId: user.id, sectionId, isActive: true },
-        });
-        assigned = !!assignment;
-      } else if (user.role === "CONSTRUCTION_MANAGER") {
-        const assignment = await prisma.constructionManagerAssignment.findFirst(
-          {
-            where: { userId: user.id, sectionId, isActive: true },
-          }
-        );
-        assigned = !!assignment;
-      } else if (user.role === "STORE_INCHARGE") {
-        const accessibleSectionIds =
-          await getStoreInchargeAccessibleSectionIds(user);
-        assigned = accessibleSectionIds.includes(sectionId);
-      } else if (user.role === "ACCOUNTANT") {
-        const assignment = await prisma.accountantAssignment.findFirst({
-          where: { userId: user.id, sectionId, isActive: true },
-        });
-        assigned = !!assignment;
-      }
-      if (!assigned) {
-        return next(
-          new AppError(
-            "Access denied: not assigned to this purchase order's section",
-            403
-          )
-        );
-      }
-
-      if (
-        user.role === "CONSTRUCTION_MANAGER" &&
-        purchaseOrder.demand?.createdBy !== user.id
-      ) {
-        return next(
-          new AppError(
-            "Access denied: purchase order not linked to your demands",
-            403
-          )
-        );
-      }
-    }
+    const allowed = await assertPurchaseOrderAccess(user, purchaseOrder, next);
+    if (!allowed) return;
 
     res.status(200).json({
       status: "success",
       data: purchaseOrder,
     });
+  }
+);
+
+export const downloadPurchaseOrderPdf = catchAsync(
+  async (req: Request, res: Response, next: NextFunction) => {
+    const { id } = req.params;
+    const user = req.user;
+
+    const purchaseOrder = await prisma.purchaseOrder.findFirst({
+      where: { id, isDeleted: false },
+      include: purchaseOrderPdfInclude,
+    });
+
+    if (!purchaseOrder) {
+      return next(new AppError("Purchase Order not found", 404));
+    }
+
+    const allowed = await assertPurchaseOrderAccess(user, purchaseOrder, next);
+    if (!allowed) return;
+
+    const pdfBuffer = await generatePurchaseOrderPdf({
+      referenceNumber: purchaseOrder.referenceNumber,
+      createdAt: purchaseOrder.createdAt,
+      projectName: purchaseOrder.project?.name || "",
+      vendorName: purchaseOrder.vendor?.name || "",
+      sectionName: purchaseOrder.section?.name || "",
+      deliverTo: purchaseOrder.section?.name || "",
+      itemName: purchaseOrder.material?.name || "",
+      unit: purchaseOrder.material?.unit || purchaseOrder.demand?.unit || "",
+      unitPrice:
+        purchaseOrder.unitPrice == null ? null : Number(purchaseOrder.unitPrice),
+      quantity: Number(purchaseOrder.quantity),
+      createdByName: purchaseOrder.demand?.creator?.name || "",
+      approvals: (purchaseOrder.demand?.approvals || []).map((approval) => ({
+        role: approval.user?.role ? String(approval.user.role) : null,
+        name: approval.user?.name ?? null,
+        status: approval.status ? String(approval.status) : null,
+      })),
+    });
+
+    const filename = `${purchaseOrder.referenceNumber.replace(/[^\w.-]+/g, "_")}.pdf`;
+    const asAttachment = String(req.query.download || "") === "1";
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `${asAttachment ? "attachment" : "inline"}; filename="${filename}"`
+    );
+    res.setHeader("Content-Length", String(pdfBuffer.length));
+    res.status(200).end(pdfBuffer);
   }
 );
 

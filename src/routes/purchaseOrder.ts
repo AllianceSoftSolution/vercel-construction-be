@@ -3,6 +3,7 @@ import {
   createPurchaseOrder,
   getPurchaseOrders,
   getPurchaseOrder,
+  downloadPurchaseOrderPdf,
   updatePurchaseOrder,
   deletePurchaseOrder,
   getPurchaseOrdersByVendor,
@@ -23,6 +24,7 @@ router.get("/", protect, getPurchaseOrders);
 router.get("/summary", protect, getPurchaseOrderSummary);
 router.get("/vendor", protect, getPurchaseOrdersByVendor);
 router.get("/demand/:demandId/statistics", protect, getDemandPOStatistics);
+router.get("/:id/pdf", protect, downloadPurchaseOrderPdf);
 router.get("/:id", protect, getPurchaseOrder);
 router.put("/:id", protect, updatePurchaseOrder);
 router.patch("/:id/status", protect, updatePOStatus);
