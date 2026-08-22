@@ -489,7 +489,7 @@ export const addPettyCashPool = catchAsync(
     const user = req.user;
     if (!canAddPettyCashPool(user)) {
       return next(
-        new AppError("Only admins can add petty cash to the head office pool", 403)
+        new AppError("Only admins can add petty cash to the head office balance", 403)
       );
     }
 
@@ -567,7 +567,7 @@ export const addFunding = catchAsync(
     const poolError = assertSufficientPettyCashBalance(
       remaining,
       Number(amount),
-      "petty cash pool balance"
+      "head office petty cash balance"
     );
     if (poolError) return next(new AppError(poolError, 400));
 

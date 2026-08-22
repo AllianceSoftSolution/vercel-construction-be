@@ -353,7 +353,7 @@ exports.getTransactions = (0, catchAsync_1.default)(async (req, res) => {
 exports.addPettyCashPool = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
     if (!(0, pettyCashAccess_1.canAddPettyCashPool)(user)) {
-        return next(new appError_1.default("Only admins can add petty cash to the head office pool", 403));
+        return next(new appError_1.default("Only admins can add petty cash to the head office balance", 403));
     }
     const { amount, description } = req.body;
     const proofUrls = (0, resolveUploadUrls_1.resolveUploadUrls)(req, {
@@ -410,7 +410,7 @@ exports.addFunding = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new appError_1.default("Proof is required", 400));
     }
     const remaining = await (0, pettyCashAccess_1.getHeadOfficeDistributableRemaining)();
-    const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "petty cash pool balance");
+    const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "head office petty cash balance");
     if (poolError)
         return next(new appError_1.default(poolError, 400));
     const tx = await prisma_1.default.pettyCashTransaction.create({
