@@ -39,6 +39,11 @@ router.delete(
 
 // Transactions
 router.get("/transactions", protect, pettyCashController.getTransactions);
+router.get(
+  "/admin/audit-log",
+  protect,
+  pettyCashController.getAdminPettyCashAuditLogHandler
+);
 
 router.post(
   "/pool",
@@ -47,7 +52,7 @@ router.post(
   pettyCashController.addPettyCashPool
 );
 
-// Funding (distribute central pool to a project)
+// Funding (distribute central balance to a project)
 router.post(
   "/funding",
   protect,

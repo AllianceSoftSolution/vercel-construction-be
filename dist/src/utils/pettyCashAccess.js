@@ -3,36 +3,36 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.computeSectionBalances = exports.assertSufficientPettyCashBalance = exports.getSectionRemaining = exports.getProjectPoolRemaining = exports.computeProjectBalances = exports.resolveFilteredProjectIds = exports.getPettyCashBalanceScope = exports.mapProjectBalancesForOverview = exports.mapProjectBalancesForHeadOffice = exports.aggregateOverviewTotals = exports.computePettyCashOverview = exports.aggregatePettyCashTotals = exports.parsePettyCashListFilters = exports.applyPettyCashListFilters = exports.assertSectionAccess = exports.assertProjectAccess = exports.buildPettyCashAccessWhere = exports.getSectionAccountantUser = exports.getSectionAccountantSectionIds = exports.getHeadOfficeProjectIds = exports.isSectionAccountantFor = exports.getProjectManagerSectionIds = exports.getProjectManagerProjectIds = exports.isProjectManagerForSection = exports.isProjectManagerForProject = exports.getPettyCashOverviewViewMode = exports.usesSectionScopedOverview = exports.assignHeadOfficeAccountantsToProject = exports.getPettyCashRoleScope = exports.canAddPettyCashFunding = exports.getHeadOfficeDistributableRemaining = exports.isHeadOfficeAccountant = exports.syncHeadOfficeAccountantProjectAssignments = exports.isHeadOfficeUser = exports.isProjectAccountantUser = exports.getProjectAccountantProjectIds = exports.getAccessibleProjectIds = exports.canAddPettyCashPool = exports.resolveHeadOfficePettyCashProjectId = exports.getHeadOfficePettyCashProjectId = exports.getPettyCashOperationalProjectError = exports.pettyCashOperationalProjectWhere = exports.filterPettyCashSelectableProjects = exports.isPettyCashSelectableProject = exports.PETTY_CASH_UI_EXCLUDED_PROJECT_CODES = exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = exports.isPettyCashExpenseHeadAdmin = exports.isAdminRole = void 0;
+exports.getSectionRemaining = exports.getProjectPoolRemaining = exports.computeProjectBalances = exports.resolveFilteredProjectIds = exports.getPettyCashBalanceScope = exports.mapProjectBalancesForOverview = exports.mapProjectBalancesForHeadOffice = exports.aggregateOverviewTotals = exports.computePettyCashOverview = exports.aggregatePettyCashTotals = exports.parsePettyCashListFilters = exports.applyPettyCashListFilters = exports.assertSectionAccess = exports.assertProjectAccess = exports.buildPettyCashAccessWhere = exports.getSectionAccountantUser = exports.getSectionAccountantSectionIds = exports.getHeadOfficeProjectIds = exports.isSectionAccountantFor = exports.getProjectManagerSectionIds = exports.getProjectManagerProjectIds = exports.isProjectManagerForSection = exports.isProjectManagerForProject = exports.getPettyCashOverviewViewMode = exports.usesSectionScopedOverview = exports.assignHeadOfficeAccountantsToProject = exports.getPettyCashRoleScope = exports.canAddPettyCashFunding = exports.getAdminPettyCashAuditLog = exports.getHeadOfficeDistributableRemaining = exports.isHeadOfficeAccountant = exports.syncHeadOfficeAccountantProjectAssignments = exports.isHeadOfficeUser = exports.isProjectAccountantUser = exports.getProjectAccountantProjectIds = exports.getAccessibleProjectIds = exports.canAddPettyCashPool = exports.resolveHeadOfficePettyCashProjectId = exports.getHeadOfficePettyCashProjectId = exports.getPettyCashOperationalProjectError = exports.pettyCashProjectListWhere = exports.canViewHeadOfficePettyCashProject = exports.filterPettyCashSelectableProjects = exports.isPettyCashSelectableProject = exports.filterPettyCashOperationalTargets = exports.isPettyCashOperationalTarget = exports.isHeadOfficePettyCashProject = exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = exports.isPettyCashExpenseHeadAdmin = exports.isAdminRole = void 0;
+exports.computeSectionBalances = exports.assertSufficientPettyCashBalance = void 0;
 const prisma_1 = __importDefault(require("./prisma"));
 const isAdminRole = (role) => ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"].includes(role);
 exports.isAdminRole = isAdminRole;
 const isPettyCashExpenseHeadAdmin = (user) => user.role === "ADMIN" || user.role === "SUPER_ADMIN";
 exports.isPettyCashExpenseHeadAdmin = isPettyCashExpenseHeadAdmin;
 exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = "HO-Petty";
-exports.PETTY_CASH_UI_EXCLUDED_PROJECT_CODES = [
-    exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE,
-];
-const isPettyCashSelectableProject = (project) => {
+const isHeadOfficePettyCashProject = (project) => {
     const code = (project.code || "").trim();
-    if (exports.PETTY_CASH_UI_EXCLUDED_PROJECT_CODES.includes(code)) {
-        return false;
-    }
-    const name = (project.name || "").trim().toLowerCase();
-    return name !== "head office petty cash";
+    if (code === exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE)
+        return true;
+    return (project.name || "").trim().toLowerCase() === "head office petty cash";
 };
-exports.isPettyCashSelectableProject = isPettyCashSelectableProject;
-const filterPettyCashSelectableProjects = (projects) => projects.filter(exports.isPettyCashSelectableProject);
-exports.filterPettyCashSelectableProjects = filterPettyCashSelectableProjects;
-const pettyCashOperationalProjectWhere = () => ({
-    code: { notIn: [...exports.PETTY_CASH_UI_EXCLUDED_PROJECT_CODES] },
-});
-exports.pettyCashOperationalProjectWhere = pettyCashOperationalProjectWhere;
-const getPettyCashOperationalProjectError = (project) => {
-    if ((0, exports.isPettyCashSelectableProject)(project))
-        return null;
-    return "Head Office Petty Cash cannot be selected for petty cash operations. Choose an operational project.";
+exports.isHeadOfficePettyCashProject = isHeadOfficePettyCashProject;
+const isPettyCashOperationalTarget = (_project) => true;
+exports.isPettyCashOperationalTarget = isPettyCashOperationalTarget;
+const filterPettyCashOperationalTargets = (projects) => projects.filter(exports.isPettyCashOperationalTarget);
+exports.filterPettyCashOperationalTargets = filterPettyCashOperationalTargets;
+exports.isPettyCashSelectableProject = exports.isPettyCashOperationalTarget;
+exports.filterPettyCashSelectableProjects = exports.filterPettyCashOperationalTargets;
+const canViewHeadOfficePettyCashProject = async (user) => {
+    if ((0, exports.isAdminRole)(user.role))
+        return true;
+    return (0, exports.isHeadOfficeAccountant)(user);
 };
+exports.canViewHeadOfficePettyCashProject = canViewHeadOfficePettyCashProject;
+const pettyCashProjectListWhere = async (_user) => ({});
+exports.pettyCashProjectListWhere = pettyCashProjectListWhere;
+const getPettyCashOperationalProjectError = (_project) => null;
 exports.getPettyCashOperationalProjectError = getPettyCashOperationalProjectError;
 const getHeadOfficePettyCashProjectId = async () => {
     const project = await prisma_1.default.project.findFirst({
@@ -53,7 +53,7 @@ const resolveHeadOfficePettyCashProjectId = async (createdBy) => {
         data: {
             name: "Head Office Petty Cash",
             code: exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE,
-            description: "Central petty cash pool funded by admins",
+            description: "Head Office petty cash project",
             isActive: true,
             isDeleted: false,
             createdBy,
@@ -182,23 +182,14 @@ const isHeadOfficeAccountant = async (user) => {
     return all.every((id) => assigned.includes(id));
 };
 exports.isHeadOfficeAccountant = isHeadOfficeAccountant;
-const getHeadOfficeDistributableRemaining = async () => {
-    const poolProjectId = await (0, exports.getHeadOfficePettyCashProjectId)();
-    if (!poolProjectId)
-        return 0;
-    const firstPoolAdd = await prisma_1.default.pettyCashTransaction.findFirst({
-        where: {
-            isDeleted: false,
-            type: "FUNDING",
-            projectId: poolProjectId,
-            creator: { role: { in: ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"] } },
-        },
-        orderBy: { createdAt: "asc" },
-        select: { createdAt: true },
-    });
-    if (!firstPoolAdd)
-        return 0;
-    const poolEpoch = firstPoolAdd.createdAt;
+const isCentralPoolCredit = (tx) => tx.projectId == null && tx.creator != null && (0, exports.isAdminRole)(tx.creator.role);
+const isCentralPoolDebit = (tx) => {
+    if (tx.projectId == null || !tx.creator)
+        return false;
+    return ((0, exports.isAdminRole)(tx.creator.role) ||
+        (tx.creator.role === "ACCOUNTANT" && !!tx.creator.isHead));
+};
+const computeHeadOfficeCentralBalanceTotals = async () => {
     const txs = await prisma_1.default.pettyCashTransaction.findMany({
         where: { isDeleted: false, type: "FUNDING" },
         select: {
@@ -208,29 +199,111 @@ const getHeadOfficeDistributableRemaining = async () => {
             creator: { select: { role: true, isHead: true } },
         },
     });
-    let poolAdded = 0;
-    let poolDistributed = 0;
+    let totalAdded = 0;
+    const creditDates = [];
     for (const tx of txs) {
-        const amt = Number(tx.amount);
-        const creator = tx.creator;
-        if (!creator)
+        if (!isCentralPoolCredit(tx))
             continue;
-        if (tx.projectId === poolProjectId && (0, exports.isAdminRole)(creator.role)) {
-            poolAdded += amt;
-            continue;
-        }
-        if (tx.projectId !== poolProjectId &&
-            tx.createdAt >= poolEpoch) {
-            const distributedByHo = creator.role === "ACCOUNTANT" && creator.isHead;
-            const distributedByAdmin = (0, exports.isAdminRole)(creator.role);
-            if (distributedByHo || distributedByAdmin) {
-                poolDistributed += amt;
-            }
-        }
+        totalAdded += Number(tx.amount);
+        creditDates.push(tx.createdAt);
     }
-    return Math.max(0, poolAdded - poolDistributed);
+    if (creditDates.length === 0) {
+        return { totalAdded: 0, totalDistributed: 0, remaining: 0 };
+    }
+    const poolEpoch = creditDates.reduce((min, d) => (d < min ? d : min));
+    let totalDistributed = 0;
+    for (const tx of txs) {
+        if (!isCentralPoolDebit(tx))
+            continue;
+        if (tx.createdAt < poolEpoch)
+            continue;
+        totalDistributed += Number(tx.amount);
+    }
+    const remaining = Math.max(0, totalAdded - totalDistributed);
+    return { totalAdded, totalDistributed, remaining };
+};
+const getHeadOfficeDistributableRemaining = async () => {
+    const { remaining } = await computeHeadOfficeCentralBalanceTotals();
+    return remaining;
 };
 exports.getHeadOfficeDistributableRemaining = getHeadOfficeDistributableRemaining;
+const getAdminPettyCashAuditLog = async () => {
+    const { totalAdded, totalDistributed, remaining } = await computeHeadOfficeCentralBalanceTotals();
+    const firstPoolAdd = await prisma_1.default.pettyCashTransaction.findFirst({
+        where: {
+            isDeleted: false,
+            type: "FUNDING",
+            projectId: null,
+            creator: { role: { in: ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"] } },
+        },
+        orderBy: { createdAt: "asc" },
+        select: { createdAt: true },
+    });
+    if (!firstPoolAdd) {
+        return {
+            summary: {
+                totalCredited: 0,
+                totalDebited: 0,
+                remainingBalance: 0,
+            },
+            entries: [],
+        };
+    }
+    const poolEpoch = firstPoolAdd.createdAt;
+    const txs = await prisma_1.default.pettyCashTransaction.findMany({
+        where: {
+            isDeleted: false,
+            type: "FUNDING",
+            OR: [
+                {
+                    projectId: null,
+                    creator: { role: { in: ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"] } },
+                },
+                {
+                    projectId: { not: null },
+                    createdAt: { gte: poolEpoch },
+                    OR: [
+                        { creator: { role: { in: ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"] } } },
+                        { creator: { role: "ACCOUNTANT", isHead: true } },
+                    ],
+                },
+            ],
+        },
+        include: {
+            project: { select: { id: true, name: true, code: true } },
+            creator: { select: { id: true, name: true, email: true, role: true } },
+        },
+        orderBy: { createdAt: "desc" },
+    });
+    const entries = txs.map((tx) => {
+        const isCredit = isCentralPoolCredit(tx);
+        return {
+            id: tx.id,
+            createdAt: tx.createdAt,
+            direction: isCredit ? "CREDIT" : "DEBIT",
+            type: "FUNDING",
+            label: isCredit ? "Petty Cash Added" : "Distribute to Project",
+            amount: Number(tx.amount),
+            projectId: tx.project?.id ?? null,
+            projectName: isCredit
+                ? "Central Petty Cash"
+                : tx.project?.name ?? "-",
+            projectCode: tx.project?.code ?? null,
+            description: tx.description,
+            proofUrl: tx.proofUrl,
+            creator: tx.creator,
+        };
+    });
+    return {
+        summary: {
+            totalCredited: totalAdded,
+            totalDebited: totalDistributed,
+            remainingBalance: remaining,
+        },
+        entries,
+    };
+};
+exports.getAdminPettyCashAuditLog = getAdminPettyCashAuditLog;
 const canAddPettyCashFunding = async (user) => (0, exports.isAdminRole)(user.role) || (await (0, exports.isHeadOfficeAccountant)(user));
 exports.canAddPettyCashFunding = canAddPettyCashFunding;
 const getPettyCashRoleScope = async (user) => {
@@ -335,7 +408,6 @@ const getHeadOfficeProjectIds = async (_userId) => {
         where: {
             isDeleted: false,
             isActive: true,
-            ...(0, exports.pettyCashOperationalProjectWhere)(),
         },
         select: { id: true },
     });
@@ -371,7 +443,7 @@ const getSectionAccountantUser = async (sectionId) => {
 };
 exports.getSectionAccountantUser = getSectionAccountantUser;
 const buildPettyCashAccessWhere = async (user) => {
-    const base = { isDeleted: false };
+    const base = { isDeleted: false, projectId: { not: null } };
     if ((0, exports.isAdminRole)(user.role)) {
         return base;
     }
@@ -459,12 +531,15 @@ const constrainIdFilter = (existing, requested) => {
     if (typeof existing === "string") {
         return existing === requested ? requested : "__none__";
     }
-    if (typeof existing === "object" &&
-        existing !== null &&
-        "in" in existing &&
-        Array.isArray(existing.in)) {
-        const ids = existing.in;
-        return ids.includes(requested) ? requested : "__none__";
+    if (typeof existing === "object" && existing !== null) {
+        if ("not" in existing &&
+            existing.not === null) {
+            return requested;
+        }
+        if ("in" in existing && Array.isArray(existing.in)) {
+            const ids = existing.in;
+            return ids.includes(requested) ? requested : "__none__";
+        }
     }
     return "__none__";
 };

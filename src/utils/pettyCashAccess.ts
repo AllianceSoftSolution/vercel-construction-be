@@ -14,43 +14,44 @@ export const isAdminRole = (role: string) =>
 export const isPettyCashExpenseHeadAdmin = (user: PettyCashUser) =>
   user.role === "ADMIN" || user.role === "SUPER_ADMIN";
 
-/** Internal pool project — hidden from non-admin petty cash project pickers */
+/** Head Office Petty Cash is a normal project, not the central balance */
 export const HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = "HO-Petty";
-export const PETTY_CASH_UI_EXCLUDED_PROJECT_CODES = [
-  HEAD_OFFICE_PETTY_CASH_PROJECT_CODE,
-] as const;
 
 export type PettyCashProjectRef = {
   code?: string | null;
   name?: string | null;
 };
 
-export const isPettyCashSelectableProject = (project: PettyCashProjectRef) => {
+export const isHeadOfficePettyCashProject = (project: PettyCashProjectRef) => {
   const code = (project.code || "").trim();
-  if (
-    PETTY_CASH_UI_EXCLUDED_PROJECT_CODES.includes(
-      code as (typeof PETTY_CASH_UI_EXCLUDED_PROJECT_CODES)[number]
-    )
-  ) {
-    return false;
-  }
-  const name = (project.name || "").trim().toLowerCase();
-  return name !== "head office petty cash";
+  if (code === HEAD_OFFICE_PETTY_CASH_PROJECT_CODE) return true;
+  return (project.name || "").trim().toLowerCase() === "head office petty cash";
 };
 
-export const filterPettyCashSelectableProjects = <T extends PettyCashProjectRef>(
+/** All projects, including HO-Petty, are valid distribute/expense targets */
+export const isPettyCashOperationalTarget = (_project: PettyCashProjectRef) =>
+  true;
+
+export const filterPettyCashOperationalTargets = <T extends PettyCashProjectRef>(
   projects: T[]
-) => projects.filter(isPettyCashSelectableProject);
+) => projects.filter(isPettyCashOperationalTarget);
 
-export const pettyCashOperationalProjectWhere = () => ({
-  code: { notIn: [...PETTY_CASH_UI_EXCLUDED_PROJECT_CODES] },
-});
+/** @deprecated Use isPettyCashOperationalTarget */
+export const isPettyCashSelectableProject = isPettyCashOperationalTarget;
 
-/** Reject petty cash mutations targeting the internal HO pool project */
-export const getPettyCashOperationalProjectError = (project: PettyCashProjectRef) => {
-  if (isPettyCashSelectableProject(project)) return null;
-  return "Head Office Petty Cash cannot be selected for petty cash operations. Choose an operational project.";
+/** @deprecated Use filterPettyCashOperationalTargets */
+export const filterPettyCashSelectableProjects = filterPettyCashOperationalTargets;
+
+export const canViewHeadOfficePettyCashProject = async (user: PettyCashUser) => {
+  if (isAdminRole(user.role)) return true;
+  return isHeadOfficeAccountant(user);
 };
+
+export const pettyCashProjectListWhere = async (_user?: PettyCashUser) => ({});
+
+export const getPettyCashOperationalProjectError = (
+  _project: PettyCashProjectRef
+) => null;
 
 export const getHeadOfficePettyCashProjectId = async () => {
   const project = await prisma.project.findFirst({
@@ -71,7 +72,7 @@ export const resolveHeadOfficePettyCashProjectId = async (createdBy: string) => 
     data: {
       name: "Head Office Petty Cash",
       code: HEAD_OFFICE_PETTY_CASH_PROJECT_CODE,
-      description: "Central petty cash pool funded by admins",
+      description: "Head Office petty cash project",
       isActive: true,
       isDeleted: false,
       createdBy,
@@ -81,7 +82,7 @@ export const resolveHeadOfficePettyCashProjectId = async (createdBy: string) => 
   return created.id;
 };
 
-/** Admins inject petty cash into the central HO pool (not project distribution) */
+/** Admins inject petty cash into the central balance (not a project) */
 export const canAddPettyCashPool = (user: PettyCashUser) =>
   isAdminRole(user.role);
 
@@ -225,29 +226,24 @@ export const isHeadOfficeAccountant = async (user: PettyCashUser) => {
   return all.every((id) => assigned.includes(id));
 };
 
-/**
- * Central petty cash pool: admin FUNDING on HO-Petty minus FUNDING sent to
- * operational projects by admins or head office accountants.
- */
-export const getHeadOfficeDistributableRemaining = async () => {
-  const poolProjectId = await getHeadOfficePettyCashProjectId();
-  if (!poolProjectId) return 0;
+const isCentralPoolCredit = (
+  tx: { projectId: string | null; creator: { role: string } | null }
+) => tx.projectId == null && tx.creator != null && isAdminRole(tx.creator.role);
 
-  const firstPoolAdd = await prisma.pettyCashTransaction.findFirst({
-    where: {
-      isDeleted: false,
-      type: "FUNDING",
-      projectId: poolProjectId,
-      creator: { role: { in: ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"] } },
-    },
-    orderBy: { createdAt: "asc" },
-    select: { createdAt: true },
-  });
+const isCentralPoolDebit = (
+  tx: {
+    projectId: string | null;
+    creator: { role: string; isHead?: boolean | null } | null;
+  }
+) => {
+  if (tx.projectId == null || !tx.creator) return false;
+  return (
+    isAdminRole(tx.creator.role) ||
+    (tx.creator.role === "ACCOUNTANT" && !!tx.creator.isHead)
+  );
+};
 
-  if (!firstPoolAdd) return 0;
-
-  const poolEpoch = firstPoolAdd.createdAt;
-
+const computeHeadOfficeCentralBalanceTotals = async () => {
   const txs = await prisma.pettyCashTransaction.findMany({
     where: { isDeleted: false, type: "FUNDING" },
     select: {
@@ -258,33 +254,144 @@ export const getHeadOfficeDistributableRemaining = async () => {
     },
   });
 
-  let poolAdded = 0;
-  let poolDistributed = 0;
+  let totalAdded = 0;
+  const creditDates: Date[] = [];
 
   for (const tx of txs) {
-    const amt = Number(tx.amount);
-    const creator = tx.creator;
-    if (!creator) continue;
-
-    if (tx.projectId === poolProjectId && isAdminRole(creator.role)) {
-      poolAdded += amt;
-      continue;
-    }
-
-    if (
-      tx.projectId !== poolProjectId &&
-      tx.createdAt >= poolEpoch
-    ) {
-      const distributedByHo =
-        creator.role === "ACCOUNTANT" && creator.isHead;
-      const distributedByAdmin = isAdminRole(creator.role);
-      if (distributedByHo || distributedByAdmin) {
-        poolDistributed += amt;
-      }
-    }
+    if (!isCentralPoolCredit(tx)) continue;
+    totalAdded += Number(tx.amount);
+    creditDates.push(tx.createdAt);
   }
 
-  return Math.max(0, poolAdded - poolDistributed);
+  if (creditDates.length === 0) {
+    return { totalAdded: 0, totalDistributed: 0, remaining: 0 };
+  }
+
+  const poolEpoch = creditDates.reduce((min, d) => (d < min ? d : min));
+
+  let totalDistributed = 0;
+  for (const tx of txs) {
+    if (!isCentralPoolDebit(tx)) continue;
+    if (tx.createdAt < poolEpoch) continue;
+    totalDistributed += Number(tx.amount);
+  }
+
+  const remaining = Math.max(0, totalAdded - totalDistributed);
+  return { totalAdded, totalDistributed, remaining };
+};
+
+/**
+ * Central petty cash balance: admin Add Petty Cash (no project) minus
+ * Distribute to Project by admins or head office accountants.
+ */
+export const getHeadOfficeDistributableRemaining = async () => {
+  const { remaining } = await computeHeadOfficeCentralBalanceTotals();
+  return remaining;
+};
+
+export type AdminPettyCashAuditEntry = {
+  id: string;
+  createdAt: Date;
+  direction: "CREDIT" | "DEBIT";
+  type: "FUNDING";
+  label: string;
+  amount: number;
+  projectId: string | null;
+  projectName: string;
+  projectCode: string | null;
+  description: string | null;
+  proofUrl: unknown;
+  creator: {
+    id: string;
+    name: string;
+    email: string | null;
+    role: string;
+  } | null;
+};
+
+export const getAdminPettyCashAuditLog = async () => {
+  const { totalAdded, totalDistributed, remaining } =
+    await computeHeadOfficeCentralBalanceTotals();
+
+  const firstPoolAdd = await prisma.pettyCashTransaction.findFirst({
+    where: {
+      isDeleted: false,
+      type: "FUNDING",
+      projectId: null,
+      creator: { role: { in: ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"] } },
+    },
+    orderBy: { createdAt: "asc" },
+    select: { createdAt: true },
+  });
+
+  if (!firstPoolAdd) {
+    return {
+      summary: {
+        totalCredited: 0,
+        totalDebited: 0,
+        remainingBalance: 0,
+      },
+      entries: [] as AdminPettyCashAuditEntry[],
+    };
+  }
+
+  const poolEpoch = firstPoolAdd.createdAt;
+
+  const txs = await prisma.pettyCashTransaction.findMany({
+    where: {
+      isDeleted: false,
+      type: "FUNDING",
+      OR: [
+        {
+          projectId: null,
+          creator: { role: { in: ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"] } },
+        },
+        {
+          projectId: { not: null },
+          createdAt: { gte: poolEpoch },
+          OR: [
+            { creator: { role: { in: ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"] } } },
+            { creator: { role: "ACCOUNTANT", isHead: true } },
+          ],
+        },
+      ],
+    },
+    include: {
+      project: { select: { id: true, name: true, code: true } },
+      creator: { select: { id: true, name: true, email: true, role: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const entries: AdminPettyCashAuditEntry[] = txs.map((tx) => {
+    const isCredit = isCentralPoolCredit(tx);
+
+    return {
+      id: tx.id,
+      createdAt: tx.createdAt,
+      direction: isCredit ? "CREDIT" : "DEBIT",
+      type: "FUNDING",
+      label: isCredit ? "Petty Cash Added" : "Distribute to Project",
+      amount: Number(tx.amount),
+      projectId: tx.project?.id ?? null,
+      projectName: isCredit
+        ? "Central Petty Cash"
+        : tx.project?.name ?? "-",
+      projectCode: tx.project?.code ?? null,
+      description: tx.description,
+      proofUrl: tx.proofUrl,
+      creator: tx.creator,
+    };
+  });
+
+  return {
+    summary: {
+      totalCredited: totalAdded,
+      totalDebited: totalDistributed,
+      remainingBalance: remaining,
+    },
+    entries,
+  };
 };
 
 /** Can inject funding into project pools (admins + true HO accountant only) */
@@ -424,7 +531,6 @@ export const getHeadOfficeProjectIds = async (_userId?: string) => {
     where: {
       isDeleted: false,
       isActive: true,
-      ...pettyCashOperationalProjectWhere(),
     },
     select: { id: true },
   });
@@ -462,7 +568,7 @@ export const getSectionAccountantUser = async (sectionId: string) => {
 
 /** Build Prisma where clause for transaction list based on role */
 export const buildPettyCashAccessWhere = async (user: PettyCashUser) => {
-  const base = { isDeleted: false };
+  const base = { isDeleted: false, projectId: { not: null } };
 
   if (isAdminRole(user.role)) {
     return base;
@@ -576,14 +682,17 @@ const constrainIdFilter = (existing: unknown, requested: string) => {
   if (typeof existing === "string") {
     return existing === requested ? requested : "__none__";
   }
-  if (
-    typeof existing === "object" &&
-    existing !== null &&
-    "in" in existing &&
-    Array.isArray((existing as { in: unknown }).in)
-  ) {
-    const ids = (existing as { in: string[] }).in;
-    return ids.includes(requested) ? requested : "__none__";
+  if (typeof existing === "object" && existing !== null) {
+    if (
+      "not" in existing &&
+      (existing as { not: unknown }).not === null
+    ) {
+      return requested;
+    }
+    if ("in" in existing && Array.isArray((existing as { in: unknown }).in)) {
+      const ids = (existing as { in: string[] }).in;
+      return ids.includes(requested) ? requested : "__none__";
+    }
   }
   return "__none__";
 };

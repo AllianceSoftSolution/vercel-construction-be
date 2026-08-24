@@ -26,15 +26,13 @@ import {
   getSectionAccountantUser,
   assertSufficientPettyCashBalance,
   getHeadOfficeDistributableRemaining,
+  getAdminPettyCashAuditLog,
   isAdminRole,
   isProjectAccountantUser,
   canAddPettyCashFunding,
   canAddPettyCashPool,
-  resolveHeadOfficePettyCashProjectId,
   getPettyCashRoleScope,
   isPettyCashExpenseHeadAdmin,
-  getPettyCashOperationalProjectError,
-  pettyCashOperationalProjectWhere,
   isProjectManagerForProject,
   isProjectManagerForSection,
   isSectionAccountantFor,
@@ -254,7 +252,6 @@ export const getSummaryByProject = catchAsync(
       where: {
         id: { in: filteredIds.length ? filteredIds : ["__none__"] },
         isDeleted: false,
-        ...pettyCashOperationalProjectWhere(),
       },
       select: { id: true, name: true, code: true },
       orderBy: { name: "asc" },
@@ -306,7 +303,6 @@ export const getSummaryBySection = catchAsync(
         where: {
           projectId: { in: projectIds.length ? projectIds : ["__none__"] },
           isDeleted: false,
-          project: pettyCashOperationalProjectWhere(),
         },
         select: { id: true },
       });
@@ -330,7 +326,6 @@ export const getSummaryBySection = catchAsync(
       where: {
         id: { in: sectionIds.length ? sectionIds : ["__none__"] },
         isDeleted: false,
-        project: pettyCashOperationalProjectWhere(),
       },
       include: {
         project: { select: { id: true, name: true, code: true } },
@@ -482,14 +477,37 @@ export const getTransactions = catchAsync(async (req: Request, res: Response) =>
   });
 });
 
-// ─── Add Petty Cash (central HO pool — admins only) ────────────────────────
+export const getAdminPettyCashAuditLogHandler = catchAsync(
+  async (req: Request, res: Response, next) => {
+    const user = req.user;
+    if (!isAdminRole(user.role)) {
+      return next(
+        new AppError("Only admins can view the petty cash audit log", 403)
+      );
+    }
+
+    const auditLog = await getAdminPettyCashAuditLog();
+
+    res.status(200).json({
+      status: "success",
+      data: {
+        summary: auditLog.summary,
+        entries: auditLog.entries.map((entry) =>
+          mapRecordAttachmentFields(entry, ["proofUrl"])
+        ),
+      },
+    });
+  }
+);
+
+// ─── Add Petty Cash (central balance — admins only) ────────────────────────
 
 export const addPettyCashPool = catchAsync(
   async (req: Request, res: Response, next) => {
     const user = req.user;
     if (!canAddPettyCashPool(user)) {
       return next(
-        new AppError("Only admins can add petty cash to the head office balance", 403)
+        new AppError("Only admins can add petty cash to the central balance", 403)
       );
     }
 
@@ -506,12 +524,10 @@ export const addPettyCashPool = catchAsync(
       return next(new AppError("Proof is required", 400));
     }
 
-    const poolProjectId = await resolveHeadOfficePettyCashProjectId(user.id);
-
     const tx = await prisma.pettyCashTransaction.create({
       data: {
         type: "FUNDING",
-        projectId: poolProjectId,
+        projectId: null,
         amount: Number(amount),
         proofUrl: attachmentUrlsToJson(proofUrls),
         description: description?.trim() || null,
@@ -553,8 +569,6 @@ export const addFunding = catchAsync(
       where: { id: projectId, isDeleted: false },
     });
     if (!project) return next(new AppError("Project not found", 404));
-    const operationalError = getPettyCashOperationalProjectError(project);
-    if (operationalError) return next(new AppError(operationalError, 400));
     if (!(await assertProjectAccess(user, projectId))) {
       return next(new AppError("Not authorized for this project", 403));
     }
@@ -567,7 +581,7 @@ export const addFunding = catchAsync(
     const poolError = assertSufficientPettyCashBalance(
       remaining,
       Number(amount),
-      "head office petty cash balance"
+      "central petty cash balance"
     );
     if (poolError) return next(new AppError(poolError, 400));
 
@@ -617,11 +631,6 @@ export const addInternalExpense = catchAsync(
       select: { code: true, name: true },
     });
     if (!internalProject) return next(new AppError("Project not found", 404));
-    const internalProjectError =
-      getPettyCashOperationalProjectError(internalProject);
-    if (internalProjectError) {
-      return next(new AppError(internalProjectError, 400));
-    }
 
     if (proofUrls.length === 0) {
       return next(new AppError("Proof of expense is required", 400));
@@ -693,11 +702,6 @@ export const addDistribution = catchAsync(
       select: { code: true, name: true },
     });
     if (!distributionProject) return next(new AppError("Project not found", 404));
-    const distributionProjectError =
-      getPettyCashOperationalProjectError(distributionProject);
-    if (distributionProjectError) {
-      return next(new AppError(distributionProjectError, 400));
-    }
 
     if (proofUrls.length === 0) {
       return next(new AppError("Proof of expense is required", 400));
@@ -719,12 +723,6 @@ export const addDistribution = catchAsync(
       include: { project: { select: { code: true, name: true } } },
     });
     if (!section) return next(new AppError("Section not found in project", 404));
-    const distributionSectionProjectError = getPettyCashOperationalProjectError(
-      section.project
-    );
-    if (distributionSectionProjectError) {
-      return next(new AppError(distributionSectionProjectError, 400));
-    }
 
     const sectionAccountant = await getSectionAccountantUser(sectionId);
     if (!sectionAccountant) {

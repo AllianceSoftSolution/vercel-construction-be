@@ -14,6 +14,9 @@ COPY . .
 # Install all dependencies (including devDependencies) for build
 RUN npm install
 
+# Apply pending Prisma migrations to the build-time DATABASE_URL
+RUN npx prisma migrate deploy
+
 # Build the project (TypeScript, etc.)
 RUN NODE_OPTIONS=--max-old-space-size=4096 npm run build
 

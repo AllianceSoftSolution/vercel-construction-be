@@ -1,7 +1,8 @@
 import {
-  filterPettyCashSelectableProjects,
+  filterPettyCashOperationalTargets,
   getPettyCashOperationalProjectError,
-  isPettyCashSelectableProject,
+  isHeadOfficePettyCashProject,
+  isPettyCashOperationalTarget,
 } from "../utils/pettyCashAccess";
 
 const checks: { name: string; pass: boolean }[] = [];
@@ -11,34 +12,41 @@ const record = (name: string, pass: boolean) => {
 };
 
 record(
-  "HO-Petty excluded by code",
-  !isPettyCashSelectableProject({ code: "HO-Petty", name: "Head Office Petty Cash" })
+  "HO-Petty identified by code",
+  isHeadOfficePettyCashProject({ code: "HO-Petty", name: "Head Office Petty Cash" })
 );
 record(
-  "HO-Petty excluded by name",
-  !isPettyCashSelectableProject({ code: "OTHER", name: "Head Office Petty Cash" })
+  "HO-Petty identified by name",
+  isHeadOfficePettyCashProject({ code: "OTHER", name: "Head Office Petty Cash" })
 );
 record(
-  "Operational project allowed",
-  isPettyCashSelectableProject({ code: "N55-LOT3", name: "N-55 LOT-3" })
+  "HO-Petty is a valid funding target",
+  isPettyCashOperationalTarget({ code: "HO-Petty", name: "Head Office Petty Cash" })
+);
+record(
+  "Site project allowed as target",
+  isPettyCashOperationalTarget({ code: "N55-LOT3", name: "N-55 LOT-3" })
 );
 
-const filtered = filterPettyCashSelectableProjects([
+const filtered = filterPettyCashOperationalTargets([
   { code: "HO-Petty", name: "Head Office Petty Cash" },
   { code: "N55-LOT3", name: "N-55 LOT-3" },
 ]);
-record("Filter keeps operational projects only", filtered.length === 1 && filtered[0].code === "N55-LOT3");
+record(
+  "Operational filter keeps all projects including HO-Petty",
+  filtered.length === 2
+);
 
 record(
-  "Operational project error is null",
+  "Site project error is null",
   getPettyCashOperationalProjectError({ code: "N55-LOT3", name: "N-55 LOT-3" }) === null
 );
 record(
-  "HO pool project error message set",
-  typeof getPettyCashOperationalProjectError({
+  "HO-Petty project error is null",
+  getPettyCashOperationalProjectError({
     code: "HO-Petty",
     name: "Head Office Petty Cash",
-  }) === "string"
+  }) === null
 );
 
 const failed = checks.filter((c) => !c.pass);

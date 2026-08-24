@@ -668,7 +668,7 @@ model PettyCashTransaction {
   id              String                   @id @default(cuid())
   referenceNumber String?
   type            PettyCashTransactionType
-  projectId       String
+  projectId       String?
   sectionId       String?
   expenseHeadId   String?
   recipientUserId String?
@@ -681,7 +681,7 @@ model PettyCashTransaction {
   createdAt       DateTime                 @default(now())
   updatedAt       DateTime                 @updatedAt
 
-  project         Project                  @relation(fields: [projectId], references: [id])
+  project         Project?                 @relation(fields: [projectId], references: [id])
   section         Section?                 @relation(fields: [sectionId], references: [id])
   expenseHead     PettyCashExpenseHead?    @relation(fields: [expenseHeadId], references: [id])
   creator         User                     @relation("PettyCashCreator", fields: [createdBy], references: [id])

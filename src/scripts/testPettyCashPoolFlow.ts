@@ -141,29 +141,44 @@ async function main() {
   });
   record("HOA cannot add pool", hoaPoolAdd.status === 403, String(hoaPoolAdd.status));
 
-  console.log("\n5) HO-Petty excluded from by-project list");
+  console.log("\n5) Admin petty cash audit log");
   const byProject = await adminApi.get("/petty-cash/summary/by-project");
   const codes = (byProject.data?.data || []).map((p: { code: string }) => p.code);
   record(
-    "HO-Petty not in project list",
-    !codes.includes("HO-Petty"),
+    "HO-Petty in admin project list",
+    codes.includes("HO-Petty"),
     codes.join(",")
   );
+
+  const auditLog = await adminApi.get("/petty-cash/admin/audit-log");
+  record(
+    "Admin audit log available",
+    auditLog.status === 200 && Array.isArray(auditLog.data?.data?.entries),
+    String(auditLog.status)
+  );
+  record(
+    "Audit log summary has remaining balance",
+    auditLog.data?.data?.summary?.remainingBalance != null,
+    String(auditLog.data?.data?.summary?.remainingBalance ?? "null")
+  );
+
+  const hoaAudit = await hoaApi.get("/petty-cash/admin/audit-log");
+  record("HOA cannot access audit log", hoaAudit.status === 403, String(hoaAudit.status));
 
   const hoPoolProject = await prisma.project.findFirst({
     where: { code: "HO-Petty", isDeleted: false },
     select: { id: true },
   });
   if (hoPoolProject) {
-    const distToPool = await adminApi.post("/petty-cash/funding", {
+    const distToHo = await adminApi.post("/petty-cash/funding", {
       projectId: hoPoolProject.id,
       amount: 10,
-      proofUrls: ["https://example.com/proof-bad.pdf"],
+      proofUrls: ["https://example.com/proof-ho-petty.pdf"],
     });
     record(
-      "Cannot distribute to HO-Petty project",
-      distToPool.status === 400,
-      String(distToPool.status)
+      "Can distribute to HO-Petty project from central balance",
+      distToHo.status === 201,
+      String(distToHo.status)
     );
   }
 

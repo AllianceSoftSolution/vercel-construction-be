@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getProjectAccountants = exports.getProjectSections = exports.addSectionExpense = exports.addDistribution = exports.addInternalExpense = exports.addFunding = exports.addPettyCashPool = exports.getTransactions = exports.getProjectBalance = exports.getSummaryBySection = exports.getSummaryByProject = exports.getSummary = exports.deleteExpenseHead = exports.updateExpenseHead = exports.createExpenseHead = exports.getExpenseHeads = void 0;
+exports.getProjectAccountants = exports.getProjectSections = exports.addSectionExpense = exports.addDistribution = exports.addInternalExpense = exports.addFunding = exports.addPettyCashPool = exports.getAdminPettyCashAuditLogHandler = exports.getTransactions = exports.getProjectBalance = exports.getSummaryBySection = exports.getSummaryByProject = exports.getSummary = exports.deleteExpenseHead = exports.updateExpenseHead = exports.createExpenseHead = exports.getExpenseHeads = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const prisma_1 = __importDefault(require("../utils/prisma"));
@@ -173,7 +173,6 @@ exports.getSummaryByProject = (0, catchAsync_1.default)(async (req, res) => {
         where: {
             id: { in: filteredIds.length ? filteredIds : ["__none__"] },
             isDeleted: false,
-            ...(0, pettyCashAccess_1.pettyCashOperationalProjectWhere)(),
         },
         select: { id: true, name: true, code: true },
         orderBy: { name: "asc" },
@@ -212,7 +211,6 @@ exports.getSummaryBySection = (0, catchAsync_1.default)(async (req, res) => {
             where: {
                 projectId: { in: projectIds.length ? projectIds : ["__none__"] },
                 isDeleted: false,
-                project: (0, pettyCashAccess_1.pettyCashOperationalProjectWhere)(),
             },
             select: { id: true },
         });
@@ -233,7 +231,6 @@ exports.getSummaryBySection = (0, catchAsync_1.default)(async (req, res) => {
         where: {
             id: { in: sectionIds.length ? sectionIds : ["__none__"] },
             isDeleted: false,
-            project: (0, pettyCashAccess_1.pettyCashOperationalProjectWhere)(),
         },
         include: {
             project: { select: { id: true, name: true, code: true } },
@@ -350,10 +347,24 @@ exports.getTransactions = (0, catchAsync_1.default)(async (req, res) => {
         },
     });
 });
+exports.getAdminPettyCashAuditLogHandler = (0, catchAsync_1.default)(async (req, res, next) => {
+    const user = req.user;
+    if (!(0, pettyCashAccess_1.isAdminRole)(user.role)) {
+        return next(new appError_1.default("Only admins can view the petty cash audit log", 403));
+    }
+    const auditLog = await (0, pettyCashAccess_1.getAdminPettyCashAuditLog)();
+    res.status(200).json({
+        status: "success",
+        data: {
+            summary: auditLog.summary,
+            entries: auditLog.entries.map((entry) => (0, attachmentUrls_1.mapRecordAttachmentFields)(entry, ["proofUrl"])),
+        },
+    });
+});
 exports.addPettyCashPool = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
     if (!(0, pettyCashAccess_1.canAddPettyCashPool)(user)) {
-        return next(new appError_1.default("Only admins can add petty cash to the head office balance", 403));
+        return next(new appError_1.default("Only admins can add petty cash to the central balance", 403));
     }
     const { amount, description } = req.body;
     const proofUrls = (0, resolveUploadUrls_1.resolveUploadUrls)(req, {
@@ -366,11 +377,10 @@ exports.addPettyCashPool = (0, catchAsync_1.default)(async (req, res, next) => {
     if (proofUrls.length === 0) {
         return next(new appError_1.default("Proof is required", 400));
     }
-    const poolProjectId = await (0, pettyCashAccess_1.resolveHeadOfficePettyCashProjectId)(user.id);
     const tx = await prisma_1.default.pettyCashTransaction.create({
         data: {
             type: "FUNDING",
-            projectId: poolProjectId,
+            projectId: null,
             amount: Number(amount),
             proofUrl: (0, attachmentUrls_1.attachmentUrlsToJson)(proofUrls),
             description: description?.trim() || null,
@@ -400,9 +410,6 @@ exports.addFunding = (0, catchAsync_1.default)(async (req, res, next) => {
     });
     if (!project)
         return next(new appError_1.default("Project not found", 404));
-    const operationalError = (0, pettyCashAccess_1.getPettyCashOperationalProjectError)(project);
-    if (operationalError)
-        return next(new appError_1.default(operationalError, 400));
     if (!(await (0, pettyCashAccess_1.assertProjectAccess)(user, projectId))) {
         return next(new appError_1.default("Not authorized for this project", 403));
     }
@@ -410,7 +417,7 @@ exports.addFunding = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new appError_1.default("Proof is required", 400));
     }
     const remaining = await (0, pettyCashAccess_1.getHeadOfficeDistributableRemaining)();
-    const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "head office petty cash balance");
+    const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "central petty cash balance");
     if (poolError)
         return next(new appError_1.default(poolError, 400));
     const tx = await prisma_1.default.pettyCashTransaction.create({
@@ -452,10 +459,6 @@ exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) =>
     });
     if (!internalProject)
         return next(new appError_1.default("Project not found", 404));
-    const internalProjectError = (0, pettyCashAccess_1.getPettyCashOperationalProjectError)(internalProject);
-    if (internalProjectError) {
-        return next(new appError_1.default(internalProjectError, 400));
-    }
     if (proofUrls.length === 0) {
         return next(new appError_1.default("Proof of expense is required", 400));
     }
@@ -514,10 +517,6 @@ exports.addDistribution = (0, catchAsync_1.default)(async (req, res, next) => {
     });
     if (!distributionProject)
         return next(new appError_1.default("Project not found", 404));
-    const distributionProjectError = (0, pettyCashAccess_1.getPettyCashOperationalProjectError)(distributionProject);
-    if (distributionProjectError) {
-        return next(new appError_1.default(distributionProjectError, 400));
-    }
     if (proofUrls.length === 0) {
         return next(new appError_1.default("Proof of expense is required", 400));
     }
@@ -534,10 +533,6 @@ exports.addDistribution = (0, catchAsync_1.default)(async (req, res, next) => {
     });
     if (!section)
         return next(new appError_1.default("Section not found in project", 404));
-    const distributionSectionProjectError = (0, pettyCashAccess_1.getPettyCashOperationalProjectError)(section.project);
-    if (distributionSectionProjectError) {
-        return next(new appError_1.default(distributionSectionProjectError, 400));
-    }
     const sectionAccountant = await (0, pettyCashAccess_1.getSectionAccountantUser)(sectionId);
     if (!sectionAccountant) {
         return next(new appError_1.default("No section accountant is assigned to this section", 400));

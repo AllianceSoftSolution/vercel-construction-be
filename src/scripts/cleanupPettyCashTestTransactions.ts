@@ -3,7 +3,6 @@ import prisma from "../utils/prisma";
 import {
   computeProjectBalances,
   getHeadOfficeDistributableRemaining,
-  getHeadOfficePettyCashProjectId,
 } from "../utils/pettyCashAccess";
 
 const DRY_RUN = process.argv.includes("--dry-run");
@@ -21,8 +20,6 @@ const TEST_DESCRIPTION_MARKERS = [
 async function main() {
   console.log(`\n${DRY_RUN ? "[DRY RUN] " : ""}Cleanup petty cash test transactions\n`);
 
-  const poolProjectId = await getHeadOfficePettyCashProjectId();
-
   const candidates = await prisma.pettyCashTransaction.findMany({
     where: { isDeleted: false },
     include: {
@@ -35,14 +32,6 @@ async function main() {
   const toDelete = candidates.filter((tx) => {
     const desc = (tx.description || "").toLowerCase();
     if (TEST_DESCRIPTION_MARKERS.some((m) => desc.includes(m))) return true;
-    // All pool deposits on HO-Petty from today's QA (central pool adds)
-    if (
-      poolProjectId &&
-      tx.projectId === poolProjectId &&
-      tx.type === "FUNDING"
-    ) {
-      return true;
-    }
     return false;
   });
 
