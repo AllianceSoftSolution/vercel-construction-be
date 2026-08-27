@@ -16,6 +16,10 @@ import purchaseOrderRoutes from "./purchaseOrder";
 import analyticsRoutes from "./analytics";
 import pettyCashRoutes from "./pettyCash";
 import fileUploadRoutes from "./fileUpload";
+import sanitizePrivilegedIdentityResponse from "../middlewares/sanitizePrivilegedIdentity.middleware";
+
+// Mask privileged Super Admin identity in API responses for other viewers
+router.use(sanitizePrivilegedIdentityResponse);
 
 // Authentication and user management
 router.use("/auth", authRoutes);

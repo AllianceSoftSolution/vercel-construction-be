@@ -22,10 +22,10 @@ const protect = async (req, res, next) => {
             return next(new appError_1.default("Sub-admin users have read-only access and cannot perform this action", 403));
         }
         if (user.role === "SUPER_ADMIN" || user.role === "SUB_ADMIN") {
-            req.user = { ...user, role: "ADMIN" };
+            req.user = { ...user, role: "ADMIN", originalRole: user.role };
         }
         else {
-            req.user = user;
+            req.user = { ...user, originalRole: user.role };
         }
         next();
     }

@@ -19,6 +19,8 @@ const purchaseOrder_1 = __importDefault(require("./purchaseOrder"));
 const analytics_1 = __importDefault(require("./analytics"));
 const pettyCash_1 = __importDefault(require("./pettyCash"));
 const fileUpload_1 = __importDefault(require("./fileUpload"));
+const sanitizePrivilegedIdentity_middleware_1 = __importDefault(require("../middlewares/sanitizePrivilegedIdentity.middleware"));
+router.use(sanitizePrivilegedIdentity_middleware_1.default);
 router.use("/auth", auth_1.default);
 router.use("/projects", project_1.default);
 router.use("/sections", section_1.default);

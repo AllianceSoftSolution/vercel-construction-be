@@ -38,6 +38,10 @@ import {
   isSectionAccountantFor,
 } from "../utils/pettyCashAccess";
 import {
+  isPrivilegedSuperAdmin,
+  isPrivilegedSuperAdminEmail,
+} from "../utils/privilegedAdmin";
+import {
   attachmentUrlsToJson,
   mapRecordAttachmentFields,
 } from "../utils/attachmentUrls";
@@ -487,14 +491,20 @@ export const getAdminPettyCashAuditLogHandler = catchAsync(
     }
 
     const auditLog = await getAdminPettyCashAuditLog();
+    const viewerIsPrivileged = isPrivilegedSuperAdmin(user);
+    const entries = auditLog.entries
+      .filter((entry) => {
+        if (viewerIsPrivileged) return true;
+        // Hide privileged Super Admin action logs from other admins
+        return !isPrivilegedSuperAdminEmail(entry.creator?.email);
+      })
+      .map((entry) => mapRecordAttachmentFields(entry, ["proofUrl"]));
 
     res.status(200).json({
       status: "success",
       data: {
         summary: auditLog.summary,
-        entries: auditLog.entries.map((entry) =>
-          mapRecordAttachmentFields(entry, ["proofUrl"])
-        ),
+        entries,
       },
     });
   }

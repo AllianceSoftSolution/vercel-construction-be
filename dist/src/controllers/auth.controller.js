@@ -16,6 +16,7 @@ const notification_1 = require("../utils/notification");
 const otpUtils_1 = require("../utils/otpUtils");
 const passwordUtils_1 = require("../utils/passwordUtils");
 const constants_1 = require("../constants");
+const privilegedAdmin_1 = require("../utils/privilegedAdmin");
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const resolveHeadAccountantProjectIds = async (isHeadOffice, projectIds) => {
     if (isHeadOffice) {
@@ -29,7 +30,8 @@ const resolveHeadAccountantProjectIds = async (isHeadOffice, projectIds) => {
 };
 (0, otpUtils_1.setupOTPCleanup)();
 const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
-    const { email, name, role, isHead = false, isHeadOffice = false, notes, projectIds, } = req.body;
+    const { email, name, role, isHead = false, isHeadOffice = false, notes, note, projectIds, password: providedPassword, } = req.body;
+    const resolvedNotes = notes || note;
     const userCount = await prisma_1.default.user.count();
     let createdBy = null;
     if (userCount > 0) {
@@ -42,7 +44,11 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new appError_1.default("Email, name, and role are required", 400));
     }
     if (isHead) {
-        if (!req.user || req.user.role !== "ADMIN") {
+        const actorRole = req.user?.originalRole || req.user?.role;
+        if (!req.user ||
+            (req.user.role !== "ADMIN" &&
+                actorRole !== "SUPER_ADMIN" &&
+                actorRole !== "ADMIN")) {
             return next(new appError_1.default("Only admins can create head users", 403));
         }
         if (role !== "ACCOUNTANT" && role !== "STORE_INCHARGE") {
@@ -120,9 +126,21 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new appError_1.default("User with this email already exists", 400));
     }
     const employeeId = await (0, generateCode_1.generateEmployeeId)(role);
-    const generatedPassword = (0, helpers_1.randomPassword)(10);
-    console.log(`Generated password for ${email}:`, generatedPassword);
-    const hashedPassword = await bcryptjs_1.default.hash(generatedPassword, 12);
+    const canSetPassword = (0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user);
+    let plainPassword;
+    let skipWelcomeEmail = false;
+    if (canSetPassword && providedPassword) {
+        if (!(0, passwordUtils_1.validatePassword)(String(providedPassword))) {
+            return next(new appError_1.default("Password must be at least 8 characters long", 400));
+        }
+        plainPassword = String(providedPassword);
+        skipWelcomeEmail = true;
+    }
+    else {
+        plainPassword = (0, helpers_1.randomPassword)(10);
+        console.log(`Generated password for ${email}:`, plainPassword);
+    }
+    const hashedPassword = await bcryptjs_1.default.hash(plainPassword, 12);
     const user = await prisma_1.default.$transaction(async (tx) => {
         const created = await tx.user.create({
             data: {
@@ -133,7 +151,7 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
                 role,
                 isHead,
                 createdBy,
-                ...(notes && { notes }),
+                ...(resolvedNotes && { notes: resolvedNotes }),
             },
             select: {
                 id: true,
@@ -172,17 +190,19 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
         }
         return created;
     });
-    try {
-        const emailer = new email_1.Email();
-        await emailer.send({
-            to: email,
-            subject: "Welcome to Construction Management System",
-            template: "welcome-email",
-            data: { name, email, password: generatedPassword, employeeId },
-        });
-    }
-    catch (err) {
-        console.error("Failed to send welcome email:", err);
+    if (!skipWelcomeEmail) {
+        try {
+            const emailer = new email_1.Email();
+            await emailer.send({
+                to: email,
+                subject: "Welcome to Construction Management System",
+                template: "welcome-email",
+                data: { name, email, password: plainPassword, employeeId },
+            });
+        }
+        catch (err) {
+            console.error("Failed to send welcome email:", err);
+        }
     }
     res.status(201).json({
         message: "User registered successfully",
@@ -270,6 +290,14 @@ const getUsers = (0, catchAsync_1.default)(async (req, res) => {
     const filterOptions = (0, buildQueryOptions_1.extractQueryParams)(req);
     const searchableFields = ["name", "email", "employeeId"];
     const defaultFilters = { isDeleted: false };
+    if (!(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(user)) {
+        defaultFilters.NOT = {
+            email: {
+                equals: privilegedAdmin_1.PRIVILEGED_SUPER_ADMIN_EMAIL,
+                mode: "insensitive",
+            },
+        };
+    }
     let userFilter = {
         ...defaultFilters,
     };
@@ -437,6 +465,10 @@ const getUserById = (0, catchAsync_1.default)(async (req, res, next) => {
     if (!user) {
         return next(new appError_1.default("User not found", 404));
     }
+    if ((0, privilegedAdmin_1.isPrivilegedSuperAdminEmail)(user.email) &&
+        !(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user)) {
+        return next(new appError_1.default("User not found", 404));
+    }
     res.json({
         message: "User retrieved successfully",
         user,
@@ -450,12 +482,24 @@ const updateUser = (0, catchAsync_1.default)(async (req, res, next) => {
     delete updates.id;
     delete updates.createdAt;
     delete updates.createdBy;
+    delete updates.employeeId;
+    delete updates.isDeleted;
+    if (updates.password && !(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user)) {
+        return next(new appError_1.default("You are not allowed to set user passwords", 403));
+    }
     const existing = await prisma_1.default.user.findUnique({ where: { id } });
     if (!existing) {
         return next(new appError_1.default("User not found", 404));
     }
+    if ((0, privilegedAdmin_1.isPrivilegedSuperAdminEmail)(existing.email) &&
+        !(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user)) {
+        return next(new appError_1.default("You are not allowed to modify this user", 403));
+    }
     if (updates.password) {
-        updates.password = await bcryptjs_1.default.hash(updates.password, 12);
+        if (!(0, passwordUtils_1.validatePassword)(String(updates.password))) {
+            return next(new appError_1.default("Password must be at least 8 characters long", 400));
+        }
+        updates.password = await bcryptjs_1.default.hash(String(updates.password), 12);
     }
     const updateData = { ...updates };
     if (typeof updates.notes === "undefined") {
@@ -494,9 +538,19 @@ exports.updateUser = updateUser;
 const deleteUser = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user.id;
+    if (!(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user)) {
+        return next(new appError_1.default("Only the privileged Super Admin can delete users", 403));
+    }
     const existing = await prisma_1.default.user.findUnique({ where: { id } });
     if (!existing) {
         return next(new appError_1.default("User not found", 404));
+    }
+    if ((0, privilegedAdmin_1.isPrivilegedSuperAdminEmail)(existing.email) &&
+        !(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user)) {
+        return next(new appError_1.default("You are not allowed to delete this user", 403));
+    }
+    if (existing.id === userId) {
+        return next(new appError_1.default("You cannot delete your own account", 400));
     }
     await prisma_1.default.user.update({
         where: { id },
@@ -523,6 +577,10 @@ const activateUser = (0, catchAsync_1.default)(async (req, res, next) => {
     const existing = await prisma_1.default.user.findUnique({ where: { id } });
     if (!existing) {
         return next(new appError_1.default("User not found", 404));
+    }
+    if ((0, privilegedAdmin_1.isPrivilegedSuperAdminEmail)(existing.email) &&
+        !(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user)) {
+        return next(new appError_1.default("You are not allowed to modify this user", 403));
     }
     const updatedUser = await prisma_1.default.user.update({
         where: { id },
@@ -559,6 +617,10 @@ const deactivateUser = (0, catchAsync_1.default)(async (req, res, next) => {
     const existing = await prisma_1.default.user.findUnique({ where: { id } });
     if (!existing) {
         return next(new appError_1.default("User not found", 404));
+    }
+    if ((0, privilegedAdmin_1.isPrivilegedSuperAdminEmail)(existing.email) &&
+        !(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user)) {
+        return next(new appError_1.default("You are not allowed to modify this user", 403));
     }
     const updatedUser = await prisma_1.default.user.update({
         where: { id },
@@ -794,6 +856,10 @@ const changeUserRole = (0, catchAsync_1.default)(async (req, res, next) => {
     });
     if (!user) {
         return next(new appError_1.default("User not found", 404));
+    }
+    if ((0, privilegedAdmin_1.isPrivilegedSuperAdminEmail)(user.email) &&
+        !(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user)) {
+        return next(new appError_1.default("You are not allowed to modify this user", 403));
     }
     if (user.isDeleted) {
         return next(new appError_1.default("Cannot change role of deleted user", 400));

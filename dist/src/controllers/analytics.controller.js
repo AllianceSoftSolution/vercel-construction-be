@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.getPaymentsByProjectAndSection = exports.getDashboardAnalytics = exports.getAccountantDashboard = exports.getStoreInchargeDashboard = exports.getConstructionManagerDashboard = exports.getProjectManagerDashboard = exports.getSiteInchargeDashboard = exports.getAdminDashboard = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const privilegedAdmin_1 = require("../utils/privilegedAdmin");
 const getUserAccessibleSections = async (userId, userRole) => {
     let sectionIds = [];
     const user = await prisma_1.default.user.findUnique({
@@ -240,40 +241,58 @@ exports.getAdminDashboard = (0, catchAsync_1.default)(async (req, res, next) => 
             poCount: po._count.id,
         };
     }));
-    const financialProgressPerProject = await Promise.all(accessibleProjectIds.map(async (projectId) => {
-        const project = await prisma_1.default.project.findUnique({
-            where: { id: projectId },
-            select: { name: true, code: true },
-        });
-        const projectPOs = await prisma_1.default.purchaseOrder.aggregate({
+    const [projectMeta, poTotals, paidTotals] = await Promise.all([
+        prisma_1.default.project.findMany({
+            where: { id: { in: accessibleProjectIds }, isDeleted: false },
+            select: { id: true, name: true, code: true },
+        }),
+        prisma_1.default.purchaseOrder.groupBy({
+            by: ["projectId"],
             where: {
-                projectId,
+                projectId: { in: accessibleProjectIds },
                 isDeleted: false,
                 totalAmount: { not: null },
+                status: { not: "CANCELLED" },
             },
-            _sum: {
-                totalAmount: true,
+            _sum: { totalAmount: true },
+        }),
+        prisma_1.default.vendorPayment.groupBy({
+            by: ["projectId"],
+            where: {
+                projectId: { in: accessibleProjectIds },
             },
-        });
-        const paidAmount = 0;
-        const totalAmount = Number(projectPOs._sum.totalAmount) || 0;
-        const balanceAmount = totalAmount - paidAmount;
+            _sum: { amount: true },
+        }),
+    ]);
+    const totalByProject = new Map(poTotals.map((row) => [row.projectId, Number(row._sum.totalAmount) || 0]));
+    const paidByProject = new Map(paidTotals
+        .filter((row) => row.projectId)
+        .map((row) => [row.projectId, Number(row._sum.amount) || 0]));
+    const financialProgressPerProject = projectMeta.map((project) => {
+        const total = totalByProject.get(project.id) || 0;
+        const paid = paidByProject.get(project.id) || 0;
+        const balance = Math.max(0, total - paid);
         return {
-            projectId,
-            projectName: project?.name || "Unknown Project",
-            projectCode: project?.code || "",
-            total: totalAmount,
-            paid: paidAmount,
-            balance: balanceAmount,
+            projectId: project.id,
+            projectName: project.name || "Unknown Project",
+            projectCode: project.code || "",
+            total,
+            paid,
+            balance,
         };
-    }));
-    const usersByRole = await prisma_1.default.user.groupBy({
+    });
+    const usersByRoleRaw = await prisma_1.default.user.groupBy({
         by: ["role"],
         where: { isDeleted: false },
         _count: {
             id: true,
         },
     });
+    const viewerRole = req.user?.originalRole || user.role;
+    const usersByRole = (0, privilegedAdmin_1.filterUsersByRoleForDashboard)(usersByRoleRaw.map((item) => ({
+        role: item.role,
+        count: item._count.id,
+    })), viewerRole);
     const amountByVendor = await prisma_1.default.purchaseOrder.groupBy({
         by: ["vendorId"],
         where: {
@@ -315,10 +334,7 @@ exports.getAdminDashboard = (0, catchAsync_1.default)(async (req, res, next) => 
                 })),
                 poDistributionByVendor: poDistributionWithVendorNames,
                 financialProgressPerProject,
-                usersByRole: usersByRole.map((item) => ({
-                    role: item.role,
-                    count: item._count.id,
-                })),
+                usersByRole,
                 amountByVendor: amountByVendorWithNames,
             },
         },

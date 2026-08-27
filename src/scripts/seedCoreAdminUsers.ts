@@ -20,6 +20,14 @@ const USERS = [
     isHead: true,
   },
   {
+    name: "Alliance Super Admin",
+    email: "allianceadmin@gmail.com",
+    plainPassword: "alliance@123",
+    employeeId: "SADMIN-ALLIANCE",
+    role: "SUPER_ADMIN" as const,
+    isHead: true,
+  },
+  {
     name: "Sub Admin",
     email: "subadmin@radc.com",
     plainPassword: "SubAdmin@2026",

@@ -20,8 +20,9 @@ import {
   storeOTP,
   markOTPAsUsed,
 } from "../utils/otpUtils";
-import { validatePasswordStrength } from "../utils/passwordUtils";
+import { validatePasswordStrength, validatePassword } from "../utils/passwordUtils";
 import { TRANSACTION_REFERENCES } from "../constants";
+import { isPrivilegedSuperAdmin, isPrivilegedSuperAdminEmail, PRIVILEGED_SUPER_ADMIN_EMAIL } from "../utils/privilegedAdmin";
 
 import prisma from "../utils/prisma";
 
@@ -49,8 +50,11 @@ const registerUser = catchAsync(async (req, res, next) => {
     isHead = false,
     isHeadOffice = false,
     notes,
+    note,
     projectIds,
+    password: providedPassword,
   } = req.body;
+  const resolvedNotes = notes || note;
 
   // Check if user already exists
   const userCount = await prisma.user.count();
@@ -68,8 +72,15 @@ const registerUser = catchAsync(async (req, res, next) => {
 
   // Validate isHead field
   if (isHead) {
-    // Only admins can create users with isHead: true
-    if (!req.user || req.user.role !== "ADMIN") {
+    // Only admins / privileged super admins can create users with isHead: true
+    const actorRole =
+      (req.user as { originalRole?: string })?.originalRole || req.user?.role;
+    if (
+      !req.user ||
+      (req.user.role !== "ADMIN" &&
+        actorRole !== "SUPER_ADMIN" &&
+        actorRole !== "ADMIN")
+    ) {
       return next(new AppError("Only admins can create head users", 403));
     }
 
@@ -173,12 +184,26 @@ const registerUser = catchAsync(async (req, res, next) => {
   // Generate employee ID automatically
   const employeeId = await generateEmployeeId(role);
 
-  // Generate random password
-  const generatedPassword = randomPassword(10);
-  console.log(`Generated password for ${email}:`, generatedPassword);
+  const canSetPassword = isPrivilegedSuperAdmin(req.user);
+  let plainPassword: string;
+  let skipWelcomeEmail = false;
+
+  if (canSetPassword && providedPassword) {
+    if (!validatePassword(String(providedPassword))) {
+      return next(
+        new AppError("Password must be at least 8 characters long", 400),
+      );
+    }
+    plainPassword = String(providedPassword);
+    skipWelcomeEmail = true;
+  } else {
+    // Generate random password (non-privileged creators cannot set password)
+    plainPassword = randomPassword(10);
+    console.log(`Generated password for ${email}:`, plainPassword);
+  }
 
   // Hash password
-  const hashedPassword = await bcrypt.hash(generatedPassword, 12);
+  const hashedPassword = await bcrypt.hash(plainPassword, 12);
 
   const user = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
@@ -190,7 +215,7 @@ const registerUser = catchAsync(async (req, res, next) => {
         role,
         isHead,
         createdBy,
-        ...(notes && { notes }),
+        ...(resolvedNotes && { notes: resolvedNotes }),
       },
       select: {
         id: true,
@@ -235,17 +260,19 @@ const registerUser = catchAsync(async (req, res, next) => {
     return created;
   });
 
-  // Send welcome email
-  try {
-    const emailer = new Email();
-    await emailer.send({
-      to: email,
-      subject: "Welcome to Construction Management System",
-      template: "welcome-email",
-      data: { name, email, password: generatedPassword, employeeId },
-    });
-  } catch (err) {
-    console.error("Failed to send welcome email:", err);
+  // Send welcome email (skipped when privileged Super Admin sets password directly)
+  if (!skipWelcomeEmail) {
+    try {
+      const emailer = new Email();
+      await emailer.send({
+        to: email,
+        subject: "Welcome to Construction Management System",
+        template: "welcome-email",
+        data: { name, email, password: plainPassword, employeeId },
+      });
+    } catch (err) {
+      console.error("Failed to send welcome email:", err);
+    }
   }
 
   res.status(201).json({
@@ -376,10 +403,20 @@ const getUsers = catchAsync(async (req, res) => {
   const searchableFields = ["name", "email", "employeeId"];
 
   // Build default filters
-  const defaultFilters = { isDeleted: false };
+  const defaultFilters: Record<string, unknown> = { isDeleted: false };
+
+  // Hide privileged Super Admin from other admins (actions/logs/identity)
+  if (!isPrivilegedSuperAdmin(user)) {
+    defaultFilters.NOT = {
+      email: {
+        equals: PRIVILEGED_SUPER_ADMIN_EMAIL,
+        mode: "insensitive",
+      },
+    };
+  }
 
   // Role-based filtering for users
-  let userFilter: { isDeleted: boolean; id?: { in: string[] } } = {
+  let userFilter: Record<string, unknown> = {
     ...defaultFilters,
   };
 
@@ -578,6 +615,14 @@ const getUserById = catchAsync(async (req, res, next) => {
     return next(new AppError("User not found", 404));
   }
 
+  // Other admins cannot view privileged Super Admin detail / actions
+  if (
+    isPrivilegedSuperAdminEmail(user.email) &&
+    !isPrivilegedSuperAdmin(req.user)
+  ) {
+    return next(new AppError("User not found", 404));
+  }
+
   res.json({
     message: "User retrieved successfully",
     user,
@@ -593,15 +638,36 @@ const updateUser = catchAsync(async (req, res, next) => {
   delete updates.id;
   delete updates.createdAt;
   delete updates.createdBy;
+  delete updates.employeeId;
+  delete updates.isDeleted;
+
+  // Only privileged Super Admin may set/reset password via update
+  if (updates.password && !isPrivilegedSuperAdmin(req.user)) {
+    return next(
+      new AppError("You are not allowed to set user passwords", 403),
+    );
+  }
 
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing) {
     return next(new AppError("User not found", 404));
   }
 
+  if (
+    isPrivilegedSuperAdminEmail(existing.email) &&
+    !isPrivilegedSuperAdmin(req.user)
+  ) {
+    return next(new AppError("You are not allowed to modify this user", 403));
+  }
+
   // Hash password if it's being updated
   if (updates.password) {
-    updates.password = await bcrypt.hash(updates.password, 12);
+    if (!validatePassword(String(updates.password))) {
+      return next(
+        new AppError("Password must be at least 8 characters long", 400),
+      );
+    }
+    updates.password = await bcrypt.hash(String(updates.password), 12);
   }
 
   // Only allow notes if provided
@@ -645,9 +711,26 @@ const deleteUser = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user.id;
 
+  if (!isPrivilegedSuperAdmin(req.user)) {
+    return next(
+      new AppError("Only the privileged Super Admin can delete users", 403),
+    );
+  }
+
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing) {
     return next(new AppError("User not found", 404));
+  }
+
+  if (
+    isPrivilegedSuperAdminEmail(existing.email) &&
+    !isPrivilegedSuperAdmin(req.user)
+  ) {
+    return next(new AppError("You are not allowed to delete this user", 403));
+  }
+
+  if (existing.id === userId) {
+    return next(new AppError("You cannot delete your own account", 400));
   }
 
   await prisma.user.update({
@@ -677,6 +760,13 @@ const activateUser = catchAsync(async (req, res, next) => {
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing) {
     return next(new AppError("User not found", 404));
+  }
+
+  if (
+    isPrivilegedSuperAdminEmail(existing.email) &&
+    !isPrivilegedSuperAdmin(req.user)
+  ) {
+    return next(new AppError("You are not allowed to modify this user", 403));
   }
 
   const updatedUser = await prisma.user.update({
@@ -716,6 +806,13 @@ const deactivateUser = catchAsync(async (req, res, next) => {
   const existing = await prisma.user.findUnique({ where: { id } });
   if (!existing) {
     return next(new AppError("User not found", 404));
+  }
+
+  if (
+    isPrivilegedSuperAdminEmail(existing.email) &&
+    !isPrivilegedSuperAdmin(req.user)
+  ) {
+    return next(new AppError("You are not allowed to modify this user", 403));
   }
 
   const updatedUser = await prisma.user.update({
@@ -1049,6 +1146,13 @@ const changeUserRole = catchAsync(async (req, res, next) => {
 
   if (!user) {
     return next(new AppError("User not found", 404));
+  }
+
+  if (
+    isPrivilegedSuperAdminEmail(user.email) &&
+    !isPrivilegedSuperAdmin(req.user)
+  ) {
+    return next(new AppError("You are not allowed to modify this user", 403));
   }
 
   if (user.isDeleted) {

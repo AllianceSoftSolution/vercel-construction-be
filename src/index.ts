@@ -13,6 +13,11 @@ const app = express();
 const PORT = Number(process.env.PORT) || 5000;
 const isVercel = Boolean(process.env.VERCEL);
 
+// Warm privileged Super Admin id cache for response masking
+void import("./utils/privilegedAdmin")
+  .then((mod) => mod.getPrivilegedSuperAdminIds())
+  .catch(() => undefined);
+
 // Middlewares
 app.use(express.json());
 app.use(cors());

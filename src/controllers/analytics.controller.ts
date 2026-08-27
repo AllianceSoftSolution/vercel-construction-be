@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import catchAsync from "../utils/catchAsync";
 import prisma from "../utils/prisma";
+import { filterUsersByRoleForDashboard } from "../utils/privilegedAdmin";
 
 // Helper function to get user's accessible section IDs based on role
 const getUserAccessibleSections = async (userId: string, userRole: string) => {
@@ -319,47 +320,71 @@ export const getAdminDashboard = catchAsync(
     );
 
     // 10. Financial Progress per Project for Grouped Bar Chart
-    const financialProgressPerProject = await Promise.all(
-      accessibleProjectIds.map(async (projectId) => {
-        const project = await prisma.project.findUnique({
-          where: { id: projectId },
-          select: { name: true, code: true },
-        });
-        // Get total amount for this project
-        const projectPOs = await prisma.purchaseOrder.aggregate({
-          where: {
-            projectId,
-            isDeleted: false,
-            totalAmount: { not: null },
-          },
-          _sum: {
-            totalAmount: true,
-          },
-        });
-        // Calculate paid amount based on vendor accounts
-        // This is a simplified calculation - you might need to adjust based on your payment tracking logic
-        const paidAmount = 0; // Placeholder - implement based on your payment tracking logic
-        const totalAmount = Number(projectPOs._sum.totalAmount) || 0;
-        const balanceAmount = totalAmount - paidAmount;
-        return {
-          projectId,
-          projectName: project?.name || "Unknown Project",
-          projectCode: project?.code || "",
-          total: totalAmount,
-          paid: paidAmount,
-          balance: balanceAmount,
-        };
-      })
+    // Total = sum of PO amounts; Paid = vendor payments attributed to the project
+    const [projectMeta, poTotals, paidTotals] = await Promise.all([
+      prisma.project.findMany({
+        where: { id: { in: accessibleProjectIds }, isDeleted: false },
+        select: { id: true, name: true, code: true },
+      }),
+      prisma.purchaseOrder.groupBy({
+        by: ["projectId"],
+        where: {
+          projectId: { in: accessibleProjectIds },
+          isDeleted: false,
+          totalAmount: { not: null },
+          status: { not: "CANCELLED" },
+        },
+        _sum: { totalAmount: true },
+      }),
+      prisma.vendorPayment.groupBy({
+        by: ["projectId"],
+        where: {
+          projectId: { in: accessibleProjectIds },
+        },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const totalByProject = new Map(
+      poTotals.map((row) => [row.projectId, Number(row._sum.totalAmount) || 0]),
+    );
+    const paidByProject = new Map(
+      paidTotals
+        .filter((row) => row.projectId)
+        .map((row) => [row.projectId as string, Number(row._sum.amount) || 0]),
     );
 
-    // 11. Total Users by Roles for Graph
-    const usersByRole = await prisma.user.groupBy({
+    const financialProgressPerProject = projectMeta.map((project) => {
+      const total = totalByProject.get(project.id) || 0;
+      const paid = paidByProject.get(project.id) || 0;
+      const balance = Math.max(0, total - paid);
+      return {
+        projectId: project.id,
+        projectName: project.name || "Unknown Project",
+        projectCode: project.code || "",
+        total,
+        paid,
+        balance,
+      };
+    });
+
+    // 11. Total Users by Roles for Graph (filter admin roles by viewer)
+    const usersByRoleRaw = await prisma.user.groupBy({
       by: ["role"],
       where: { isDeleted: false },
       _count: {
         id: true,
       },
     });
+    const viewerRole =
+      (req.user as { originalRole?: string })?.originalRole || user.role;
+    const usersByRole = filterUsersByRoleForDashboard(
+      usersByRoleRaw.map((item) => ({
+        role: item.role,
+        count: item._count.id,
+      })),
+      viewerRole,
+    );
 
     // 12. Amount by Vendor Breakdown for Chart
     const amountByVendor = await prisma.purchaseOrder.groupBy({
@@ -414,10 +439,7 @@ export const getAdminDashboard = catchAsync(
 
           financialProgressPerProject,
 
-          usersByRole: usersByRole.map((item) => ({
-            role: item.role,
-            count: item._count.id,
-          })),
+          usersByRole,
 
           amountByVendor: amountByVendorWithNames,
         },

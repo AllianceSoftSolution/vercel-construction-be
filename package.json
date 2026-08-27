@@ -12,7 +12,12 @@
     "ts.check": "tsc --project tsconfig.json",
     "add-build": "git add -f dist",
     "seed:questions": "ts-node prisma/seedQuestions.ts",
-    "seed:po-pdf-test": "ts-node src/scripts/seedPurchaseOrderPdfManualTest.ts"
+    "seed:po-pdf-test": "ts-node src/scripts/seedPurchaseOrderPdfManualTest.ts",
+    "seed:n55-lot3-users": "ts-node src/scripts/seedN55Lot3Users.ts",
+    "seed:n55-lot4-users": "ts-node src/scripts/seedN55Lot4Users.ts",
+    "seed:n55-combined-credentials": "ts-node src/scripts/seedN55CombinedCredentials.ts",
+    "seed:n55-split-credentials": "ts-node src/scripts/splitN55Credentials.ts",
+    "seed:core-admin-users": "ts-node src/scripts/seedCoreAdminUsers.ts"
   },
   "pre-commit": [
     "ts.check",
@@ -53,6 +58,7 @@
     "cors": "^2.8.5",
     "cron": "^4.3.1",
     "dayjs": "^1.11.13",
+    "docx": "^9.7.1",
     "dotenv": "^16.4.7",
     "ejs": "^3.1.10",
     "express": "^4.21.2",

@@ -35,10 +35,11 @@ const protect = async (req: AuthRequest, res: Response, next: NextFunction) => {
     // Normalise role for access-control throughout the app:
     // SUPER_ADMIN → treated as ADMIN (full access)
     // SUB_ADMIN   → treated as ADMIN for read (sees all data), blocked above for writes
+    // Keep originalRole for privileged checks and dashboard role-chart filtering.
     if (user.role === "SUPER_ADMIN" || user.role === "SUB_ADMIN") {
-      req.user = { ...user, role: "ADMIN" };
+      req.user = { ...user, role: "ADMIN", originalRole: user.role };
     } else {
-      req.user = user;
+      req.user = { ...user, originalRole: user.role };
     }
 
     next(); // Proceed to the next middleware

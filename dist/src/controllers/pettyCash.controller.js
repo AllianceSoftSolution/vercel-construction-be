@@ -8,6 +8,7 @@ const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const pettyCashAccess_1 = require("../utils/pettyCashAccess");
+const privilegedAdmin_1 = require("../utils/privilegedAdmin");
 const attachmentUrls_1 = require("../utils/attachmentUrls");
 const resolveUploadUrls_1 = require("../utils/resolveUploadUrls");
 const mapTransactionResponse = (tx) => (0, attachmentUrls_1.mapRecordAttachmentFields)(tx, ["proofUrl"]);
@@ -353,11 +354,19 @@ exports.getAdminPettyCashAuditLogHandler = (0, catchAsync_1.default)(async (req,
         return next(new appError_1.default("Only admins can view the petty cash audit log", 403));
     }
     const auditLog = await (0, pettyCashAccess_1.getAdminPettyCashAuditLog)();
+    const viewerIsPrivileged = (0, privilegedAdmin_1.isPrivilegedSuperAdmin)(user);
+    const entries = auditLog.entries
+        .filter((entry) => {
+        if (viewerIsPrivileged)
+            return true;
+        return !(0, privilegedAdmin_1.isPrivilegedSuperAdminEmail)(entry.creator?.email);
+    })
+        .map((entry) => (0, attachmentUrls_1.mapRecordAttachmentFields)(entry, ["proofUrl"]));
     res.status(200).json({
         status: "success",
         data: {
             summary: auditLog.summary,
-            entries: auditLog.entries.map((entry) => (0, attachmentUrls_1.mapRecordAttachmentFields)(entry, ["proofUrl"])),
+            entries,
         },
     });
 });
