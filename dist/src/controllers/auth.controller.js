@@ -249,9 +249,16 @@ const loginUser = (0, catchAsync_1.default)(async (req, res, next) => {
     }
     const token = jsonwebtoken_1.default.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: "90d" });
     const { password: _, ...userWithoutPassword } = user;
+    const sessionUser = {
+        ...userWithoutPassword,
+        originalRole: user.role,
+        ...(user.role === "SUPER_ADMIN" || user.role === "SUB_ADMIN"
+            ? { role: "ADMIN" }
+            : {}),
+    };
     const sessionData = {
         token,
-        user: userWithoutPassword,
+        user: sessionUser,
     };
     res.json({
         message: "Login successful",

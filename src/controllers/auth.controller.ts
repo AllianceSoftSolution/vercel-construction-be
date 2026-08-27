@@ -334,12 +334,19 @@ const loginUser = catchAsync(async (req, res, next) => {
     { expiresIn: "90d" }
   );
 
-  // Remove password from response
+  // Remove password from response; include originalRole for privileged UI checks.
   const { password: _, ...userWithoutPassword } = user;
+  const sessionUser = {
+    ...userWithoutPassword,
+    originalRole: user.role,
+    ...(user.role === "SUPER_ADMIN" || user.role === "SUB_ADMIN"
+      ? { role: "ADMIN" as const }
+      : {}),
+  };
 
   const sessionData = {
     token,
-    user: userWithoutPassword,
+    user: sessionUser,
   };
 
   res.json({
