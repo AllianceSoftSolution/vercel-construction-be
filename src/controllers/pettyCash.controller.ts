@@ -47,8 +47,22 @@ import {
 } from "../utils/attachmentUrls";
 import { resolveUploadUrls } from "../utils/resolveUploadUrls";
 
-const mapTransactionResponse = <T extends Record<string, unknown>>(tx: T) =>
-  mapRecordAttachmentFields(tx, ["proofUrl"]);
+const mapTransactionResponse = <T extends Record<string, unknown>>(tx: T) => {
+  const mapped = mapRecordAttachmentFields(tx, ["proofUrl"]) as T & {
+    amount?: unknown;
+  };
+  if (mapped && "amount" in mapped) {
+    const raw = mapped.amount as { toNumber?: () => number } | unknown;
+    const numeric =
+      raw != null &&
+      typeof raw === "object" &&
+      typeof (raw as { toNumber?: () => number }).toNumber === "function"
+        ? (raw as { toNumber: () => number }).toNumber()
+        : Number(raw);
+    mapped.amount = Number.isFinite(numeric) ? numeric : 0;
+  }
+  return mapped;
+};
 
 const transactionInclude = {
   project: { select: { id: true, name: true, code: true } },

@@ -91,6 +91,12 @@ const USERISH_KEYS = new Set([
     "approver",
     "assignedByUser",
 ]);
+const isPlainObject = (value) => {
+    if (value === null || typeof value !== "object")
+        return false;
+    const proto = Object.getPrototypeOf(value);
+    return proto === Object.prototype || proto === null;
+};
 const sanitizePrivilegedIdentities = (value, privilegedIds) => {
     if (value == null)
         return value;
@@ -101,6 +107,22 @@ const sanitizePrivilegedIdentities = (value, privilegedIds) => {
         if (typeof value === "string" &&
             (0, exports.isPrivilegedSuperAdminEmail)(value)) {
             return exports.SYSTEM_ADMIN_DISPLAY_NAME;
+        }
+        return value;
+    }
+    if (!isPlainObject(value)) {
+        const withToJSON = value;
+        if (typeof withToJSON.toJSON === "function") {
+            return (0, exports.sanitizePrivilegedIdentities)(withToJSON.toJSON(), privilegedIds);
+        }
+        const withToNumber = value;
+        if (typeof withToNumber.toNumber === "function") {
+            try {
+                return withToNumber.toNumber();
+            }
+            catch {
+                return value;
+            }
         }
         return value;
     }

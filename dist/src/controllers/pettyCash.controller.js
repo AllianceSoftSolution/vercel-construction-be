@@ -11,7 +11,19 @@ const pettyCashAccess_1 = require("../utils/pettyCashAccess");
 const privilegedAdmin_1 = require("../utils/privilegedAdmin");
 const attachmentUrls_1 = require("../utils/attachmentUrls");
 const resolveUploadUrls_1 = require("../utils/resolveUploadUrls");
-const mapTransactionResponse = (tx) => (0, attachmentUrls_1.mapRecordAttachmentFields)(tx, ["proofUrl"]);
+const mapTransactionResponse = (tx) => {
+    const mapped = (0, attachmentUrls_1.mapRecordAttachmentFields)(tx, ["proofUrl"]);
+    if (mapped && "amount" in mapped) {
+        const raw = mapped.amount;
+        const numeric = raw != null &&
+            typeof raw === "object" &&
+            typeof raw.toNumber === "function"
+            ? raw.toNumber()
+            : Number(raw);
+        mapped.amount = Number.isFinite(numeric) ? numeric : 0;
+    }
+    return mapped;
+};
 const transactionInclude = {
     project: { select: { id: true, name: true, code: true } },
     section: {

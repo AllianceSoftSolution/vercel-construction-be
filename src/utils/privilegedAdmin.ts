@@ -116,9 +116,19 @@ const USERISH_KEYS = new Set([
   "assignedByUser",
 ]);
 
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+  if (value === null || typeof value !== "object") return false;
+  const proto = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+};
+
 /**
  * Deep-walk API payloads and replace privileged Super Admin identity with
  * "System Admin". Also redacts bare email strings that match the privileged email.
+ *
+ * IMPORTANT: Do not spread Prisma Decimal / Date / class instances — that
+ * destroys their toJSON() behavior and turns amounts into objects that
+ * become NaN in the UI (Number({ s, e, d }) === NaN).
  */
 export const sanitizePrivilegedIdentities = (
   value: unknown,
@@ -138,7 +148,25 @@ export const sanitizePrivilegedIdentities = (
     return value;
   }
 
-  const input = value as Record<string, unknown>;
+  // Preserve Decimal, Date, Buffer, etc. via their JSON representation.
+  if (!isPlainObject(value)) {
+    const withToJSON = value as { toJSON?: () => unknown };
+    if (typeof withToJSON.toJSON === "function") {
+      return sanitizePrivilegedIdentities(withToJSON.toJSON(), privilegedIds);
+    }
+    // Fallback: coerce known numeric wrappers safely
+    const withToNumber = value as { toNumber?: () => number };
+    if (typeof withToNumber.toNumber === "function") {
+      try {
+        return withToNumber.toNumber();
+      } catch {
+        return value;
+      }
+    }
+    return value;
+  }
+
+  const input = value;
   // Mask if this object itself looks like the privileged user
   let next: Record<string, unknown> = { ...input };
   if (
@@ -167,8 +195,6 @@ export const sanitizePrivilegedIdentities = (
       next[key] = sanitizePrivilegedIdentities(next[key], privilegedIds);
       continue;
     }
-    // Nested creator.name style already handled by masking creator object.
-    // Still recurse for nested payloads.
     next[key] = sanitizePrivilegedIdentities(child, privilegedIds);
   }
 
