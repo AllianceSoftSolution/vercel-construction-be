@@ -9,3 +9,6 @@ credentials/
 .env.development
 .env.test
 .env.production
+
+.DS_Store
+**/.DS_Store
