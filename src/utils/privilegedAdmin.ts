@@ -25,6 +25,17 @@ export const isPrivilegedSuperAdmin = (user?: {
   return role === "SUPER_ADMIN" || role === "ADMIN";
 };
 
+/** ADMIN and SUPER_ADMIN (not SUB_ADMIN) — full user management incl. password on create. */
+export const isAdminUser = (user?: {
+  originalRole?: string | null;
+  role?: string | null;
+} | null): boolean => {
+  if (!user) return false;
+  const role = String(user.originalRole || user.role || "").toUpperCase();
+  if (role === "SUB_ADMIN") return false;
+  return role === "SUPER_ADMIN" || role === "ADMIN";
+};
+
 let privilegedIdCache: Set<string> | null = null;
 let privilegedIdCacheAt = 0;
 const PRIVILEGED_ID_CACHE_MS = 60_000;

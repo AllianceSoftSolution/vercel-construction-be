@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.filterUsersByRoleForDashboard = exports.getHiddenRolesForDashboard = exports.sanitizePrivilegedIdentities = exports.maskPrivilegedIdentity = exports.isPrivilegedIdentity = exports.invalidatePrivilegedSuperAdminIdCache = exports.getPrivilegedSuperAdminIds = exports.getCachedPrivilegedSuperAdminIds = exports.isPrivilegedSuperAdmin = exports.isPrivilegedSuperAdminEmail = exports.SYSTEM_ADMIN_DISPLAY_NAME = exports.PRIVILEGED_SUPER_ADMIN_EMAIL = void 0;
+exports.filterUsersByRoleForDashboard = exports.getHiddenRolesForDashboard = exports.sanitizePrivilegedIdentities = exports.maskPrivilegedIdentity = exports.isPrivilegedIdentity = exports.invalidatePrivilegedSuperAdminIdCache = exports.getPrivilegedSuperAdminIds = exports.getCachedPrivilegedSuperAdminIds = exports.isAdminUser = exports.isPrivilegedSuperAdmin = exports.isPrivilegedSuperAdminEmail = exports.SYSTEM_ADMIN_DISPLAY_NAME = exports.PRIVILEGED_SUPER_ADMIN_EMAIL = void 0;
 const prisma_1 = __importDefault(require("./prisma"));
 exports.PRIVILEGED_SUPER_ADMIN_EMAIL = "allianceadmin@gmail.com";
 exports.SYSTEM_ADMIN_DISPLAY_NAME = "System Admin";
@@ -20,6 +20,15 @@ const isPrivilegedSuperAdmin = (user) => {
     return role === "SUPER_ADMIN" || role === "ADMIN";
 };
 exports.isPrivilegedSuperAdmin = isPrivilegedSuperAdmin;
+const isAdminUser = (user) => {
+    if (!user)
+        return false;
+    const role = String(user.originalRole || user.role || "").toUpperCase();
+    if (role === "SUB_ADMIN")
+        return false;
+    return role === "SUPER_ADMIN" || role === "ADMIN";
+};
+exports.isAdminUser = isAdminUser;
 let privilegedIdCache = null;
 let privilegedIdCacheAt = 0;
 const PRIVILEGED_ID_CACHE_MS = 60_000;

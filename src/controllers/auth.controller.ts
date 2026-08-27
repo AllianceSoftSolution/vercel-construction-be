@@ -22,7 +22,7 @@ import {
 } from "../utils/otpUtils";
 import { validatePasswordStrength, validatePassword } from "../utils/passwordUtils";
 import { TRANSACTION_REFERENCES } from "../constants";
-import { isPrivilegedSuperAdmin, isPrivilegedSuperAdminEmail, PRIVILEGED_SUPER_ADMIN_EMAIL } from "../utils/privilegedAdmin";
+import { isPrivilegedSuperAdmin, isPrivilegedSuperAdminEmail, isAdminUser, PRIVILEGED_SUPER_ADMIN_EMAIL } from "../utils/privilegedAdmin";
 
 import prisma from "../utils/prisma";
 
@@ -184,7 +184,7 @@ const registerUser = catchAsync(async (req, res, next) => {
   // Generate employee ID automatically
   const employeeId = await generateEmployeeId(role);
 
-  const canSetPassword = isPrivilegedSuperAdmin(req.user);
+  const canSetPassword = isAdminUser(req.user);
   let plainPassword: string;
   let skipWelcomeEmail = false;
 
@@ -648,8 +648,8 @@ const updateUser = catchAsync(async (req, res, next) => {
   delete updates.employeeId;
   delete updates.isDeleted;
 
-  // Only privileged Super Admin may set/reset password via update
-  if (updates.password && !isPrivilegedSuperAdmin(req.user)) {
+  // Admins (not Sub-Admin) may set/reset password via update
+  if (updates.password && !isAdminUser(req.user)) {
     return next(
       new AppError("You are not allowed to set user passwords", 403),
     );
@@ -718,9 +718,9 @@ const deleteUser = catchAsync(async (req, res, next) => {
   const { id } = req.params;
   const userId = req.user.id;
 
-  if (!isPrivilegedSuperAdmin(req.user)) {
+  if (!isAdminUser(req.user)) {
     return next(
-      new AppError("Only the privileged Super Admin can delete users", 403),
+      new AppError("Only admins can delete users", 403),
     );
   }
 

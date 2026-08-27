@@ -126,7 +126,7 @@ const registerUser = (0, catchAsync_1.default)(async (req, res, next) => {
         return next(new appError_1.default("User with this email already exists", 400));
     }
     const employeeId = await (0, generateCode_1.generateEmployeeId)(role);
-    const canSetPassword = (0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user);
+    const canSetPassword = (0, privilegedAdmin_1.isAdminUser)(req.user);
     let plainPassword;
     let skipWelcomeEmail = false;
     if (canSetPassword && providedPassword) {
@@ -491,7 +491,7 @@ const updateUser = (0, catchAsync_1.default)(async (req, res, next) => {
     delete updates.createdBy;
     delete updates.employeeId;
     delete updates.isDeleted;
-    if (updates.password && !(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user)) {
+    if (updates.password && !(0, privilegedAdmin_1.isAdminUser)(req.user)) {
         return next(new appError_1.default("You are not allowed to set user passwords", 403));
     }
     const existing = await prisma_1.default.user.findUnique({ where: { id } });
@@ -545,8 +545,8 @@ exports.updateUser = updateUser;
 const deleteUser = (0, catchAsync_1.default)(async (req, res, next) => {
     const { id } = req.params;
     const userId = req.user.id;
-    if (!(0, privilegedAdmin_1.isPrivilegedSuperAdmin)(req.user)) {
-        return next(new appError_1.default("Only the privileged Super Admin can delete users", 403));
+    if (!(0, privilegedAdmin_1.isAdminUser)(req.user)) {
+        return next(new appError_1.default("Only admins can delete users", 403));
     }
     const existing = await prisma_1.default.user.findUnique({ where: { id } });
     if (!existing) {

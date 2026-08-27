@@ -6,6 +6,10 @@ export declare const isPrivilegedSuperAdmin: (user?: {
     originalRole?: string | null;
     role?: string | null;
 } | null) => boolean;
+export declare const isAdminUser: (user?: {
+    originalRole?: string | null;
+    role?: string | null;
+} | null) => boolean;
 export declare const getCachedPrivilegedSuperAdminIds: () => Set<string>;
 export declare const getPrivilegedSuperAdminIds: () => Promise<Set<string>>;
 export declare const invalidatePrivilegedSuperAdminIdCache: () => void;
