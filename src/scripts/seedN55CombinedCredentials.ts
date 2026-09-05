@@ -4,6 +4,7 @@ import prisma from "../utils/prisma";
 import { LOT3_USER_SPECS, LOT4_USER_SPECS } from "./n55UserSpecs";
 import {
   type CredentialRow,
+  ensureHeadStoreAssignment,
   findAdminUser,
   generateUniquePassword,
   getCredentialsPaths,
@@ -32,12 +33,18 @@ async function main() {
     console.log(
       `${action === "created" ? "Created" : "Updated"} [LOT3 ${spec.group}] ${spec.email}`
     );
+    // For Head Store users, ensure they have the project assignment
+    await ensureHeadStoreAssignment(spec, admin.id);
   }
 
   let lot4Rows = preservedLot4;
 
   if (lot4Rows.length === LOT4_USER_SPECS.length) {
     console.log(`\nPreserved ${lot4Rows.length} LOT-4 credential rows from existing file.`);
+    // Even if preserved, ensure Head Store assignments exist
+    for (const spec of LOT4_USER_SPECS) {
+      await ensureHeadStoreAssignment(spec, admin.id);
+    }
   } else {
     console.log("\nLOT-4 credentials missing or incomplete — seeding LOT-4 users again.\n");
     lot4Rows = [];
@@ -48,6 +55,8 @@ async function main() {
       console.log(
         `${action === "created" ? "Created" : "Updated"} [LOT4 ${spec.group}] ${spec.email}`
       );
+      // For Head Store users, ensure they have the project assignment
+      await ensureHeadStoreAssignment(spec, admin.id);
     }
   }
 

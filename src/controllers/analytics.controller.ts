@@ -851,23 +851,53 @@ export const getStoreInchargeDashboard = catchAsync(
       user.role
     );
 
+    // For Head Store Incharge, also include HEAD_STORE (project-level stores)
+    let storeWhereClause: any = {
+      isDeleted: false,
+      sectionId: { in: accessibleSectionIds },
+    };
+    let inventoryStoreFilter: any = {
+      sectionId: { in: accessibleSectionIds },
+    };
+
+    if (user.isHead) {
+      // Get assigned project IDs for head store incharge
+      const headAssignments = await prisma.headStoreInchargeAssignment.findMany({
+        where: { userId: user.id, isActive: true },
+        select: { projectId: true },
+      });
+      const projectIds = headAssignments.map((a) => a.projectId);
+
+      if (projectIds.length > 0) {
+        // Include HEAD_STORE (projectId match) OR section stores (sectionId match)
+        storeWhereClause = {
+          isDeleted: false,
+          OR: [
+            { projectId: { in: projectIds } },
+            { sectionId: { in: accessibleSectionIds } },
+          ],
+        };
+        inventoryStoreFilter = {
+          OR: [
+            { projectId: { in: projectIds } },
+            { sectionId: { in: accessibleSectionIds } },
+          ],
+        };
+      }
+    }
+
     const totalStores = await prisma.store.count({
-      where: {
-        isDeleted: false,
-        sectionId: { in: accessibleSectionIds },
-      },
+      where: storeWhereClause,
     });
 
     const totalMaterials = await prisma.material.count({
       where: { isDeleted: false },
     });
 
-    // Get inventory summary for assigned stores
+    // Get inventory summary for assigned stores (including HEAD_STORE for head incharge)
     const inventorySummary = await prisma.storeInventory.aggregate({
       where: {
-        store: {
-          sectionId: { in: accessibleSectionIds },
-        },
+        store: inventoryStoreFilter,
       },
       _sum: {
         stock: true,

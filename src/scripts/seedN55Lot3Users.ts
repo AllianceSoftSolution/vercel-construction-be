@@ -3,6 +3,7 @@ import prisma from "../utils/prisma";
 import { LOT3_USER_SPECS } from "./n55UserSpecs";
 import {
   type CredentialRow,
+  ensureHeadStoreAssignment,
   findAdminUser,
   generateUniquePassword,
   printCredentialsTable,
@@ -17,7 +18,7 @@ async function main() {
 
   const admin = await findAdminUser();
 
-  console.log("\n=== Seeding N55 LOT-3 users (emails only, no assignments) ===\n");
+  console.log("\n=== Seeding N55 LOT-3 users ===\n");
 
   const credentials: CredentialRow[] = [];
 
@@ -28,6 +29,9 @@ async function main() {
     console.log(
       `${action === "created" ? "Created" : "Updated"} [${spec.group}] ${spec.email}`
     );
+    
+    // For Head Store users, ensure they have the project assignment
+    await ensureHeadStoreAssignment(spec, admin.id);
   }
 
   const { docxPath, txtPath } = await writeLotCredentialsDoc("LOT3", credentials);

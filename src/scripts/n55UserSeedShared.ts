@@ -101,6 +101,69 @@ export async function upsertUser(
   return "created";
 }
 
+/**
+ * Create headStoreInchargeAssignment for Head Store users.
+ * This assigns them to the N55 LOT3 or LOT4 project based on their lot.
+ * Call this after upsertUser for users with isHead: true and role: STORE_INCHARGE.
+ */
+export async function ensureHeadStoreAssignment(
+  spec: UserSpec,
+  createdBy: string
+): Promise<void> {
+  if (!spec.isHead || spec.role !== "STORE_INCHARGE") {
+    return; // Only for Head Store Incharge users
+  }
+
+  // Find the user
+  const user = await prisma.user.findUnique({
+    where: { email: spec.email },
+    select: { id: true },
+  });
+  if (!user) {
+    console.warn(`User ${spec.email} not found, skipping assignment`);
+    return;
+  }
+
+  // Find the project based on lot
+  const projectPattern = spec.lot === "LOT3" ? "LOT-3" : "LOT-4";
+  const project = await prisma.project.findFirst({
+    where: {
+      OR: [
+        { name: { contains: projectPattern, mode: "insensitive" } },
+        { code: { contains: projectPattern, mode: "insensitive" } },
+      ],
+      isDeleted: false,
+    },
+    select: { id: true, name: true },
+  });
+
+  if (!project) {
+    console.warn(`No ${spec.lot} project found, skipping assignment for ${spec.email}`);
+    return;
+  }
+
+  // Upsert the headStoreInchargeAssignment
+  await prisma.headStoreInchargeAssignment.upsert({
+    where: {
+      userId_projectId: {
+        userId: user.id,
+        projectId: project.id,
+      },
+    },
+    update: {
+      isActive: true,
+    },
+    create: {
+      userId: user.id,
+      projectId: project.id,
+      isActive: true,
+      createdBy,
+    },
+  });
+
+  console.log(`  → Assigned ${spec.email} to project "${project.name}"`);
+}
+
 function tableCell(text: string, bold = false) {
   return new TableCell({
     children: [
@@ -176,7 +239,7 @@ export async function writeLotCredentialsDoc(
           new Paragraph({
             children: [
               new TextRun(
-                "Note: Assignments are not included — configure project/section/store assignments manually in the admin panel."
+                "Note: Head Store users are automatically assigned to their respective project. Other role assignments (Section Store, PM, CM, etc.) must be configured manually in the admin panel."
               ),
             ],
           }),
@@ -196,7 +259,7 @@ export async function writeLotCredentialsDoc(
   const txtLines = [
     title,
     `Generated: ${generatedAt}`,
-    "Note: Assignments are not included — configure manually in the admin panel.",
+    "Note: Head Store users are automatically assigned to their project. Other role assignments must be configured manually.",
     "",
     "# | Role Group | Display Name | Email | Password | Employee ID",
     "-".repeat(120),
