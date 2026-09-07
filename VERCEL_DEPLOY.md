@@ -23,6 +23,21 @@ npx prisma db push
 
 Unset or restore your local `.env` afterward so it does not keep pointing at Neon if you develop against AWS.
 
+### Why Vercel uses `db push` (not `migrate deploy`)
+
+Neon is typically created with `prisma db push`, so tables exist but there is no `_prisma_migrations` history. Running `migrate deploy` on that database fails with **P3005** (*database schema is not empty*).
+
+The Vercel build script (`scripts/vercel-build.sh`) runs **`db push`** to sync `schema.prisma` on each deploy. AWS production uses **`migrate deploy`** in Docker against RDS, where migrations were applied from the start.
+
+**Optional — switch Neon to migration history (one-time):**
+
+```bash
+export DATABASE_URL="<neon-direct-url>"
+bash scripts/baseline-neon-migrations.sh
+```
+
+After baselining, set Vercel env `PRISMA_SYNC_STRATEGY=migrate` if you want `migrate deploy` on Vercel instead of `db push`.
+
 ### Vercel env
 
 | Name | Value |
