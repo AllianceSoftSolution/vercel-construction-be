@@ -73,8 +73,8 @@ exports.getExpenseHeads = (0, catchAsync_1.default)(async (req, res, next) => {
         where.kind = kind;
     }
     else if (kind === "ALL") {
-        const canViewDirect = await (0, pettyCashAccess_1.canViewDirectExpense)(user);
-        if (!canViewDirect)
+        const canSelectAll = await (0, pettyCashAccess_1.canSelectAllExpenseHeadTypes)(user);
+        if (!canSelectAll)
             where.kind = "PETTY_CASH";
     }
     else {
@@ -215,6 +215,7 @@ exports.getSummary = (0, catchAsync_1.default)(async (req, res) => {
     const canManageDirectHeads = await (0, pettyCashAccess_1.canManageDirectExpenseHeads)(user);
     const canViewDirectExpenses = await (0, pettyCashAccess_1.canViewDirectExpense)(user);
     const canCreateDirectExpense = await (0, pettyCashAccess_1.canAddDirectExpense)(user);
+    const canSelectAllHeadTypes = await (0, pettyCashAccess_1.canSelectAllExpenseHeadTypes)(user);
     const canAddFunding = await (0, pettyCashAccess_1.canAddPettyCashFunding)(user);
     const canAddPettyCashPoolFunding = (0, pettyCashAccess_1.canAddPettyCashPool)(user);
     const showPettyCashPoolRemaining = roleScope === "ADMIN" || roleScope === "HEAD_OFFICE_ACCOUNTANT";
@@ -261,6 +262,7 @@ exports.getSummary = (0, catchAsync_1.default)(async (req, res) => {
             canManageDirectExpenseHeads: canManageDirectHeads,
             canViewDirectExpense: canViewDirectExpenses,
             canAddDirectExpense: canCreateDirectExpense,
+            canSelectAllExpenseHeadTypes: canSelectAllHeadTypes,
             canDistribute,
             canAddInternalExpense,
             canAddSectionExpense,
@@ -584,12 +586,13 @@ exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) =>
     const poolError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "project balance");
     if (poolError)
         return next(new appError_1.default(poolError, 400));
+    const canSelectAllHeadTypes = await (0, pettyCashAccess_1.canSelectAllExpenseHeadTypes)(user);
     const head = await prisma_1.default.pettyCashExpenseHead.findFirst({
         where: {
             id: expenseHeadId,
-            kind: "PETTY_CASH",
             isDeleted: false,
             isActive: true,
+            ...(canSelectAllHeadTypes ? {} : { kind: "PETTY_CASH" }),
         },
     });
     if (!head)
@@ -703,12 +706,13 @@ exports.addSectionExpense = (0, catchAsync_1.default)(async (req, res, next) => 
     const sectionError = (0, pettyCashAccess_1.assertSufficientPettyCashBalance)(remaining, Number(amount), "section balance");
     if (sectionError)
         return next(new appError_1.default(sectionError, 400));
+    const canSelectAllHeadTypes = await (0, pettyCashAccess_1.canSelectAllExpenseHeadTypes)(user);
     const head = await prisma_1.default.pettyCashExpenseHead.findFirst({
         where: {
             id: expenseHeadId,
-            kind: "PETTY_CASH",
             isDeleted: false,
             isActive: true,
+            ...(canSelectAllHeadTypes ? {} : { kind: "PETTY_CASH" }),
         },
     });
     if (!head)
@@ -961,13 +965,12 @@ exports.addDirectExpense = (0, catchAsync_1.default)(async (req, res, next) => {
     const head = await prisma_1.default.pettyCashExpenseHead.findFirst({
         where: {
             id: expenseHeadId,
-            kind: "DIRECT_EXPENSE",
             isDeleted: false,
             isActive: true,
         },
     });
     if (!head) {
-        return next(new appError_1.default("Direct Expense head not found", 404));
+        return next(new appError_1.default("Expense head not found", 404));
     }
     const tx = await prisma_1.default.directExpenseTransaction.create({
         data: {

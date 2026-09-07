@@ -39,6 +39,7 @@ import {
   canViewDirectExpense,
   canAddDirectExpense,
   canManageDirectExpenseHeads,
+  canSelectAllExpenseHeadTypes,
 } from "../utils/pettyCashAccess";
 import {
   isPrivilegedSuperAdmin,
@@ -118,8 +119,8 @@ export const getExpenseHeads = catchAsync(async (req: Request, res: Response, ne
     }
     where.kind = kind;
   } else if (kind === "ALL") {
-    const canViewDirect = await canViewDirectExpense(user);
-    if (!canViewDirect) where.kind = "PETTY_CASH";
+    const canSelectAll = await canSelectAllExpenseHeadTypes(user);
+    if (!canSelectAll) where.kind = "PETTY_CASH";
   } else {
     where.kind = kind;
   }
@@ -299,6 +300,7 @@ export const getSummary = catchAsync(async (req: Request, res: Response) => {
   const canManageDirectHeads = await canManageDirectExpenseHeads(user);
   const canViewDirectExpenses = await canViewDirectExpense(user);
   const canCreateDirectExpense = await canAddDirectExpense(user);
+  const canSelectAllHeadTypes = await canSelectAllExpenseHeadTypes(user);
   const canAddFunding = await canAddPettyCashFunding(user);
   const canAddPettyCashPoolFunding = canAddPettyCashPool(user);
   const showPettyCashPoolRemaining =
@@ -354,6 +356,7 @@ export const getSummary = catchAsync(async (req: Request, res: Response) => {
       canManageDirectExpenseHeads: canManageDirectHeads,
       canViewDirectExpense: canViewDirectExpenses,
       canAddDirectExpense: canCreateDirectExpense,
+      canSelectAllExpenseHeadTypes: canSelectAllHeadTypes,
       canDistribute,
       canAddInternalExpense,
       canAddSectionExpense,
@@ -783,12 +786,13 @@ export const addInternalExpense = catchAsync(
     );
     if (poolError) return next(new AppError(poolError, 400));
 
+    const canSelectAllHeadTypes = await canSelectAllExpenseHeadTypes(user);
     const head = await prisma.pettyCashExpenseHead.findFirst({
       where: {
         id: expenseHeadId,
-        kind: "PETTY_CASH",
         isDeleted: false,
         isActive: true,
+        ...(canSelectAllHeadTypes ? {} : { kind: "PETTY_CASH" }),
       },
     });
     if (!head) return next(new AppError("Expense head not found", 404));
@@ -936,12 +940,13 @@ export const addSectionExpense = catchAsync(
     );
     if (sectionError) return next(new AppError(sectionError, 400));
 
+    const canSelectAllHeadTypes = await canSelectAllExpenseHeadTypes(user);
     const head = await prisma.pettyCashExpenseHead.findFirst({
       where: {
         id: expenseHeadId,
-        kind: "PETTY_CASH",
         isDeleted: false,
         isActive: true,
+        ...(canSelectAllHeadTypes ? {} : { kind: "PETTY_CASH" }),
       },
     });
     if (!head) return next(new AppError("Expense head not found", 404));
@@ -1258,15 +1263,12 @@ export const addDirectExpense = catchAsync(
     const head = await prisma.pettyCashExpenseHead.findFirst({
       where: {
         id: expenseHeadId,
-        kind: "DIRECT_EXPENSE",
         isDeleted: false,
         isActive: true,
       },
     });
     if (!head) {
-      return next(
-        new AppError("Direct Expense head not found", 404)
-      );
+      return next(new AppError("Expense head not found", 404));
     }
 
     const tx = await prisma.directExpenseTransaction.create({

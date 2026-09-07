@@ -32,9 +32,14 @@ export const canAddDirectExpense = async (user: PettyCashUser) => {
   return isHeadOfficeAccountant(user);
 };
 
-export const canManageDirectExpenseHeads = async (user: PettyCashUser) => {
+/** Only Admin/Super Admin may create/update/delete Direct Expense heads */
+export const canManageDirectExpenseHeads = async (user: PettyCashUser) =>
+  isPettyCashExpenseHeadAdmin(user);
+
+/** Admin/Super Admin or Head Office may pick either head type in dropdowns */
+export const canSelectAllExpenseHeadTypes = async (user: PettyCashUser) => {
   if (isSubAdminUser(user)) return false;
-  if (isPettyCashExpenseHeadAdmin(user)) return true;
+  if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") return true;
   return isHeadOfficeAccountant(user);
 };
 

@@ -11,6 +11,7 @@ export declare const isSubAdminUser: (user: PettyCashUser) => boolean;
 export declare const canViewDirectExpense: (user: PettyCashUser) => Promise<boolean>;
 export declare const canAddDirectExpense: (user: PettyCashUser) => Promise<boolean>;
 export declare const canManageDirectExpenseHeads: (user: PettyCashUser) => Promise<boolean>;
+export declare const canSelectAllExpenseHeadTypes: (user: PettyCashUser) => Promise<boolean>;
 export declare const HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = "HO-Petty";
 export type PettyCashProjectRef = {
     code?: string | null;

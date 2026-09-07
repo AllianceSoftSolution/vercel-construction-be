@@ -3,8 +3,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPettyCashBalanceScope = exports.mapProjectBalancesForOverview = exports.mapProjectBalancesForHeadOffice = exports.aggregateOverviewTotals = exports.computePettyCashOverview = exports.aggregatePettyCashTotals = exports.parsePettyCashListFilters = exports.applyPettyCashListFilters = exports.assertSectionAccess = exports.assertProjectAccess = exports.buildPettyCashAccessWhere = exports.getSectionAccountantUser = exports.getSectionAccountantSectionIds = exports.getHeadOfficeProjectIds = exports.isSectionAccountantFor = exports.getProjectManagerSectionIds = exports.getProjectManagerProjectIds = exports.isProjectManagerForSection = exports.isProjectManagerForProject = exports.getPettyCashOverviewViewMode = exports.usesSectionScopedOverview = exports.assignHeadOfficeAccountantsToProject = exports.getPettyCashRoleScope = exports.canAddPettyCashFunding = exports.getAdminPettyCashAuditLog = exports.getHeadOfficeDistributableRemaining = exports.isHeadOfficeAccountant = exports.syncHeadOfficeAccountantProjectAssignments = exports.isHeadOfficeUser = exports.isProjectAccountantUser = exports.getProjectAccountantProjectIds = exports.getAccessibleProjectIds = exports.canAddPettyCashPool = exports.resolveHeadOfficePettyCashProjectId = exports.getHeadOfficePettyCashProjectId = exports.getPettyCashOperationalProjectError = exports.pettyCashProjectListWhere = exports.canViewHeadOfficePettyCashProject = exports.filterPettyCashSelectableProjects = exports.isPettyCashSelectableProject = exports.filterPettyCashOperationalTargets = exports.isPettyCashOperationalTarget = exports.isHeadOfficePettyCashProject = exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = exports.canManageDirectExpenseHeads = exports.canAddDirectExpense = exports.canViewDirectExpense = exports.isSubAdminUser = exports.isPettyCashExpenseHeadAdmin = exports.isAdminRole = void 0;
-exports.getSectionDirectExpenseTotal = exports.getProjectDirectExpenseTotal = exports.sumDirectExpenseBySectionIds = exports.sumDirectExpenseByProjectIds = exports.computeSectionBalances = exports.assertSufficientPettyCashBalance = exports.getSectionRemaining = exports.getProjectPoolRemaining = exports.computeProjectBalances = exports.resolveFilteredProjectIds = void 0;
+exports.mapProjectBalancesForOverview = exports.mapProjectBalancesForHeadOffice = exports.aggregateOverviewTotals = exports.computePettyCashOverview = exports.aggregatePettyCashTotals = exports.parsePettyCashListFilters = exports.applyPettyCashListFilters = exports.assertSectionAccess = exports.assertProjectAccess = exports.buildPettyCashAccessWhere = exports.getSectionAccountantUser = exports.getSectionAccountantSectionIds = exports.getHeadOfficeProjectIds = exports.isSectionAccountantFor = exports.getProjectManagerSectionIds = exports.getProjectManagerProjectIds = exports.isProjectManagerForSection = exports.isProjectManagerForProject = exports.getPettyCashOverviewViewMode = exports.usesSectionScopedOverview = exports.assignHeadOfficeAccountantsToProject = exports.getPettyCashRoleScope = exports.canAddPettyCashFunding = exports.getAdminPettyCashAuditLog = exports.getHeadOfficeDistributableRemaining = exports.isHeadOfficeAccountant = exports.syncHeadOfficeAccountantProjectAssignments = exports.isHeadOfficeUser = exports.isProjectAccountantUser = exports.getProjectAccountantProjectIds = exports.getAccessibleProjectIds = exports.canAddPettyCashPool = exports.resolveHeadOfficePettyCashProjectId = exports.getHeadOfficePettyCashProjectId = exports.getPettyCashOperationalProjectError = exports.pettyCashProjectListWhere = exports.canViewHeadOfficePettyCashProject = exports.filterPettyCashSelectableProjects = exports.isPettyCashSelectableProject = exports.filterPettyCashOperationalTargets = exports.isPettyCashOperationalTarget = exports.isHeadOfficePettyCashProject = exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = exports.canSelectAllExpenseHeadTypes = exports.canManageDirectExpenseHeads = exports.canAddDirectExpense = exports.canViewDirectExpense = exports.isSubAdminUser = exports.isPettyCashExpenseHeadAdmin = exports.isAdminRole = void 0;
+exports.getSectionDirectExpenseTotal = exports.getProjectDirectExpenseTotal = exports.sumDirectExpenseBySectionIds = exports.sumDirectExpenseByProjectIds = exports.computeSectionBalances = exports.assertSufficientPettyCashBalance = exports.getSectionRemaining = exports.getProjectPoolRemaining = exports.computeProjectBalances = exports.resolveFilteredProjectIds = exports.getPettyCashBalanceScope = void 0;
 const prisma_1 = __importDefault(require("./prisma"));
 const isAdminRole = (role) => ["ADMIN", "SUPER_ADMIN", "SUB_ADMIN"].includes(role);
 exports.isAdminRole = isAdminRole;
@@ -28,14 +28,16 @@ const canAddDirectExpense = async (user) => {
     return (0, exports.isHeadOfficeAccountant)(user);
 };
 exports.canAddDirectExpense = canAddDirectExpense;
-const canManageDirectExpenseHeads = async (user) => {
+const canManageDirectExpenseHeads = async (user) => (0, exports.isPettyCashExpenseHeadAdmin)(user);
+exports.canManageDirectExpenseHeads = canManageDirectExpenseHeads;
+const canSelectAllExpenseHeadTypes = async (user) => {
     if ((0, exports.isSubAdminUser)(user))
         return false;
-    if ((0, exports.isPettyCashExpenseHeadAdmin)(user))
+    if (user.role === "ADMIN" || user.role === "SUPER_ADMIN")
         return true;
     return (0, exports.isHeadOfficeAccountant)(user);
 };
-exports.canManageDirectExpenseHeads = canManageDirectExpenseHeads;
+exports.canSelectAllExpenseHeadTypes = canSelectAllExpenseHeadTypes;
 exports.HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = "HO-Petty";
 const isHeadOfficePettyCashProject = (project) => {
     const code = (project.code || "").trim();
