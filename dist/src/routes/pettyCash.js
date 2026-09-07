@@ -56,6 +56,9 @@ router.post("/funding", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3Up
 router.post("/internal-expense", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addInternalExpense);
 router.post("/distribution", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addDistribution);
 router.post("/section-expense", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addSectionExpense);
+router.get("/direct-expenses/summary", auth_middleware_1.default, pettyCashController.getDirectExpenseSummary);
+router.get("/direct-expenses", auth_middleware_1.default, pettyCashController.getDirectExpenses);
+router.post("/direct-expenses", auth_middleware_1.default, (0, s3UploadMiddleware_1.s3UploadMiddleware)([{ name: "proofOfExpense", maxCount: 1 }]), pettyCashController.addDirectExpense);
 router.get("/projects/:projectId/sections", auth_middleware_1.default, pettyCashController.getProjectSections);
 router.get("/projects/:projectId/accountants", auth_middleware_1.default, pettyCashController.getProjectAccountants);
 exports.default = router;

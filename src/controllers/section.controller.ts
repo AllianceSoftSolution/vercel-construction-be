@@ -8,6 +8,11 @@ import {
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
 import prisma from "../utils/prisma";
+import {
+  getSectionDirectExpenseTotal,
+  sumDirectExpenseBySectionIds,
+  canViewDirectExpense,
+} from "../utils/pettyCashAccess";
 
 const createSection = catchAsync(async (req, res, next) => {
   const { name, description, projectId, createStore, storePermissions } = req.body;
@@ -294,6 +299,10 @@ const getSections = catchAsync(async (req, res) => {
   });
 
   // Calculate total amounts for each section
+  const [sectionDirect, canViewDirect] = await Promise.all([
+    sumDirectExpenseBySectionIds(sections.map((section) => section.id)),
+    canViewDirectExpense(user),
+  ]);
   const sectionsWithAmounts = await Promise.all(
     sections.map(async (section) => {
       const sectionPOs = await prisma.purchaseOrder.aggregate({
@@ -310,6 +319,8 @@ const getSections = catchAsync(async (req, res) => {
       return {
         ...section,
         totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+        directExpenseTotal: sectionDirect.get(section.id) || 0,
+        canViewDirectExpense: canViewDirect,
       };
     })
   );
@@ -707,6 +718,8 @@ const getSectionById = catchAsync(async (req, res, next) => {
     associatedAccountants: combinedAccountantAssignments,
     recentDemands: section.demands,
     totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+    directExpenseTotal: await getSectionDirectExpenseTotal(section.id),
+    canViewDirectExpense: await canViewDirectExpense(req.user),
     materialCapAnalytics: materialCapAnalytics,
   };
 

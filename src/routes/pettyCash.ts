@@ -84,6 +84,23 @@ router.post(
   pettyCashController.addSectionExpense
 );
 
+router.get(
+  "/direct-expenses/summary",
+  protect,
+  pettyCashController.getDirectExpenseSummary
+);
+router.get(
+  "/direct-expenses",
+  protect,
+  pettyCashController.getDirectExpenses
+);
+router.post(
+  "/direct-expenses",
+  protect,
+  s3UploadMiddleware([{ name: "proofOfExpense", maxCount: 1 }]),
+  pettyCashController.addDirectExpense
+);
+
 // Helpers
 router.get(
   "/projects/:projectId/sections",

@@ -5,6 +5,7 @@ export type PettyCashUser = {
   id: string;
   role: string;
   isHead?: boolean;
+  originalRole?: string;
 };
 
 export const isAdminRole = (role: string) =>
@@ -13,6 +14,29 @@ export const isAdminRole = (role: string) =>
 /** Only Super Admin and Admin may create/update/delete petty cash expense heads */
 export const isPettyCashExpenseHeadAdmin = (user: PettyCashUser) =>
   user.role === "ADMIN" || user.role === "SUPER_ADMIN";
+
+export const isSubAdminUser = (user: PettyCashUser) =>
+  user.originalRole === "SUB_ADMIN" || user.role === "SUB_ADMIN";
+
+/** Admin/Super Admin (not Sub-Admin) or Head Office Accountant may view Direct Expense */
+export const canViewDirectExpense = async (user: PettyCashUser) => {
+  if (isSubAdminUser(user)) return false;
+  if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") return true;
+  return isHeadOfficeAccountant(user);
+};
+
+/** Admin (not Sub-Admin) or Head Office Accountant may add Direct Expense */
+export const canAddDirectExpense = async (user: PettyCashUser) => {
+  if (isSubAdminUser(user)) return false;
+  if (user.role === "ADMIN" || user.role === "SUPER_ADMIN") return true;
+  return isHeadOfficeAccountant(user);
+};
+
+export const canManageDirectExpenseHeads = async (user: PettyCashUser) => {
+  if (isSubAdminUser(user)) return false;
+  if (isPettyCashExpenseHeadAdmin(user)) return true;
+  return isHeadOfficeAccountant(user);
+};
 
 /** Head Office Petty Cash is a normal project, not the central balance */
 export const HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = "HO-Petty";
@@ -1064,4 +1088,60 @@ export const computeSectionBalances = async (
     remaining,
     transactionCount: txs.length,
   };
+};
+
+const toMoney = (value: unknown) => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+};
+
+export const sumDirectExpenseByProjectIds = async (projectIds: string[]) => {
+  const totals = new Map<string, number>();
+  if (projectIds.length === 0) return totals;
+
+  const grouped = await prisma.directExpenseTransaction.groupBy({
+    by: ["projectId"],
+    where: { projectId: { in: projectIds }, isDeleted: false },
+    _sum: { amount: true },
+  });
+
+  for (const row of grouped) {
+    totals.set(row.projectId, toMoney(row._sum.amount));
+  }
+  return totals;
+};
+
+export const sumDirectExpenseBySectionIds = async (sectionIds: string[]) => {
+  const totals = new Map<string, number>();
+  if (sectionIds.length === 0) return totals;
+
+  const grouped = await prisma.directExpenseTransaction.groupBy({
+    by: ["sectionId"],
+    where: {
+      sectionId: { in: sectionIds },
+      isDeleted: false,
+    },
+    _sum: { amount: true },
+  });
+
+  for (const row of grouped) {
+    if (row.sectionId) totals.set(row.sectionId, toMoney(row._sum.amount));
+  }
+  return totals;
+};
+
+export const getProjectDirectExpenseTotal = async (projectId: string) => {
+  const result = await prisma.directExpenseTransaction.aggregate({
+    where: { projectId, isDeleted: false },
+    _sum: { amount: true },
+  });
+  return toMoney(result._sum.amount);
+};
+
+export const getSectionDirectExpenseTotal = async (sectionId: string) => {
+  const result = await prisma.directExpenseTransaction.aggregate({
+    where: { sectionId, isDeleted: false },
+    _sum: { amount: true },
+  });
+  return toMoney(result._sum.amount);
 };

@@ -16,3 +16,6 @@ export declare const addDistribution: (req: Request, res: Response, next: import
 export declare const addSectionExpense: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getProjectSections: (req: Request, res: Response, next: import("express").NextFunction) => void;
 export declare const getProjectAccountants: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getDirectExpenses: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const getDirectExpenseSummary: (req: Request, res: Response, next: import("express").NextFunction) => void;
+export declare const addDirectExpense: (req: Request, res: Response, next: import("express").NextFunction) => void;

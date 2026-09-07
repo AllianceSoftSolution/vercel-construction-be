@@ -8,7 +8,13 @@ import {
 } from "../utils/buildQueryOptions";
 import { sendNotificationToUserSafe } from "../utils/notification";
 import prisma from "../utils/prisma";
-import { assignHeadOfficeAccountantsToProject } from "../utils/pettyCashAccess";
+import {
+  assignHeadOfficeAccountantsToProject,
+  sumDirectExpenseByProjectIds,
+  sumDirectExpenseBySectionIds,
+  getProjectDirectExpenseTotal,
+  canViewDirectExpense,
+} from "../utils/pettyCashAccess";
 
 const createProject = catchAsync(async (req, res, next) => {
   const { name, description, startDate, endDate, code } = req.body;
@@ -213,6 +219,16 @@ const getProjects = catchAsync(async (req, res) => {
   });
 
   // Calculate total amounts for each project and section
+  const projectIds = projects.map((project) => project.id);
+  const sectionIds = projects.flatMap((project) =>
+    project.sections.map((section) => section.id)
+  );
+  const [directByProject, directBySection, canViewDirect] = await Promise.all([
+    sumDirectExpenseByProjectIds(projectIds),
+    sumDirectExpenseBySectionIds(sectionIds),
+    canViewDirectExpense(user),
+  ]);
+
   const projectsWithAmounts = await Promise.all(
     projects.map(async (project) => {
       // Get total amount spent on POs for this project
@@ -244,6 +260,7 @@ const getProjects = catchAsync(async (req, res) => {
           return {
             ...section,
             totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+            directExpenseTotal: directBySection.get(section.id) || 0,
           };
         })
       );
@@ -252,6 +269,8 @@ const getProjects = catchAsync(async (req, res) => {
         ...project,
         sections: sectionsWithAmounts,
         totalAmountSpent: projectPOs._sum.totalAmount || 0,
+        directExpenseTotal: directByProject.get(project.id) || 0,
+        canViewDirectExpense: canViewDirect,
       };
     })
   );
@@ -510,6 +529,11 @@ const getProjectById = catchAsync(async (req, res, next) => {
     },
   });
 
+  const [projectDirectExpenseTotal, sectionDirect] = await Promise.all([
+    getProjectDirectExpenseTotal(project.id),
+    sumDirectExpenseBySectionIds(project.sections.map((section) => section.id)),
+  ]);
+
   // Calculate amounts for each section
   let sectionsWithAmounts = await Promise.all(
     project.sections.map(async (section) => {
@@ -527,6 +551,7 @@ const getProjectById = catchAsync(async (req, res, next) => {
       return {
         ...section,
         totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+        directExpenseTotal: sectionDirect.get(section.id) || 0,
       };
     })
   );
@@ -839,6 +864,8 @@ const getProjectById = catchAsync(async (req, res, next) => {
     assignedAccountants: assignedAccountants,
     associatedMembers: associatedMembers,
     totalAmountSpent: projectPOs._sum.totalAmount || 0,
+    directExpenseTotal: projectDirectExpenseTotal,
+    canViewDirectExpense: await canViewDirectExpense(user),
     materialCapAnalytics: materialCapAnalytics,
   };
 

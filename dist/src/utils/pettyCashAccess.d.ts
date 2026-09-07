@@ -3,9 +3,14 @@ export type PettyCashUser = {
     id: string;
     role: string;
     isHead?: boolean;
+    originalRole?: string;
 };
 export declare const isAdminRole: (role: string) => boolean;
 export declare const isPettyCashExpenseHeadAdmin: (user: PettyCashUser) => boolean;
+export declare const isSubAdminUser: (user: PettyCashUser) => boolean;
+export declare const canViewDirectExpense: (user: PettyCashUser) => Promise<boolean>;
+export declare const canAddDirectExpense: (user: PettyCashUser) => Promise<boolean>;
+export declare const canManageDirectExpenseHeads: (user: PettyCashUser) => Promise<boolean>;
 export declare const HEAD_OFFICE_PETTY_CASH_PROJECT_CODE = "HO-Petty";
 export type PettyCashProjectRef = {
     code?: string | null;
@@ -221,3 +226,7 @@ export declare const computeSectionBalances: (sectionId: string, filters?: Petty
     remaining: number;
     transactionCount: number;
 }>;
+export declare const sumDirectExpenseByProjectIds: (projectIds: string[]) => Promise<Map<string, number>>;
+export declare const sumDirectExpenseBySectionIds: (sectionIds: string[]) => Promise<Map<string, number>>;
+export declare const getProjectDirectExpenseTotal: (projectId: string) => Promise<number>;
+export declare const getSectionDirectExpenseTotal: (sectionId: string) => Promise<number>;

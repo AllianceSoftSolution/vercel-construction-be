@@ -67,6 +67,11 @@ enum PettyCashTransactionType {
   SECTION_EXPENSE
 }
 
+enum ExpenseHeadKind {
+  PETTY_CASH
+  DIRECT_EXPENSE
+}
+
 enum POStatus {
   CREATED
   CONFIRMED
@@ -137,6 +142,7 @@ model User {
   storePermissions           StorePermission[]
   pettyCashTransactionsCreated PettyCashTransaction[] @relation("PettyCashCreator")
   pettyCashDistributionsReceived PettyCashTransaction[] @relation("PettyCashRecipient")
+  directExpenseTransactionsCreated DirectExpenseTransaction[] @relation("DirectExpenseCreator")
 
   @@map("users")
 }
@@ -164,6 +170,7 @@ model Project {
   materialCaps              MaterialCap[]
   headStores                Store[] @relation("ProjectHeadStores")
   pettyCashTransactions     PettyCashTransaction[]
+  directExpenseTransactions DirectExpenseTransaction[]
 
   @@map("projects")
 }
@@ -194,6 +201,7 @@ model Section {
   purchaseOrders            PurchaseOrder[]
   materialCaps              MaterialCap[]
   pettyCashTransactions     PettyCashTransaction[]
+  directExpenseTransactions DirectExpenseTransaction[]
 
   @@unique([projectId, code])
   @@map("sections")
@@ -649,19 +657,48 @@ model DeviceToken {
 }
 
 model PettyCashExpenseHead {
-  id          String   @id @default(cuid())
-  name        String   @unique
+  id          String           @id @default(cuid())
+  name        String
+  kind        ExpenseHeadKind  @default(PETTY_CASH)
   description String?
-  isActive    Boolean  @default(true)
-  isDeleted   Boolean  @default(false)
+  isActive    Boolean          @default(true)
+  isDeleted   Boolean          @default(false)
   createdBy   String
   updatedBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
-  transactions PettyCashTransaction[]
+  transactions              PettyCashTransaction[]
+  directExpenseTransactions DirectExpenseTransaction[]
 
+  @@unique([name, kind])
   @@map("petty_cash_expense_heads")
+}
+
+model DirectExpenseTransaction {
+  id              String   @id @default(cuid())
+  referenceNumber String?
+  projectId       String
+  sectionId       String?
+  expenseHeadId   String
+  amount          Decimal
+  proofUrl        Json?
+  description     String?
+  isDeleted       Boolean  @default(false)
+  createdBy       String
+  updatedBy       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project     Project              @relation(fields: [projectId], references: [id])
+  section     Section?             @relation(fields: [sectionId], references: [id])
+  expenseHead PettyCashExpenseHead @relation(fields: [expenseHeadId], references: [id])
+  creator     User                 @relation("DirectExpenseCreator", fields: [createdBy], references: [id])
+
+  @@index([projectId])
+  @@index([sectionId])
+  @@index([createdAt])
+  @@map("direct_expense_transactions")
 }
 
 model PettyCashTransaction {

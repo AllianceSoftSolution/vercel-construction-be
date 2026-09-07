@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getProjectAccountants = exports.getProjectSections = exports.addSectionExpense = exports.addDistribution = exports.addInternalExpense = exports.addFunding = exports.addPettyCashPool = exports.getAdminPettyCashAuditLogHandler = exports.getTransactions = exports.getProjectBalance = exports.getSummaryBySection = exports.getSummaryByProject = exports.getSummary = exports.deleteExpenseHead = exports.updateExpenseHead = exports.createExpenseHead = exports.getExpenseHeads = void 0;
+exports.addDirectExpense = exports.getDirectExpenseSummary = exports.getDirectExpenses = exports.getProjectAccountants = exports.getProjectSections = exports.addSectionExpense = exports.addDistribution = exports.addInternalExpense = exports.addFunding = exports.addPettyCashPool = exports.getAdminPettyCashAuditLogHandler = exports.getTransactions = exports.getProjectBalance = exports.getSummaryBySection = exports.getSummaryByProject = exports.getSummary = exports.deleteExpenseHead = exports.updateExpenseHead = exports.createExpenseHead = exports.getExpenseHeads = void 0;
 const catchAsync_1 = __importDefault(require("../utils/catchAsync"));
 const appError_1 = __importDefault(require("../utils/appError"));
 const prisma_1 = __importDefault(require("../utils/prisma"));
@@ -54,57 +54,145 @@ const transactionInclude = {
         },
     },
 };
-exports.getExpenseHeads = (0, catchAsync_1.default)(async (req, res) => {
+const parseExpenseHeadKind = (value) => {
+    const raw = String(value || "PETTY_CASH").trim().toUpperCase();
+    if (raw === "ALL")
+        return "ALL";
+    if (raw === "DIRECT_EXPENSE")
+        return "DIRECT_EXPENSE";
+    return "PETTY_CASH";
+};
+exports.getExpenseHeads = (0, catchAsync_1.default)(async (req, res, next) => {
+    const user = req.user;
+    const kind = parseExpenseHeadKind(req.query.kind);
+    const where = { isDeleted: false, isActive: true };
+    if (kind === "DIRECT_EXPENSE") {
+        if (!(await (0, pettyCashAccess_1.canViewDirectExpense)(user))) {
+            return next(new appError_1.default("Not authorized to view Direct Expense heads", 403));
+        }
+        where.kind = kind;
+    }
+    else if (kind === "ALL") {
+        const canViewDirect = await (0, pettyCashAccess_1.canViewDirectExpense)(user);
+        if (!canViewDirect)
+            where.kind = "PETTY_CASH";
+    }
+    else {
+        where.kind = kind;
+    }
     const heads = await prisma_1.default.pettyCashExpenseHead.findMany({
-        where: { isDeleted: false, isActive: true },
-        orderBy: { name: "asc" },
+        where,
+        orderBy: [{ kind: "asc" }, { name: "asc" }],
     });
     res.status(200).json({ status: "success", data: heads });
 });
 exports.createExpenseHead = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
-    if (!(0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user)) {
+    const kind = parseExpenseHeadKind(req.body.kind);
+    if (kind === "ALL") {
+        return next(new appError_1.default("Invalid expense head type", 400));
+    }
+    if (kind === "PETTY_CASH") {
+        if (!(0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user)) {
+            return next(new appError_1.default("Not authorized to manage expense heads", 403));
+        }
+    }
+    else if (!(await (0, pettyCashAccess_1.canManageDirectExpenseHeads)(user))) {
         return next(new appError_1.default("Not authorized to manage expense heads", 403));
     }
     const { name, description } = req.body;
     if (!name?.trim()) {
         return next(new appError_1.default("Expense head name is required", 400));
     }
-    const head = await prisma_1.default.pettyCashExpenseHead.create({
-        data: {
-            name: name.trim(),
-            description: description?.trim() || null,
-            createdBy: user.id,
-        },
-    });
-    res.status(201).json({ status: "success", data: head });
+    try {
+        const head = await prisma_1.default.pettyCashExpenseHead.create({
+            data: {
+                name: name.trim(),
+                kind,
+                description: description?.trim() || null,
+                createdBy: user.id,
+            },
+        });
+        res.status(201).json({ status: "success", data: head });
+    }
+    catch (err) {
+        if (typeof err === "object" &&
+            err !== null &&
+            "code" in err &&
+            err.code === "P2002") {
+            return next(new appError_1.default("An expense head with this name already exists for this type", 400));
+        }
+        throw err;
+    }
 });
 exports.updateExpenseHead = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
-    if (!(0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user)) {
+    const { id } = req.params;
+    const existing = await prisma_1.default.pettyCashExpenseHead.findFirst({
+        where: { id, isDeleted: false },
+    });
+    if (!existing)
+        return next(new appError_1.default("Expense head not found", 404));
+    const nextKind = req.body.kind !== undefined
+        ? parseExpenseHeadKind(req.body.kind)
+        : existing.kind;
+    if (nextKind === "ALL") {
+        return next(new appError_1.default("Invalid expense head type", 400));
+    }
+    const managingDirect = existing.kind === "DIRECT_EXPENSE" || nextKind === "DIRECT_EXPENSE";
+    if (managingDirect) {
+        if (!(await (0, pettyCashAccess_1.canManageDirectExpenseHeads)(user))) {
+            return next(new appError_1.default("Not authorized to manage expense heads", 403));
+        }
+        if (!(0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user) && nextKind === "PETTY_CASH") {
+            return next(new appError_1.default("Head Office can only manage Direct Expense heads", 403));
+        }
+    }
+    else if (!(0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user)) {
         return next(new appError_1.default("Not authorized to manage expense heads", 403));
     }
-    const { id } = req.params;
     const { name, description, isActive } = req.body;
-    const head = await prisma_1.default.pettyCashExpenseHead.update({
-        where: { id },
-        data: {
-            ...(name && { name: name.trim() }),
-            ...(description !== undefined && {
-                description: description?.trim() || null,
-            }),
-            ...(isActive !== undefined && { isActive }),
-            updatedBy: user.id,
-        },
-    });
-    res.status(200).json({ status: "success", data: head });
+    try {
+        const head = await prisma_1.default.pettyCashExpenseHead.update({
+            where: { id },
+            data: {
+                ...(name && { name: name.trim() }),
+                ...(req.body.kind !== undefined && { kind: nextKind }),
+                ...(description !== undefined && {
+                    description: description?.trim() || null,
+                }),
+                ...(isActive !== undefined && { isActive }),
+                updatedBy: user.id,
+            },
+        });
+        res.status(200).json({ status: "success", data: head });
+    }
+    catch (err) {
+        if (typeof err === "object" &&
+            err !== null &&
+            "code" in err &&
+            err.code === "P2002") {
+            return next(new appError_1.default("An expense head with this name already exists for this type", 400));
+        }
+        throw err;
+    }
 });
 exports.deleteExpenseHead = (0, catchAsync_1.default)(async (req, res, next) => {
     const user = req.user;
-    if (!(0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user)) {
+    const { id } = req.params;
+    const existing = await prisma_1.default.pettyCashExpenseHead.findFirst({
+        where: { id, isDeleted: false },
+    });
+    if (!existing)
+        return next(new appError_1.default("Expense head not found", 404));
+    if (existing.kind === "DIRECT_EXPENSE") {
+        if (!(await (0, pettyCashAccess_1.canManageDirectExpenseHeads)(user))) {
+            return next(new appError_1.default("Not authorized to manage expense heads", 403));
+        }
+    }
+    else if (!(0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user)) {
         return next(new appError_1.default("Not authorized to manage expense heads", 403));
     }
-    const { id } = req.params;
     await prisma_1.default.pettyCashExpenseHead.update({
         where: { id },
         data: { isDeleted: true, isActive: false, updatedBy: user.id },
@@ -124,6 +212,9 @@ exports.getSummary = (0, catchAsync_1.default)(async (req, res) => {
     const { totalFunded, totalDistributed, totalInternalExpenses, totalSectionExpenses, totalSpent, poolRemaining, } = (0, pettyCashAccess_1.aggregateOverviewTotals)(transactions, overviewViewMode);
     const roleScope = await (0, pettyCashAccess_1.getPettyCashRoleScope)(user);
     const canManageHeads = (0, pettyCashAccess_1.isPettyCashExpenseHeadAdmin)(user);
+    const canManageDirectHeads = await (0, pettyCashAccess_1.canManageDirectExpenseHeads)(user);
+    const canViewDirectExpenses = await (0, pettyCashAccess_1.canViewDirectExpense)(user);
+    const canCreateDirectExpense = await (0, pettyCashAccess_1.canAddDirectExpense)(user);
     const canAddFunding = await (0, pettyCashAccess_1.canAddPettyCashFunding)(user);
     const canAddPettyCashPoolFunding = (0, pettyCashAccess_1.canAddPettyCashPool)(user);
     const showPettyCashPoolRemaining = roleScope === "ADMIN" || roleScope === "HEAD_OFFICE_ACCOUNTANT";
@@ -167,6 +258,9 @@ exports.getSummary = (0, catchAsync_1.default)(async (req, res) => {
             canAddPettyCashPool: canAddPettyCashPoolFunding,
             headOfficeDistributableRemaining,
             canManageHeads,
+            canManageDirectExpenseHeads: canManageDirectHeads,
+            canViewDirectExpense: canViewDirectExpenses,
+            canAddDirectExpense: canCreateDirectExpense,
             canDistribute,
             canAddInternalExpense,
             canAddSectionExpense,
@@ -491,7 +585,12 @@ exports.addInternalExpense = (0, catchAsync_1.default)(async (req, res, next) =>
     if (poolError)
         return next(new appError_1.default(poolError, 400));
     const head = await prisma_1.default.pettyCashExpenseHead.findFirst({
-        where: { id: expenseHeadId, isDeleted: false, isActive: true },
+        where: {
+            id: expenseHeadId,
+            kind: "PETTY_CASH",
+            isDeleted: false,
+            isActive: true,
+        },
     });
     if (!head)
         return next(new appError_1.default("Expense head not found", 404));
@@ -605,7 +704,12 @@ exports.addSectionExpense = (0, catchAsync_1.default)(async (req, res, next) => 
     if (sectionError)
         return next(new appError_1.default(sectionError, 400));
     const head = await prisma_1.default.pettyCashExpenseHead.findFirst({
-        where: { id: expenseHeadId, isDeleted: false, isActive: true },
+        where: {
+            id: expenseHeadId,
+            kind: "PETTY_CASH",
+            isDeleted: false,
+            isActive: true,
+        },
     });
     if (!head)
         return next(new appError_1.default("Expense head not found", 404));
@@ -696,5 +800,190 @@ exports.getProjectAccountants = (0, catchAsync_1.default)(async (req, res, next)
         assignmentType: a.sectionId ? "SECTION" : "PROJECT",
     }));
     res.status(200).json({ status: "success", data: accountants });
+});
+const directExpenseInclude = {
+    project: { select: { id: true, name: true, code: true } },
+    section: { select: { id: true, name: true, code: true } },
+    expenseHead: { select: { id: true, name: true, kind: true } },
+    creator: {
+        select: { id: true, name: true, email: true, role: true, isHead: true },
+    },
+};
+exports.getDirectExpenses = (0, catchAsync_1.default)(async (req, res, next) => {
+    const user = req.user;
+    if (!(await (0, pettyCashAccess_1.canViewDirectExpense)(user))) {
+        return next(new appError_1.default("Not authorized to view Direct Expense", 403));
+    }
+    const { projectId, sectionId, expenseHeadId, createdBy, dateFrom, dateTo, page = "1", limit = "50", } = req.query;
+    const where = { isDeleted: false };
+    if (projectId)
+        where.projectId = String(projectId);
+    if (sectionId)
+        where.sectionId = String(sectionId);
+    if (expenseHeadId)
+        where.expenseHeadId = String(expenseHeadId);
+    if (createdBy)
+        where.createdBy = String(createdBy);
+    if (dateFrom || dateTo) {
+        const createdAt = {};
+        if (dateFrom)
+            createdAt.gte = new Date(dateFrom);
+        if (dateTo) {
+            const end = new Date(dateTo);
+            end.setHours(23, 59, 59, 999);
+            createdAt.lte = end;
+        }
+        where.createdAt = createdAt;
+    }
+    const skip = (Number(page) - 1) * Number(limit);
+    const [transactions, total] = await Promise.all([
+        prisma_1.default.directExpenseTransaction.findMany({
+            where,
+            include: directExpenseInclude,
+            orderBy: { createdAt: "desc" },
+            skip,
+            take: Number(limit),
+        }),
+        prisma_1.default.directExpenseTransaction.count({ where }),
+    ]);
+    res.status(200).json({
+        status: "success",
+        data: transactions.map(mapTransactionResponse),
+        pagination: {
+            page: Number(page),
+            limit: Number(limit),
+            total,
+            pages: Math.ceil(total / Number(limit)),
+        },
+    });
+});
+exports.getDirectExpenseSummary = (0, catchAsync_1.default)(async (req, res, next) => {
+    const user = req.user;
+    if (!(await (0, pettyCashAccess_1.canViewDirectExpense)(user))) {
+        return next(new appError_1.default("Not authorized to view Direct Expense", 403));
+    }
+    const txs = await prisma_1.default.directExpenseTransaction.findMany({
+        where: { isDeleted: false },
+        select: {
+            amount: true,
+            projectId: true,
+            sectionId: true,
+            project: { select: { id: true, name: true, code: true } },
+            section: { select: { id: true, name: true, code: true } },
+        },
+    });
+    let total = 0;
+    let projectLevelTotal = 0;
+    let sectionLevelTotal = 0;
+    const byProject = new Map();
+    const bySection = new Map();
+    for (const tx of txs) {
+        const amt = Number(tx.amount) || 0;
+        total += amt;
+        if (tx.sectionId)
+            sectionLevelTotal += amt;
+        else
+            projectLevelTotal += amt;
+        const existingProject = byProject.get(tx.projectId);
+        if (existingProject)
+            existingProject.total += amt;
+        else {
+            byProject.set(tx.projectId, {
+                projectId: tx.projectId,
+                projectName: tx.project?.name || "",
+                projectCode: tx.project?.code || "",
+                total: amt,
+            });
+        }
+        if (tx.sectionId) {
+            const existingSection = bySection.get(tx.sectionId);
+            if (existingSection)
+                existingSection.total += amt;
+            else {
+                bySection.set(tx.sectionId, {
+                    sectionId: tx.sectionId,
+                    sectionName: tx.section?.name || "",
+                    sectionCode: tx.section?.code || "",
+                    projectId: tx.projectId,
+                    total: amt,
+                });
+            }
+        }
+    }
+    res.status(200).json({
+        status: "success",
+        data: {
+            total,
+            projectLevelTotal,
+            sectionLevelTotal,
+            byProject: Array.from(byProject.values()).sort((a, b) => b.total - a.total),
+            bySection: Array.from(bySection.values()).sort((a, b) => b.total - a.total),
+        },
+    });
+});
+exports.addDirectExpense = (0, catchAsync_1.default)(async (req, res, next) => {
+    const user = req.user;
+    if (!(await (0, pettyCashAccess_1.canAddDirectExpense)(user))) {
+        return next(new appError_1.default("Not authorized to add Direct Expense", 403));
+    }
+    const { projectId, sectionId, expenseHeadId, amount, description } = req.body;
+    const proofUrls = (0, resolveUploadUrls_1.resolveUploadUrls)(req, {
+        bodyKey: "proofUrls",
+        multipartKey: "proofOfExpense",
+    });
+    if (!projectId)
+        return next(new appError_1.default("Project is required", 400));
+    if (!expenseHeadId) {
+        return next(new appError_1.default("Expense head is required", 400));
+    }
+    if (proofUrls.length === 0) {
+        return next(new appError_1.default("Proof of expense is required", 400));
+    }
+    if (!amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+        return next(new appError_1.default("A valid amount is required", 400));
+    }
+    const project = await prisma_1.default.project.findFirst({
+        where: { id: projectId, isDeleted: false },
+        select: { id: true },
+    });
+    if (!project)
+        return next(new appError_1.default("Project not found", 404));
+    let resolvedSectionId = sectionId ? String(sectionId) : null;
+    if (resolvedSectionId) {
+        const section = await prisma_1.default.section.findFirst({
+            where: { id: resolvedSectionId, projectId, isDeleted: false },
+            select: { id: true },
+        });
+        if (!section) {
+            return next(new appError_1.default("Section not found for the selected project", 404));
+        }
+    }
+    const head = await prisma_1.default.pettyCashExpenseHead.findFirst({
+        where: {
+            id: expenseHeadId,
+            kind: "DIRECT_EXPENSE",
+            isDeleted: false,
+            isActive: true,
+        },
+    });
+    if (!head) {
+        return next(new appError_1.default("Direct Expense head not found", 404));
+    }
+    const tx = await prisma_1.default.directExpenseTransaction.create({
+        data: {
+            projectId,
+            sectionId: resolvedSectionId,
+            expenseHeadId,
+            amount: Number(amount),
+            proofUrl: (0, attachmentUrls_1.attachmentUrlsToJson)(proofUrls),
+            description: description?.trim() || null,
+            createdBy: user.id,
+        },
+        include: directExpenseInclude,
+    });
+    res.status(201).json({
+        status: "success",
+        data: mapTransactionResponse(tx),
+    });
 });
 //# sourceMappingURL=pettyCash.controller.js.map

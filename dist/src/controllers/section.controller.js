@@ -10,6 +10,7 @@ const generateCode_1 = require("../utils/generateCode");
 const buildQueryOptions_1 = require("../utils/buildQueryOptions");
 const notification_1 = require("../utils/notification");
 const prisma_1 = __importDefault(require("../utils/prisma"));
+const pettyCashAccess_1 = require("../utils/pettyCashAccess");
 const createSection = (0, catchAsync_1.default)(async (req, res, next) => {
     const { name, description, projectId, createStore, storePermissions } = req.body;
     const userId = req.user.id;
@@ -251,6 +252,10 @@ const getSections = (0, catchAsync_1.default)(async (req, res) => {
             },
         },
     });
+    const [sectionDirect, canViewDirect] = await Promise.all([
+        (0, pettyCashAccess_1.sumDirectExpenseBySectionIds)(sections.map((section) => section.id)),
+        (0, pettyCashAccess_1.canViewDirectExpense)(user),
+    ]);
     const sectionsWithAmounts = await Promise.all(sections.map(async (section) => {
         const sectionPOs = await prisma_1.default.purchaseOrder.aggregate({
             where: {
@@ -265,6 +270,8 @@ const getSections = (0, catchAsync_1.default)(async (req, res) => {
         return {
             ...section,
             totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+            directExpenseTotal: sectionDirect.get(section.id) || 0,
+            canViewDirectExpense: canViewDirect,
         };
     }));
     const paginationMeta = (0, buildQueryOptions_1.buildPaginationMeta)(total, filterOptions.page || 1, filterOptions.limit || 50);
@@ -602,6 +609,8 @@ const getSectionById = (0, catchAsync_1.default)(async (req, res, next) => {
         associatedAccountants: combinedAccountantAssignments,
         recentDemands: section.demands,
         totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+        directExpenseTotal: await (0, pettyCashAccess_1.getSectionDirectExpenseTotal)(section.id),
+        canViewDirectExpense: await (0, pettyCashAccess_1.canViewDirectExpense)(req.user),
         materialCapAnalytics: materialCapAnalytics,
     };
     res.json({

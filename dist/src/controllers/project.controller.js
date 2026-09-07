@@ -180,6 +180,13 @@ const getProjects = (0, catchAsync_1.default)(async (req, res) => {
             },
         },
     });
+    const projectIds = projects.map((project) => project.id);
+    const sectionIds = projects.flatMap((project) => project.sections.map((section) => section.id));
+    const [directByProject, directBySection, canViewDirect] = await Promise.all([
+        (0, pettyCashAccess_1.sumDirectExpenseByProjectIds)(projectIds),
+        (0, pettyCashAccess_1.sumDirectExpenseBySectionIds)(sectionIds),
+        (0, pettyCashAccess_1.canViewDirectExpense)(user),
+    ]);
     const projectsWithAmounts = await Promise.all(projects.map(async (project) => {
         const projectPOs = await prisma_1.default.purchaseOrder.aggregate({
             where: {
@@ -205,12 +212,15 @@ const getProjects = (0, catchAsync_1.default)(async (req, res) => {
             return {
                 ...section,
                 totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+                directExpenseTotal: directBySection.get(section.id) || 0,
             };
         }));
         return {
             ...project,
             sections: sectionsWithAmounts,
             totalAmountSpent: projectPOs._sum.totalAmount || 0,
+            directExpenseTotal: directByProject.get(project.id) || 0,
+            canViewDirectExpense: canViewDirect,
         };
     }));
     const filteredProjects = projectsWithAmounts.map((project) => {
@@ -441,6 +451,10 @@ const getProjectById = (0, catchAsync_1.default)(async (req, res, next) => {
             totalAmount: true,
         },
     });
+    const [projectDirectExpenseTotal, sectionDirect] = await Promise.all([
+        (0, pettyCashAccess_1.getProjectDirectExpenseTotal)(project.id),
+        (0, pettyCashAccess_1.sumDirectExpenseBySectionIds)(project.sections.map((section) => section.id)),
+    ]);
     let sectionsWithAmounts = await Promise.all(project.sections.map(async (section) => {
         const sectionPOs = await prisma_1.default.purchaseOrder.aggregate({
             where: {
@@ -455,6 +469,7 @@ const getProjectById = (0, catchAsync_1.default)(async (req, res, next) => {
         return {
             ...section,
             totalAmountSpent: sectionPOs._sum.totalAmount || 0,
+            directExpenseTotal: sectionDirect.get(section.id) || 0,
         };
     }));
     if (user.role !== "ADMIN" && Array.isArray(sectionsWithAmounts)) {
@@ -694,6 +709,8 @@ const getProjectById = (0, catchAsync_1.default)(async (req, res, next) => {
         assignedAccountants: assignedAccountants,
         associatedMembers: associatedMembers,
         totalAmountSpent: projectPOs._sum.totalAmount || 0,
+        directExpenseTotal: projectDirectExpenseTotal,
+        canViewDirectExpense: await (0, pettyCashAccess_1.canViewDirectExpense)(user),
         materialCapAnalytics: materialCapAnalytics,
     };
     res.json({
